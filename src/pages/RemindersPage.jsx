@@ -216,11 +216,11 @@ const RemindersPage = () => {
 
 
             {/* Header & Filters */}
-            <div className="sticky top-20 z-30 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-sm -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-800 md:static md:bg-transparent md:p-0 md:border-none md:mb-6 transition-all">
+            <div className="sticky top-20 z-50 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-sm -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-800 md:static md:bg-transparent md:p-0 md:border-none md:mb-6 transition-all">
                 <div className="flex flex-col gap-3">
                     {/* Date Nav */}
-                    <div className="flex items-center justify-between bg-white dark:bg-gray-900 p-2 md:p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
-                        <button onClick={() => handleDateChange(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400"><ChevronLeft size={20} /></button>
+                    <div className="flex items-center justify-between bg-white dark:bg-gray-900 p-2 md:p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 relative z-50">
+                        <button onClick={(e) => { e.stopPropagation(); handleDateChange(-1); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400"><ChevronLeft size={20} /></button>
                         <div className="flex items-center gap-2">
                             <div className="flex items-center gap-2 font-bold text-base md:text-lg text-gray-900 dark:text-gray-100">
                                 <Calendar size={18} className="text-orange-500" />
@@ -228,14 +228,14 @@ const RemindersPage = () => {
                             </div>
                             {new Date(selectedDate).setHours(0, 0, 0, 0) !== new Date().setHours(0, 0, 0, 0) && (
                                 <button
-                                    onClick={() => setSelectedDate(new Date())}
+                                    onClick={(e) => { e.stopPropagation(); setSelectedDate(new Date()); }}
                                     className="px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-[10px] md:text-xs font-bold rounded-lg uppercase tracking-wide"
                                 >
                                     Today
                                 </button>
                             )}
                         </div>
-                        <button onClick={() => handleDateChange(1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400"><ChevronRight size={20} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDateChange(1); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400"><ChevronRight size={20} /></button>
                     </div>
 
                     {/* Filter Chips */}
