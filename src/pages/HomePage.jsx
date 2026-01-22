@@ -203,7 +203,7 @@ const HomePage = () => {
             <div className="grid md:grid-cols-3 gap-8 mt-12">
                 <DashboardCard
                     title="All Reminders"
-                    description="Manage your full schedule and settings."
+                    description="Complex schedules, Medication courses, & Smart windows."
                     icon={Bell}
                     color="orange"
                     link="/reminders"
@@ -212,7 +212,7 @@ const HomePage = () => {
                 />
                 <DashboardCard
                     title="Easy Notes"
-                    description="Voice notes and lists."
+                    description="Voice notes, Attachments, & Quick conversion to reminders."
                     icon={FileText}
                     color="teal"
                     link="/notes"
@@ -221,7 +221,7 @@ const HomePage = () => {
                 />
                 <DashboardCard
                     title="Health Report"
-                    description="See history and adherence."
+                    description="Track adherence scores & Edit past history."
                     icon={Activity}
                     color="green"
                     link="/reports"
