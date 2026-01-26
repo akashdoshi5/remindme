@@ -237,7 +237,10 @@ export const firestoreService = {
 
         // Setup listener for OWNED
         const unsubscribeOwned = onSnapshot(qOwned, (snapOwned) => {
-            const ownedNotes = snapOwned.docs.map(d => ({ id: d.id, ...d.data() }));
+            let ownedNotes = snapOwned.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            // Client-side sort by 'order' since we don't have composite index set up yet
+            ownedNotes.sort((a, b) => (a.order || 0) - (b.order || 0));
 
             // Setup listener for SHARED (nested to merge? No, better separate state management in UI, 
             // but for simple service API we might need to combine manually or expose two streams)
@@ -314,6 +317,18 @@ export const firestoreService = {
         Object.keys(safeUpdates).forEach(key => safeUpdates[key] === undefined && delete safeUpdates[key]);
 
         await updateDoc(ref, safeUpdates);
+    },
+
+    reorderNotes: async (orderedIds) => {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const batch = writeBatch(db);
+        orderedIds.forEach((noteId, index) => {
+            const ref = doc(db, 'notes', String(noteId));
+            batch.update(ref, { order: index });
+        });
+        await batch.commit();
     },
 
     deleteNote: async (id) => {

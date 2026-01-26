@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Mic, MicOff, Image as ImageIcon, Trash2, FileText, Paperclip, Loader2, CheckSquare, Tag, Play, Square, Pause, Maximize2, Minimize2, GripVertical } from 'lucide-react';
-import { Reorder } from 'framer-motion';
+import { Reorder, useDragControls } from 'framer-motion';
 import { useVoice } from '../../hooks/useVoice';
 import { fileStorage } from '../../services/fileStorage';
 import { ocrService } from '../../services/ocrService';
@@ -10,9 +10,9 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
     if (!isOpen) return null;
 
     const [noteType, setNoteType] = useState('text'); // 'text' or 'shopping'
-    const [items, setItems] = useState([{ text: '', done: false }]);
-    // Title is no longer explicitly edited, but we keep state for legacy or derivation
+    const [items, setItems] = useState([{ text: '', done: false, id: crypto.randomUUID() }]);
     const [content, setContent] = useState('');
+    const [title, setTitle] = useState(''); // Explicit Title State
     const [tags, setTags] = useState('');
     const [showTagInput, setShowTagInput] = useState(false);
 
@@ -35,20 +35,22 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
     // --- EFFECT: Initialization ---
     useEffect(() => {
         if (noteToEdit) {
+            setTitle(noteToEdit.title && noteToEdit.title !== 'Untitled Note' && noteToEdit.title !== 'New Note' ? noteToEdit.title : '');
             setContent(noteToEdit.content || '');
             setTags(noteToEdit.tags ? noteToEdit.tags.join(', ') : '');
             setShowTagInput(!!(noteToEdit.tags && noteToEdit.tags.length > 0));
             setFiles(noteToEdit.files || []);
             setNoteType(noteToEdit.type === 'shopping' ? 'shopping' : 'text');
-            setItems(noteToEdit.items || [{ text: '', done: false }]);
+            setItems((noteToEdit.items && noteToEdit.items.length > 0) ? noteToEdit.items.map(i => ({ ...i, id: i.id || crypto.randomUUID() })) : [{ text: '', done: false, id: crypto.randomUUID() }]);
             setAudioData(noteToEdit.audioData || null);
         } else {
+            setTitle('');
             setContent('');
             setTags('');
             setShowTagInput(false);
             setFiles([]);
             setNoteType(initialType === 'shopping' ? 'shopping' : 'text');
-            setItems([{ text: '', done: false }]);
+            setItems([{ text: '', done: false, id: crypto.randomUUID() }]);
             setAudioData(null);
         }
     }, [noteToEdit, isOpen, initialType]);
@@ -310,17 +312,22 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
 
         try {
             // Derive Title
-            let finalTitle = noteToEdit?.title;
-            if (!finalTitle || finalTitle === 'New Note' || finalTitle === 'Untitled Note') {
-                if (noteType === 'text') {
-                    const firstLine = content.split('\n')[0].trim();
-                    finalTitle = firstLine ? (firstLine.substring(0, 50) + (firstLine.length > 50 ? '...' : '')) : 'Untitled Note';
-                } else {
-                    const firstItem = items.find(i => i.text.trim())?.text;
-                    finalTitle = firstItem ? (firstItem.substring(0, 50) + (firstItem.length > 50 ? '...' : '')) : 'Checklist';
-                }
+            let finalTitle = title.trim();
+            if (!finalTitle && (noteType === 'text')) {
+                // Optional: Auto-generate if empty? User said "If title is not written then only text below".
+                // This implies we should NOT auto-generate a title visible in the UI as a header.
+                // But we need a title for the DB or search? 
+                // Let's set it to empty string or a placeholder that ISN'T displayed as a header in NotesPage.
+                // NotesPage logic: if (note.title && note.title !== 'New Note'...) show <h3>.
+                // So if we save '', it won't show. Perfection.
+                finalTitle = '';
+            } else if (!finalTitle && noteType === 'shopping') {
+                finalTitle = 'Checklist'; // One exception maybe? Or keep empty.
             }
-            if (!finalTitle) finalTitle = "Untitled Note";
+
+            // If completely empty and no content, maybe default to "Untitled"?
+            // But for now let's respect the "No Title" wish.
+            if (!finalTitle && !content && items.length === 0 && files.length === 0) finalTitle = "Untitled Note";
 
             const finalFiles = files.map(f => {
                 if (f.storageData) {
@@ -388,7 +395,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
         }, 1500);
 
         return () => clearTimeout(timer);
-    }, [content, items, tags, files, audioData, noteType]); // Dependencies for auto-save
+    }, [content, items, tags, files, audioData, noteType, title]); // Dependencies for auto-save
 
     const handleSubmit = (e) => {
         if (e) e.preventDefault();
@@ -404,15 +411,19 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
 
                 {/* 1. Header */}
                 <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md sticky top-0 z-10">
-                    <div className="flex items-center gap-3">
-                        <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">
-                            {localId ? (noteToEdit?.title || 'Edit Note') : 'New Note'}
-                        </h2>
-                        {saveStatus === 'saving' && <span className="text-xs text-orange-500 animate-pulse font-medium">Saving...</span>}
-                        {saveStatus === 'saved' && <span className="text-xs text-green-500 font-medium">Saved</span>}
-                        {saveStatus === 'error' && <span className="text-xs text-red-500 font-medium">Error saving</span>}
+                    <div className="flex items-center gap-3 flex-1 mr-4">
+                        <input
+                            type="text"
+                            placeholder="Title"
+                            className="w-full text-lg font-bold text-gray-800 dark:text-gray-100 bg-transparent outline-none placeholder-gray-400"
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                        />
+                        {saveStatus === 'saving' && <span className="text-xs text-orange-500 animate-pulse font-medium shrink-0">Saving...</span>}
+                        {saveStatus === 'saved' && <span className="text-xs text-green-500 font-medium shrink-0">Saved</span>}
+                        {saveStatus === 'error' && <span className="text-xs text-red-500 font-medium shrink-0">Error saving</span>}
                     </div>
-                    <button onClick={() => performSave(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-500">
+                    <button onClick={() => performSave(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-500 shrink-0">
                         <X size={20} />
                     </button>
                 </div>
@@ -508,7 +519,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                             </button>
                         </div>
                     )}
-                                )}
+
 
                     {/* Files List (Inline) */}
                     {files.length > 0 && (
@@ -597,15 +608,15 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
 
                         <button
                             onClick={handleSubmit}
-                            disabled={isSubmitting || files.some(f => f.status === 'uploading')}
+                            disabled={saveStatus === 'saving' || files.some(f => f.status === 'uploading')}
                             className="bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all text-sm md:text-base flex items-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
                         >
-                            {isSubmitting ? (
+                            {saveStatus === 'saving' ? (
                                 <>
                                     <Loader2 size={18} className="animate-spin" /> Saving...
                                 </>
                             ) : (
-                                'Save Note'
+                                'Done'
                             )}
                         </button>
                     </div>
@@ -613,6 +624,73 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
 
             </div >
         </div >
+    );
+};
+
+// Extracted Item for isolated Drag Controls
+const ChecklistItem = ({ item, idx, setItems, items }) => {
+    const dragControls = useDragControls();
+
+    return (
+        <Reorder.Item
+            value={item}
+            id={item.id}
+            dragListener={false}
+            dragControls={dragControls}
+            className="flex items-start gap-3 group bg-white dark:bg-gray-800 rounded-lg"
+        >
+            <div
+                className="mt-2 text-gray-300 cursor-grab active:cursor-grabbing hover:text-orange-500 touch-none"
+                onPointerDown={(e) => dragControls.start(e)}
+            >
+                <GripVertical size={16} />
+            </div>
+            <button
+                onClick={() => {
+                    const newItems = [...items];
+                    newItems[idx].done = !newItems[idx].done;
+                    setItems(newItems);
+                }}
+                className={`mt-1 w-5 h-5 rounded border flex items-center justify-center transition-colors ${item.done ? 'bg-orange-500 border-orange-500 text-white' : 'border-gray-300 dark:border-gray-600 text-transparent hover:border-orange-400'}`}
+            >
+                <CheckSquare size={14} className="fill-current" />
+            </button>
+            <input
+                type="text"
+                placeholder="List item..."
+                className={`flex-1 bg-transparent border-none outline-none text-lg ${item.done ? 'text-gray-400 line-through' : 'text-gray-800 dark:text-gray-200'}`}
+                value={item.text}
+                onChange={(e) => {
+                    const newItems = [...items];
+                    newItems[idx].text = e.target.value;
+                    setItems(newItems);
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const newItems = [...items];
+                        const newItem = { text: '', done: false, id: crypto.randomUUID() };
+                        newItems.splice(idx + 1, 0, newItem);
+                        setItems(newItems);
+                        setTimeout(() => {
+                            const inputs = document.querySelectorAll('input[placeholder="List item..."]');
+                            if (inputs[idx + 1]) inputs[idx + 1].focus();
+                        }, 0);
+                    } else if (e.key === 'Backspace' && !item.text && items.length > 1) {
+                        e.preventDefault();
+                        const newItems = items.filter((_, i) => i !== idx);
+                        setItems(newItems);
+                        setTimeout(() => {
+                            const inputs = document.querySelectorAll('input[placeholder="List item..."]');
+                            if (inputs[idx - 1]) inputs[idx - 1].focus();
+                        }, 0);
+                    }
+                }}
+            />
+            <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-opacity">
+                <X size={16} />
+            </button>
+        </Reorder.Item>
     );
 };
 
