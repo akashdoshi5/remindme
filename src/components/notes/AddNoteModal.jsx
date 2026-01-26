@@ -434,146 +434,186 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                                     <span className="text-xs font-bold text-orange-600 dark:text-orange-400">Voice Note</span>
                                 </div>
                             </div>
-                            <button onClick={deleteAudio} className="p-2 hover:bg-white/50 dark:hover:bg-black/20 rounded-full text-orange-600/70 hover:text-orange-600 transition-colors">
-                                <Trash2 size={16} />
-                            </button>
-                            const newItems = [...items];
-                            const newItem = {text: '', done: false, id: crypto.randomUUID() }; // Ensure ID for reorder
-                            newItems.splice(idx + 1, 0, newItem);
-                            setItems(newItems);
+                        </div>
+                    )}
 
-                                                                // Focus next input logic (will be handled by effect or ref, but basic insert is here)
-                                                                setTimeout(() => {
-                                                                    const inputs = document.querySelectorAll('input[placeholder="List item..."]');
-                            if (inputs[idx + 1]) inputs[idx + 1].focus();
-                                                                }, 0);
-                                                            } else if (e.key === 'Backspace' && !item.text && items.length > 1) {
-                                e.preventDefault();
-                                                                const newItems = items.filter((_, i) => i !== idx);
-                            setItems(newItems);
-                                                                setTimeout(() => {
-                                                                    const inputs = document.querySelectorAll('input[placeholder="List item..."]');
-                            if (inputs[idx - 1]) inputs[idx - 1].focus();
-                                                                }, 0);
-                                                            }
-                                                        }}
-                                                    />
-                            <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-opacity">
-                                <X size={16} />
-                            </button>
-                        </Reorder.Item>
-                    ))}
-                </Reorder.Group>
-                <button onClick={() => setItems([...items, { text: '', done: false, id: crypto.randomUUID() }])} className="text-gray-400 hover:text-orange-500 font-medium text-sm pl-8 transition-colors">
-                    + Add Item
-                </button>
-            </div>
-                                )}
-
-            {/* Files List (Inline) */}
-            {files.length > 0 && (
-                <div className="mt-8 grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {files.map((file, idx) => (
-                        <div key={idx} className="relative group bg-gray-50 dark:bg-gray-800 rounded-xl p-3 border border-gray-100 dark:border-gray-700 flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-white dark:bg-gray-700 flex items-center justify-center text-gray-500 shrink-0">
-                                {file.type?.includes('image') ? <ImageIcon size={20} /> : <FileText size={20} />}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate text-gray-700 dark:text-gray-300">{file.name}</p>
-                                <div className="text-xs text-gray-400">
-                                    {file.status === 'uploading' ? `${file.progress}%` : (file.status === 'ready' ? 'Attached' : file.status)}
-                                </div>
-                            </div>
-                            <button onClick={() => handleRemoveFile(idx)} className="absolute -top-1 -right-1 bg-red-100 dark:bg-red-900 text-red-500 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <X size={12} />
+                    {/* Editor */}
+                    {noteType === 'text' ? (
+                        <textarea
+                            ref={textareaRef}
+                            className="w-full h-full bg-transparent resize-none outline-none text-lg md:text-xl leading-relaxed text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 font-medium"
+                            placeholder="Start typing..."
+                            value={displayContent}
+                            onChange={(e) => setContent(e.target.value)}
+                            autoFocus={!noteToEdit}
+                        />
+                    ) : (
+                        <div className="space-y-3">
+                            <Reorder.Group axis="y" values={items} onReorder={setItems} className="space-y-3">
+                                {items.map((item, idx) => (
+                                    <Reorder.Item key={item.id || idx} value={item} className="flex items-start gap-3 group bg-white dark:bg-gray-800 rounded-lg">
+                                        <div className="mt-2 text-gray-300 cursor-grab active:cursor-grabbing hover:text-orange-500">
+                                            <GripVertical size={16} />
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                const newItems = [...items];
+                                                newItems[idx].done = !newItems[idx].done;
+                                                setItems(newItems);
+                                            }}
+                                            className={`mt-1 w-5 h-5 rounded border flex items-center justify-center transition-colors ${item.done ? 'bg-orange-500 border-orange-500 text-white' : 'border-gray-300 dark:border-gray-600 text-transparent hover:border-orange-400'}`}
+                                        >
+                                            <CheckSquare size={14} className="fill-current" />
+                                        </button>
+                                        <input
+                                            type="text"
+                                            placeholder="List item..."
+                                            className={`flex-1 bg-transparent border-none outline-none text-lg ${item.done ? 'text-gray-400 line-through' : 'text-gray-800 dark:text-gray-200'}`}
+                                            value={item.text}
+                                            onChange={(e) => {
+                                                const newItems = [...items];
+                                                newItems[idx].text = e.target.value;
+                                                setItems(newItems);
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    const newItems = [...items];
+                                                    const newItem = { text: '', done: false, id: crypto.randomUUID() };
+                                                    newItems.splice(idx + 1, 0, newItem);
+                                                    setItems(newItems);
+                                                    setTimeout(() => {
+                                                        const inputs = document.querySelectorAll('input[placeholder="List item..."]');
+                                                        if (inputs[idx + 1]) inputs[idx + 1].focus();
+                                                    }, 0);
+                                                } else if (e.key === 'Backspace' && !item.text && items.length > 1) {
+                                                    e.preventDefault();
+                                                    const newItems = items.filter((_, i) => i !== idx);
+                                                    setItems(newItems);
+                                                    setTimeout(() => {
+                                                        const inputs = document.querySelectorAll('input[placeholder="List item..."]');
+                                                        if (inputs[idx - 1]) inputs[idx - 1].focus();
+                                                    }, 0);
+                                                }
+                                            }}
+                                        />
+                                        <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-opacity">
+                                            <X size={16} />
+                                        </button>
+                                    </Reorder.Item>
+                                ))}
+                            </Reorder.Group>
+                            <button onClick={() => setItems([...items, { text: '', done: false, id: crypto.randomUUID() }])} className="text-gray-400 hover:text-orange-500 font-medium text-sm pl-8 transition-colors">
+                                + Add Item
                             </button>
                         </div>
-                    ))}
+                    )}
+                                )}
+
+                    {/* Files List (Inline) */}
+                    {files.length > 0 && (
+                        <div className="mt-8 grid grid-cols-2 md:grid-cols-3 gap-3">
+                            {files.map((file, idx) => (
+                                <div key={idx} className="relative group bg-gray-50 dark:bg-gray-800 rounded-xl p-3 border border-gray-100 dark:border-gray-700 flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-lg bg-white dark:bg-gray-700 flex items-center justify-center text-gray-500 shrink-0">
+                                        {file.type?.includes('image') ? <ImageIcon size={20} /> : <FileText size={20} />}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-medium truncate text-gray-700 dark:text-gray-300">{file.name}</p>
+                                        <div className="text-xs text-gray-400">
+                                            {file.status === 'uploading' ? `${file.progress}%` : (file.status === 'ready' ? 'Attached' : file.status)}
+                                        </div>
+                                    </div>
+                                    <button onClick={() => handleRemoveFile(idx)} className="absolute -top-1 -right-1 bg-red-100 dark:bg-red-900 text-red-500 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <X size={12} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Tag Input (Conditional) */}
+                    {showTagInput && (
+                        <div className="mt-6 flex items-center gap-2 animate-fade-in">
+                            <Tag size={16} className="text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="Add tags (separated by comma)"
+                                className="flex-1 bg-transparent border-none outline-none text-sm text-gray-600 dark:text-gray-400 placeholder-gray-400"
+                                value={tags}
+                                onChange={(e) => setTags(e.target.value)}
+                            />
+                        </div>
+                    )}
                 </div>
-            )}
 
-            {/* Tag Input (Conditional) */}
-            {showTagInput && (
-                <div className="mt-6 flex items-center gap-2 animate-fade-in">
-                    <Tag size={16} className="text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Add tags (separated by comma)"
-                        className="flex-1 bg-transparent border-none outline-none text-sm text-gray-600 dark:text-gray-400 placeholder-gray-400"
-                        value={tags}
-                        onChange={(e) => setTags(e.target.value)}
-                    />
+                {/* 3. Bottom Toolbar */}
+                <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-md sticky bottom-0 z-20">
+
+                    {/* Recording Status Overlay in Toolbar */}
+                    {recordingStatus !== 'idle' && (
+                        <div className="absolute -top-12 left-0 right-0 flex justify-center px-4">
+                            <div className="bg-red-500 text-white text-sm font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 animate-bounce-slight">
+                                <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+                                {recordingStatus === 'paused' ? 'Paused' : 'Recording...'}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-1 md:gap-2">
+                            {/* Mic */}
+                            <button
+                                onClick={toggleRecording}
+                                className={`p-3 rounded-full transition-all ${recordingStatus !== 'idle' ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
+                                title="Record Audio"
+                            >
+                                {recordingStatus !== 'idle' ? <MicOff size={22} /> : <Mic size={22} />}
+                            </button>
+
+                            {/* Attach */}
+                            <label className={`p-3 rounded-full transition-all cursor-pointer ${files.some(f => f.status === 'uploading') ? 'opacity-50' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                                <input type="file" multiple className="hidden" onChange={handleFileUpload} />
+                                <Paperclip size={22} />
+                            </label>
+
+                            {/* Checklist Toggle */}
+                            <button
+                                onClick={toggleNoteType}
+                                className={`p-3 rounded-full transition-all ${noteType === 'shopping' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
+                                title="Toggle Checklist"
+                            >
+                                <CheckSquare size={22} />
+                            </button>
+
+                            {/* Tags Toggle */}
+                            <button
+                                onClick={() => setShowTagInput(!showTagInput)}
+                                className={`p-3 rounded-full transition-all ${showTagInput ? 'text-orange-600 dark:text-orange-400' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
+                            >
+                                <Tag size={22} />
+                            </button>
+                        </div>
+
+                        <button
+                            onClick={handleSubmit}
+                            disabled={isSubmitting || files.some(f => f.status === 'uploading')}
+                            className="bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all text-sm md:text-base flex items-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
+                        >
+                            {isSubmitting ? (
+                                <>
+                                    <Loader2 size={18} className="animate-spin" /> Saving...
+                                </>
+                            ) : (
+                                'Save Note'
+                            )}
+                        </button>
+                    </div>
                 </div>
-            )}
-        </div>
 
-                            {/* 3. Bottom Toolbar */ }
-    <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-md sticky bottom-0 z-20">
-
-        {/* Recording Status Overlay in Toolbar */}
-        {recordingStatus !== 'idle' && (
-            <div className="absolute -top-12 left-0 right-0 flex justify-center px-4">
-                <div className="bg-red-500 text-white text-sm font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 animate-bounce-slight">
-                    <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
-                    {recordingStatus === 'paused' ? 'Paused' : 'Recording...'}
-                </div>
-            </div>
-        )}
-
-        <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-1 md:gap-2">
-                {/* Mic */}
-                <button
-                    onClick={toggleRecording}
-                    className={`p-3 rounded-full transition-all ${recordingStatus !== 'idle' ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                    title="Record Audio"
-                >
-                    {recordingStatus !== 'idle' ? <MicOff size={22} /> : <Mic size={22} />}
-                </button>
-
-                {/* Attach */}
-                <label className={`p-3 rounded-full transition-all cursor-pointer ${files.some(f => f.status === 'uploading') ? 'opacity-50' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
-                    <input type="file" multiple className="hidden" onChange={handleFileUpload} />
-                    <Paperclip size={22} />
-                </label>
-
-                {/* Checklist Toggle */}
-                <button
-                    onClick={toggleNoteType}
-                    className={`p-3 rounded-full transition-all ${noteType === 'shopping' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                    title="Toggle Checklist"
-                >
-                    <CheckSquare size={22} />
-                </button>
-
-                {/* Tags Toggle */}
-                <button
-                    onClick={() => setShowTagInput(!showTagInput)}
-                    className={`p-3 rounded-full transition-all ${showTagInput ? 'text-orange-600 dark:text-orange-400' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                >
-                    <Tag size={22} />
-                </button>
-            </div>
-
-            <button
-                onClick={handleSubmit}
-                disabled={isSubmitting || files.some(f => f.status === 'uploading')}
-                className="bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all text-sm md:text-base flex items-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
-            >
-                {isSubmitting ? (
-                    <>
-                        <Loader2 size={18} className="animate-spin" /> Saving...
-                    </>
-                ) : (
-                    'Save Note'
-                )}
-            </button>
-        </div>
-    </div>
-
-                        </div >
-                    </div >
-                    );
+            </div >
+        </div >
+    );
 };
 
 export default AddNoteModal;
