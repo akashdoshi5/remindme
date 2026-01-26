@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mic, MicOff, Image as ImageIcon, Trash2, FileText, Paperclip, Loader2, CheckSquare, Tag, Play, Square, Pause, Maximize2, Minimize2 } from 'lucide-react';
+import { X, Mic, MicOff, Image as ImageIcon, Trash2, FileText, Paperclip, Loader2, CheckSquare, Tag, Play, Square, Pause, Maximize2, Minimize2, GripVertical } from 'lucide-react';
+import { Reorder } from 'framer-motion';
 import { useVoice } from '../../hooks/useVoice';
 import { fileStorage } from '../../services/fileStorage';
 import { ocrService } from '../../services/ocrService';
@@ -291,43 +292,35 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
     };
 
     // Submit
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    // Auto-save logic
+    const [localId, setLocalId] = useState(noteToEdit?.id || null);
+    const [saveStatus, setSaveStatus] = useState('saved'); // 'saved', 'saving', 'error'
+    const lastSavedData = useRef(null);
 
-    const handleSubmit = async (e) => {
-        if (e) e.preventDefault();
-        if (isSubmitting) return;
+    // Initial ID sync
+    useEffect(() => { setLocalId(noteToEdit?.id || null); }, [noteToEdit]);
+
+    const performSave = async (shouldClose = false) => {
         if (files.some(f => f.status === 'uploading')) {
-            alert("Please wait for files to upload.");
+            if (shouldClose) alert("Please wait for files to upload.");
             return;
         }
 
-        setIsSubmitting(true);
+        setSaveStatus('saving');
 
         try {
             // Derive Title
-            let finalTitle = noteToEdit?.title; // Default to existing
-            if (!finalTitle || finalTitle === 'New Note') {
-                // Auto-generate
+            let finalTitle = noteToEdit?.title;
+            if (!finalTitle || finalTitle === 'New Note' || finalTitle === 'Untitled Note') {
                 if (noteType === 'text') {
                     const firstLine = content.split('\n')[0].trim();
-                    finalTitle = firstLine.substring(0, 50) + (firstLine.length > 50 ? '...' : '');
+                    finalTitle = firstLine ? (firstLine.substring(0, 50) + (firstLine.length > 50 ? '...' : '')) : 'Untitled Note';
                 } else {
                     const firstItem = items.find(i => i.text.trim())?.text;
                     finalTitle = firstItem ? (firstItem.substring(0, 50) + (firstItem.length > 50 ? '...' : '')) : 'Checklist';
                 }
             }
             if (!finalTitle) finalTitle = "Untitled Note";
-
-            // Wait for audio
-            let finalAudioData = audioData;
-            if (mediaRecorderRef.current && recordingStatus !== 'idle') {
-                // Stop logic duplicated for safety
-                // ... (simplified: assumption is user stops before saving usually, or we force stop here)
-                stopRecording();
-                stopListening();
-                // Using current audioData might be stale if we just stopped. 
-                // For now, let's rely on the user stopping, or just save what we have.
-            }
 
             const finalFiles = files.map(f => {
                 if (f.storageData) {
@@ -344,7 +337,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                 return f;
             });
 
-            await onSave({
+            const dataToSave = {
                 title: finalTitle,
                 content: noteType === 'text' ? content : '',
                 items: noteType === 'shopping' ? items.filter(i => i.text.trim()) : undefined,
@@ -352,14 +345,54 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                 type: noteType,
                 date: noteToEdit ? noteToEdit.date : new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' }),
                 files: finalFiles,
-                audioData: finalAudioData,
-                id: noteToEdit ? noteToEdit.id : undefined,
-            });
-            onClose();
+                audioData: audioData,
+                id: localId || undefined, // Use localId if we created one in this session
+                ownerId: noteToEdit?.ownerId, // Preserve owner
+                sharedWith: noteToEdit?.sharedWith // Preserve shared
+            };
+
+            // Simple check to avoid saving unchanged data recursively
+            if (JSON.stringify(dataToSave) === JSON.stringify(lastSavedData.current) && !shouldClose) {
+                setSaveStatus('saved');
+                return;
+            }
+
+            const savedNote = await onSave(dataToSave);
+
+            if (savedNote && savedNote.id) {
+                setLocalId(savedNote.id);
+                dataToSave.id = savedNote.id;
+            }
+
+            lastSavedData.current = dataToSave;
+            setSaveStatus('saved');
+
+            if (shouldClose) onClose();
+
         } catch (error) {
             console.error("Save failed", error);
-            setIsSubmitting(false);
+            setSaveStatus('error');
+            if (shouldClose) alert("Failed to save. Please try again.");
         }
+    };
+
+    // Debounced Auto-save
+    useEffect(() => {
+        if (!isOpen) return;
+
+        // Skip initial mount save unless verified dirty? 
+        // We'll rely on the 'saving' indicator.
+
+        const timer = setTimeout(() => {
+            performSave(false);
+        }, 1500);
+
+        return () => clearTimeout(timer);
+    }, [content, items, tags, files, audioData, noteType]); // Dependencies for auto-save
+
+    const handleSubmit = (e) => {
+        if (e) e.preventDefault();
+        performSave(true);
     };
 
     // Display Logic
@@ -371,10 +404,15 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
 
                 {/* 1. Header */}
                 <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md sticky top-0 z-10">
-                    <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">
-                        {noteToEdit ? 'Edit Note' : 'New Note'}
-                    </h2>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-500">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">
+                            {localId ? (noteToEdit?.title || 'Edit Note') : 'New Note'}
+                        </h2>
+                        {saveStatus === 'saving' && <span className="text-xs text-orange-500 animate-pulse font-medium">Saving...</span>}
+                        {saveStatus === 'saved' && <span className="text-xs text-green-500 font-medium">Saved</span>}
+                        {saveStatus === 'error' && <span className="text-xs text-red-500 font-medium">Error saving</span>}
+                    </div>
+                    <button onClick={() => performSave(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-500">
                         <X size={20} />
                     </button>
                 </div>
@@ -382,7 +420,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                 {/* 2. Main Content Area */}
                 <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 custom-scrollbar relative">
 
-                    {/* Audio Preview (Top) */}
+                    {/* Audio Preview */}
                     {audioData && (
                         <div className="mb-6 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-2xl flex items-center gap-4 border border-orange-100 dark:border-orange-800/50">
                             <button onClick={handlePlayAudio} className="w-10 h-10 rounded-full bg-orange-500 shadow-lg shadow-orange-500/30 flex items-center justify-center text-white shrink-0 hover:scale-105 transition-transform">
@@ -399,169 +437,143 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                             <button onClick={deleteAudio} className="p-2 hover:bg-white/50 dark:hover:bg-black/20 rounded-full text-orange-600/70 hover:text-orange-600 transition-colors">
                                 <Trash2 size={16} />
                             </button>
-                        </div>
-                    )}
+                            const newItems = [...items];
+                            const newItem = {text: '', done: false, id: crypto.randomUUID() }; // Ensure ID for reorder
+                            newItems.splice(idx + 1, 0, newItem);
+                            setItems(newItems);
 
-                    {/* Editor */}
-                    {noteType === 'text' ? (
-                        <textarea
-                            ref={textareaRef}
-                            className="w-full h-full bg-transparent resize-none outline-none text-lg md:text-xl leading-relaxed text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 font-medium"
-                            placeholder="Start typing..."
-                            value={displayContent}
-                            onChange={(e) => setContent(e.target.value)}
-                            autoFocus={!noteToEdit}
-                        />
-                    ) : (
-                        <div className="space-y-3">
-                            {items.map((item, idx) => (
-                                <div key={idx} className="flex items-start gap-3 group">
-                                    <button
-                                        onClick={() => {
-                                            const newItems = [...items];
-                                            newItems[idx].done = !newItems[idx].done;
-                                            setItems(newItems);
-                                        }}
-                                        className={`mt-1 w-5 h-5 rounded border flex items-center justify-center transition-colors ${item.done ? 'bg-orange-500 border-orange-500 text-white' : 'border-gray-300 dark:border-gray-600 text-transparent hover:border-orange-400'}`}
-                                    >
-                                        <CheckSquare size={14} className="fill-current" />
-                                    </button>
-                                    <input
-                                        type="text"
-                                        placeholder="List item..."
-                                        className={`flex-1 bg-transparent border-none outline-none text-lg ${item.done ? 'text-gray-400 line-through' : 'text-gray-800 dark:text-gray-200'}`}
-                                        value={item.text}
-                                        onChange={(e) => {
-                                            const newItems = [...items];
-                                            newItems[idx].text = e.target.value;
-                                            setItems(newItems);
-                                        }}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                setItems([...items, { text: '', done: false }]);
-                                            } else if (e.key === 'Backspace' && !item.text && items.length > 1) {
-                                                e.preventDefault();
-                                                const newItems = items.filter((_, i) => i !== idx);
-                                                setItems(newItems);
-                                            }
-                                        }}
-                                    />
-                                    <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-opacity">
-                                        <X size={16} />
-                                    </button>
-                                </div>
-                            ))}
-                            <button onClick={() => setItems([...items, { text: '', done: false }])} className="text-gray-400 hover:text-orange-500 font-medium text-sm pl-8 transition-colors">
-                                + Add Item
+                                                                // Focus next input logic (will be handled by effect or ref, but basic insert is here)
+                                                                setTimeout(() => {
+                                                                    const inputs = document.querySelectorAll('input[placeholder="List item..."]');
+                            if (inputs[idx + 1]) inputs[idx + 1].focus();
+                                                                }, 0);
+                                                            } else if (e.key === 'Backspace' && !item.text && items.length > 1) {
+                                e.preventDefault();
+                                                                const newItems = items.filter((_, i) => i !== idx);
+                            setItems(newItems);
+                                                                setTimeout(() => {
+                                                                    const inputs = document.querySelectorAll('input[placeholder="List item..."]');
+                            if (inputs[idx - 1]) inputs[idx - 1].focus();
+                                                                }, 0);
+                                                            }
+                                                        }}
+                                                    />
+                            <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-opacity">
+                                <X size={16} />
                             </button>
-                        </div>
-                    )}
-
-                    {/* Files List (Inline) */}
-                    {files.length > 0 && (
-                        <div className="mt-8 grid grid-cols-2 md:grid-cols-3 gap-3">
-                            {files.map((file, idx) => (
-                                <div key={idx} className="relative group bg-gray-50 dark:bg-gray-800 rounded-xl p-3 border border-gray-100 dark:border-gray-700 flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-lg bg-white dark:bg-gray-700 flex items-center justify-center text-gray-500 shrink-0">
-                                        {file.type?.includes('image') ? <ImageIcon size={20} /> : <FileText size={20} />}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium truncate text-gray-700 dark:text-gray-300">{file.name}</p>
-                                        <div className="text-xs text-gray-400">
-                                            {file.status === 'uploading' ? `${file.progress}%` : (file.status === 'ready' ? 'Attached' : file.status)}
-                                        </div>
-                                    </div>
-                                    <button onClick={() => handleRemoveFile(idx)} className="absolute -top-1 -right-1 bg-red-100 dark:bg-red-900 text-red-500 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <X size={12} />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Tag Input (Conditional) */}
-                    {showTagInput && (
-                        <div className="mt-6 flex items-center gap-2 animate-fade-in">
-                            <Tag size={16} className="text-gray-400" />
-                            <input
-                                type="text"
-                                placeholder="Add tags (separated by comma)"
-                                className="flex-1 bg-transparent border-none outline-none text-sm text-gray-600 dark:text-gray-400 placeholder-gray-400"
-                                value={tags}
-                                onChange={(e) => setTags(e.target.value)}
-                            />
-                        </div>
-                    )}
-                </div>
-
-                {/* 3. Bottom Toolbar */}
-                <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-md sticky bottom-0 z-20">
-
-                    {/* Recording Status Overlay in Toolbar */}
-                    {recordingStatus !== 'idle' && (
-                        <div className="absolute -top-12 left-0 right-0 flex justify-center px-4">
-                            <div className="bg-red-500 text-white text-sm font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 animate-bounce-slight">
-                                <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
-                                {recordingStatus === 'paused' ? 'Paused' : 'Recording...'}
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-1 md:gap-2">
-                            {/* Mic */}
-                            <button
-                                onClick={toggleRecording}
-                                className={`p-3 rounded-full transition-all ${recordingStatus !== 'idle' ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                                title="Record Audio"
-                            >
-                                {recordingStatus !== 'idle' ? <MicOff size={22} /> : <Mic size={22} />}
-                            </button>
-
-                            {/* Attach */}
-                            <label className={`p-3 rounded-full transition-all cursor-pointer ${files.some(f => f.status === 'uploading') ? 'opacity-50' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
-                                <input type="file" multiple className="hidden" onChange={handleFileUpload} />
-                                <Paperclip size={22} />
-                            </label>
-
-                            {/* Checklist Toggle */}
-                            <button
-                                onClick={toggleNoteType}
-                                className={`p-3 rounded-full transition-all ${noteType === 'shopping' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                                title="Toggle Checklist"
-                            >
-                                <CheckSquare size={22} />
-                            </button>
-
-                            {/* Tags Toggle */}
-                            <button
-                                onClick={() => setShowTagInput(!showTagInput)}
-                                className={`p-3 rounded-full transition-all ${showTagInput ? 'text-orange-600 dark:text-orange-400' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                            >
-                                <Tag size={22} />
-                            </button>
-                        </div>
-
-                        <button
-                            onClick={handleSubmit}
-                            disabled={isSubmitting || files.some(f => f.status === 'uploading')}
-                            className="bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all text-sm md:text-base flex items-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
-                        >
-                            {isSubmitting ? (
-                                <>
-                                    <Loader2 size={18} className="animate-spin" /> Saving...
-                                </>
-                            ) : (
-                                'Save Note'
-                            )}
-                        </button>
-                    </div>
-                </div>
-
+                        </Reorder.Item>
+                    ))}
+                </Reorder.Group>
+                <button onClick={() => setItems([...items, { text: '', done: false, id: crypto.randomUUID() }])} className="text-gray-400 hover:text-orange-500 font-medium text-sm pl-8 transition-colors">
+                    + Add Item
+                </button>
             </div>
-        </div >
-    );
+                                )}
+
+            {/* Files List (Inline) */}
+            {files.length > 0 && (
+                <div className="mt-8 grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {files.map((file, idx) => (
+                        <div key={idx} className="relative group bg-gray-50 dark:bg-gray-800 rounded-xl p-3 border border-gray-100 dark:border-gray-700 flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-white dark:bg-gray-700 flex items-center justify-center text-gray-500 shrink-0">
+                                {file.type?.includes('image') ? <ImageIcon size={20} /> : <FileText size={20} />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium truncate text-gray-700 dark:text-gray-300">{file.name}</p>
+                                <div className="text-xs text-gray-400">
+                                    {file.status === 'uploading' ? `${file.progress}%` : (file.status === 'ready' ? 'Attached' : file.status)}
+                                </div>
+                            </div>
+                            <button onClick={() => handleRemoveFile(idx)} className="absolute -top-1 -right-1 bg-red-100 dark:bg-red-900 text-red-500 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <X size={12} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Tag Input (Conditional) */}
+            {showTagInput && (
+                <div className="mt-6 flex items-center gap-2 animate-fade-in">
+                    <Tag size={16} className="text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Add tags (separated by comma)"
+                        className="flex-1 bg-transparent border-none outline-none text-sm text-gray-600 dark:text-gray-400 placeholder-gray-400"
+                        value={tags}
+                        onChange={(e) => setTags(e.target.value)}
+                    />
+                </div>
+            )}
+        </div>
+
+                            {/* 3. Bottom Toolbar */ }
+    <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-md sticky bottom-0 z-20">
+
+        {/* Recording Status Overlay in Toolbar */}
+        {recordingStatus !== 'idle' && (
+            <div className="absolute -top-12 left-0 right-0 flex justify-center px-4">
+                <div className="bg-red-500 text-white text-sm font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 animate-bounce-slight">
+                    <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+                    {recordingStatus === 'paused' ? 'Paused' : 'Recording...'}
+                </div>
+            </div>
+        )}
+
+        <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-1 md:gap-2">
+                {/* Mic */}
+                <button
+                    onClick={toggleRecording}
+                    className={`p-3 rounded-full transition-all ${recordingStatus !== 'idle' ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
+                    title="Record Audio"
+                >
+                    {recordingStatus !== 'idle' ? <MicOff size={22} /> : <Mic size={22} />}
+                </button>
+
+                {/* Attach */}
+                <label className={`p-3 rounded-full transition-all cursor-pointer ${files.some(f => f.status === 'uploading') ? 'opacity-50' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                    <input type="file" multiple className="hidden" onChange={handleFileUpload} />
+                    <Paperclip size={22} />
+                </label>
+
+                {/* Checklist Toggle */}
+                <button
+                    onClick={toggleNoteType}
+                    className={`p-3 rounded-full transition-all ${noteType === 'shopping' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
+                    title="Toggle Checklist"
+                >
+                    <CheckSquare size={22} />
+                </button>
+
+                {/* Tags Toggle */}
+                <button
+                    onClick={() => setShowTagInput(!showTagInput)}
+                    className={`p-3 rounded-full transition-all ${showTagInput ? 'text-orange-600 dark:text-orange-400' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
+                >
+                    <Tag size={22} />
+                </button>
+            </div>
+
+            <button
+                onClick={handleSubmit}
+                disabled={isSubmitting || files.some(f => f.status === 'uploading')}
+                className="bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all text-sm md:text-base flex items-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
+            >
+                {isSubmitting ? (
+                    <>
+                        <Loader2 size={18} className="animate-spin" /> Saving...
+                    </>
+                ) : (
+                    'Save Note'
+                )}
+            </button>
+        </div>
+    </div>
+
+                        </div >
+                    </div >
+                    );
 };
 
 export default AddNoteModal;

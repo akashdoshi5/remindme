@@ -281,7 +281,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                 <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 relative">
                     <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin p-4 pb-32 md:p-6 flex flex-col gap-5">
                         {/* Instance Toggle */}
-                        {reminderToEdit && reminderToEdit.instanceKey && (
+                        {reminderToEdit && reminderToEdit.instanceKey && reminderToEdit.frequency !== 'Once' && (
                             <div className="bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded-lg border border-yellow-100 dark:border-yellow-800 flex p-1">
                                 <button
                                     type="button"

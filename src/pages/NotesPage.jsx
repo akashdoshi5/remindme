@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useShare } from '../hooks/useShare';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, Search, Mic, Image as ImageIcon, Edit2, Trash2, X, MoreVertical, Share2, FileText, ShoppingCart, StopCircle, Play, ArrowRightLeft, Paperclip, Download, Eye, Users } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, Search, Mic, Image as ImageIcon, Edit2, Trash2, X, MoreVertical, Share2, FileText, ShoppingCart, StopCircle, Play, ArrowRightLeft, Paperclip, Download, Eye, Users, GripVertical } from 'lucide-react';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { useVoice } from '../hooks/useVoice';
 import { fileStorage } from '../services/fileStorage';
 import AddNoteModal from '../components/notes/AddNoteModal';
@@ -109,27 +109,47 @@ const NotesPage = () => {
         setIsModalOpen(true);
     };
 
-    const handleSave = (data) => {
+    const handleSave = async (data) => {
+        let savedParams;
         if (data.id) {
-            dataService.updateNote(data.id, data);
+            await dataService.updateNote(data.id, data);
+            savedParams = data;
         } else {
-            dataService.addNote(data);
+            savedParams = await dataService.addNote(data);
         }
         setTriggerReload(prev => prev + 1);
+        return savedParams;
     };
 
     const getFilteredNotes = () => {
-        let currentNotes = notes;
-        if (searchQuery.trim()) {
-            const searchResults = dataService.search(searchQuery);
-            currentNotes = searchResults.notes;
+        let filtered = notes;
+
+        if (activeTab === 'Voice') {
+            filtered = notes.filter(n => n.type === 'voice' || n.audioData);
+        } else if (activeTab === 'Checklist') {
+            filtered = notes.filter(n => n.type === 'shopping');
+        } else if (activeTab === 'Shared') {
+            filtered = notes.filter(n => (n.ownerId && n.ownerId !== user?.uid) || (n.sharedWith && n.sharedWith.length > 0));
+        } else if (activeTab === 'Text') {
+            filtered = notes.filter(n => n.type === 'text');
         }
-        return currentNotes.filter(n => {
-            if (activeTab === 'All Notes') return true;
-            if (activeTab === 'Voice') return n.type === 'voice';
-            if (activeTab === 'Text') return n.type === 'text';
-            if (activeTab === 'Lists') return n.type === 'shopping';
-            return true;
+
+        if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            filtered = filtered.filter(note =>
+                note.title.toLowerCase().includes(query) ||
+                (note.content && note.content.toLowerCase().includes(query)) ||
+                (note.items && note.items.some(i => i.text.toLowerCase().includes(query))) ||
+                (note.tags && note.tags.some(t => t.toLowerCase().includes(query))) ||
+                (note.files && note.files.some(f => f.name.toLowerCase().includes(query) || (f.extractedText && f.extractedText.toLowerCase().includes(query))))
+            );
+        }
+
+        // Sort: Pinned first
+        return [...filtered].sort((a, b) => {
+            if (a.isPinned && !b.isPinned) return -1;
+            if (!a.isPinned && b.isPinned) return 1;
+            return 0; // Keep existing order
         });
     };
 
@@ -208,190 +228,367 @@ const NotesPage = () => {
             />
 
             {/* Notes Grid */}
-            <motion.div layout className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4 md:mt-0">
-                <AnimatePresence>
-                    {filteredNotes.map((note) => (
-                        <motion.div
-                            layout
-                            ref={el => refs.current[note.id] = el}
-                            initial={{ opacity: 0, y: 10 }} // Subtler animation
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            key={note.id}
-                            onClick={() => handleEdit(note)}
-                            className={`card group cursor-pointer hover:ring-2 hover:ring-orange-100 dark:hover:ring-orange-900 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-md transition-all border-l-4 ${note.type === 'voice' ? 'border-l-teal-500' :
-                                note.type === 'shopping' ? 'border-l-yellow-500' :
-                                    'border-l-orange-500'
-                                }`}
-                        >
-                            <div className="flex justify-between items-start mb-3">
-                                <div className="flex gap-2">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${note.type === 'voice' ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-100 dark:border-teal-800 text-teal-600 dark:text-teal-400' :
-                                        note.type === 'shopping' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-100 dark:border-yellow-800 text-yellow-600 dark:text-yellow-400' : 'bg-orange-50 dark:bg-orange-900/20 border-orange-100 dark:border-orange-800 text-orange-600 dark:text-orange-400'
-                                        }`}>
-                                        {note.type === 'voice' ? <Mic size={16} /> :
-                                            note.type === 'shopping' ? <ShoppingCart size={16} /> : <FileText size={16} />}
-                                    </div>
-                                    <div className="min-w-0">
-                                        <h3 className="font-bold text-gray-900 dark:text-gray-100 leading-tight text-sm truncate pr-2">{note.title}</h3>
-                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{note.date}</p>
-                                    </div>
+            {(!searchQuery && activeTab === 'All Notes') ? (
+                <Reorder.Group axis="y" values={notes} onReorder={(newOrder) => {
+                    setNotes(newOrder); // Optimistic
+                    dataService.reorderNotes(newOrder);
+                }} as="div" className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4 md:mt-0">
+                    <AnimatePresence>
+                        {filteredNotes.map((note) => (
+                            <Reorder.Item
+                                key={note.id}
+                                value={note}
+                                ref={el => refs.current[note.id] = el}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.9 }}
+                                onClick={() => handleEdit(note)}
+                                className={`card group cursor-pointer hover:ring-2 hover:ring-orange-100 dark:hover:ring-orange-900 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-md transition-all border-l-4 relative ${note.type === 'voice' ? 'border-l-teal-500' :
+                                    note.type === 'shopping' ? 'border-l-yellow-500' :
+                                        'border-l-orange-500'
+                                    } ${note.width === 'full' ? 'md:col-span-2' : ''}`}
+                            >
+                                <div className="absolute top-2 right-2 p-2 text-gray-300 hover:text-orange-500 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity z-10" onClick={e => e.stopPropagation()}>
+                                    <GripVertical size={16} />
                                 </div>
-                                <div className="flex gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                                    {note.ownerId === user?.uid && (
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); setSharingNote(note); }}
-                                            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-orange-600 transition-colors"
-                                        >
-                                            <Share2 size={16} />
-                                        </button>
-                                    )}
-                                    {note.ownerId === user?.uid && (
-                                        <button onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (window.confirm('Delete this note?')) {
-                                                dataService.deleteNote(note.id);
-                                                setTriggerReload(prev => prev + 1);
-                                            }
-                                        }} className="p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 transition-colors">
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )}
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            navigate('/reminders', { state: { convertFromNote: note } });
-                                        }}
-                                        className="p-2 rounded-full hover:bg-orange-50 dark:hover:bg-orange-900/30 text-gray-400 hover:text-orange-500 transition-colors"
-                                        title="Convert to Reminder"
-                                    >
-                                        <ArrowRightLeft size={16} />
-                                    </button>
-                                </div>
-                            </div>
 
-                            {(note.type === 'voice' || note.audioData) && (
-                                <div className="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-2 border border-gray-100 dark:border-gray-700 mb-3 group-hover:border-gray-200 transition-colors" onClick={e => e.stopPropagation()}>
-                                    <button
-                                        onClick={() => handlePlayAudio(note)}
-                                        className={`w-full h-8 bg-white dark:bg-gray-800 rounded-lg border flex items-center justify-center gap-2 text-xs font-medium transition-all shadow-sm ${playingNoteId === note.id ? 'border-orange-200 text-orange-600 bg-orange-50' : 'border-gray-200 text-gray-700 hover:text-teal-600'}`}
-                                    >
-                                        {playingNoteId === note.id ? <StopCircle size={14} className="fill-current" /> : <Play size={14} className="fill-current" />}
-                                        {playingNoteId === note.id ? 'Stop' : `Play${note.audioLength ? ` (${note.audioLength})` : ''}`}
-                                    </button>
-                                </div>
-                            )}
+                                {/* Pinned Badge */}
+                                {note.isPinned && (
+                                    <div className="absolute top-0 right-0 p-2 z-20">
+                                        <Pin size={14} className="fill-orange-500 text-orange-500 -rotate-45" />
+                                    </div>
+                                )}
 
-                            {note.files && note.files.length > 0 && (
-                                <div className="mb-3 space-y-1" onClick={e => e.stopPropagation()}>
-                                    {(searchQuery ? note.files : note.files.slice(0, 3)).map((file, idx) => (
-                                        <div key={idx} className={`flex flex-col p-1.5 rounded-lg bg-gray-50 dark:bg-gray-700/30 border transition-colors ${searchQuery && file.extractedText && file.extractedText.toLowerCase().includes(searchQuery.toLowerCase())
-                                            ? 'border-yellow-400 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/10 ring-1 ring-yellow-400/50'
-                                            : 'border-gray-200 dark:border-gray-600 hover:border-orange-200 dark:hover:border-gray-500'
+                                {/* Shared From Badge */}
+                                {note.ownerId && note.ownerId !== user?.uid && (
+                                    <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 z-20">
+                                        <Users size={10} /> Shared
+                                    </div>
+                                )}
+
+                                {note.sharedWith && note.sharedWith.length > 0 && note.ownerId === user?.uid && (
+                                    <div className="absolute -top-2 -right-2 bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 z-20">
+                                        <Share2 size={10} /> Shared
+                                    </div>
+                                )}
+
+                                <div className="flex justify-between items-start mb-3 pr-8">
+                                    <div className="flex gap-2">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${note.type === 'voice' ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-100 dark:border-teal-800 text-teal-600 dark:text-teal-400' :
+                                            note.type === 'shopping' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-100 dark:border-yellow-800 text-yellow-600 dark:text-yellow-400' : 'bg-orange-50 dark:bg-orange-900/20 border-orange-100 dark:border-orange-800 text-orange-600 dark:text-orange-400'
                                             }`}>
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2 overflow-hidden">
-                                                    <div className="text-gray-500 shrink-0">
-                                                        {file.type?.includes('image') ? <ImageIcon size={14} /> : <FileText size={14} />}
-                                                    </div>
-                                                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate max-w-[140px]">{file.name}</span>
-                                                </div>
-                                                <button
-                                                    onClick={() => {
-                                                        if (file.url) window.open(file.url, '_blank');
-                                                        else alert("Preview not available offline.");
-                                                    }}
-                                                    className="text-[10px] text-gray-400 hover:text-orange-600"
-                                                >
-                                                    <Eye size={12} />
-                                                </button>
-                                            </div>
-                                            {/* SEARCH MATCH IDENTIFIER */}
-                                            {/* SEARCH MATCH IDENTIFIER & SNIPPET */}
-                                            {searchQuery && file.extractedText && file.extractedText.toLowerCase().includes(searchQuery.toLowerCase()) && (
-                                                <div
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setPreviewData({ text: file.extractedText, title: file.name });
-                                                    }}
-                                                    className="mt-1 cursor-pointer group/snippet"
-                                                >
-                                                    <div className="text-[10px] bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300 px-2 py-1.5 rounded-md font-mono leading-snug border border-yellow-200 dark:border-yellow-800/50 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors">
-                                                        <div className="flex items-center gap-1 mb-1 font-bold text-yellow-700 dark:text-yellow-400 uppercase tracking-wider text-[9px]">
-                                                            <Search size={10} /> Match in file
-                                                        </div>
-                                                        <span className="opacity-90 block italic break-words">
-                                                            "...
-                                                            {(() => {
-                                                                const text = file.extractedText;
-                                                                const query = searchQuery.toLowerCase();
-                                                                const idx = text.toLowerCase().indexOf(query);
-                                                                if (idx === -1) return text.substring(0, 60);
-
-                                                                const start = Math.max(0, idx - 20);
-                                                                const end = Math.min(text.length, idx + query.length + 60);
-                                                                const sub = text.substring(start, end);
-
-                                                                const parts = sub.split(new RegExp(`(${searchQuery})`, 'gi'));
-                                                                return parts.map((part, i) =>
-                                                                    part.toLowerCase() === query ? <mark key={i} className="bg-yellow-300 dark:bg-yellow-600 dark:text-white rounded-sm px-0.5 mx-0.5 font-bold not-italic text-gray-900">{part}</mark> : part
-                                                                );
-                                                            })()}
-                                                            ..."
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            )}
+                                            {note.type === 'voice' ? <Mic size={16} /> :
+                                                note.type === 'shopping' ? <ShoppingCart size={16} /> : <FileText size={16} />}
                                         </div>
-                                    ))}
-                                    {!searchQuery && note.files.length > 3 && <span className="text-[10px] text-gray-400 pl-1">+{note.files.length - 3} more</span>}
+                                        <div className="min-w-0">
+                                            <h3 className="font-bold text-gray-900 dark:text-gray-100 leading-tight text-sm truncate pr-2">{note.title}</h3>
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{note.date}</p>
+                                        </div>
+                                    </div>
                                 </div>
-                            )}
+                                <div className="flex gap-1 shrink-0 absolute top-2 right-8 opacity-0 group-hover:opacity-100 transition-opacity z-20" onClick={e => e.stopPropagation()}>
+                                    {/* Actions hidden in corner, show on hover? Actually user asks for 'Drag', simplifying current action layout... 
+                                         Wait, my replacement just overwrote the actions div. I needs to restore it or place it better.
+                                         The original code had `actions` inside `flex justify-between`.
+                                         Let's restore the actions but keep the drag handle.
+                                         The original actions were at TOP RIGHT.
+                                         Drag handle can be there too?
+                                         I will put drag handle at Top Right, and Actions below it or push Actions to left?
+                                         Original Actions: Share, Delete, Convert.
+                                         Let's put Drag Handle at Top Right (absolute).
+                                         And shift Actions a bit?
+                                         Actually, let's keep Actions inline as they were, but add Drag Handle.
+                                      */}
+                                </div>
+                                {/* Restoring Content Body */}
 
-                            {note.type !== 'shopping' && note.content && (
-                                <p className="text-gray-600 dark:text-gray-300 text-sm line-clamp-3 mb-4 leading-relaxed bg-gray-50/50 dark:bg-gray-800/50 p-2 rounded-lg">{note.content}</p>
-                            )}
+                                {note.type !== 'shopping' && note.content && (
+                                    <p className="text-gray-600 dark:text-gray-300 text-sm line-clamp-3 mb-4 leading-relaxed bg-gray-50/50 dark:bg-gray-800/50 p-2 rounded-lg break-words overflow-hidden w-full">{note.content}</p>
+                                )}
 
-                            {note.type === 'shopping' && (
-                                <div className="space-y-1.5 mb-2" onClick={e => e.stopPropagation()}>
-                                    {note.items.slice(0, 3).map((item, i) => (
-                                        <div
-                                            key={i}
-                                            className="flex items-center gap-2 cursor-pointer group/item"
-                                            onClick={() => {
-                                                const newItems = [...note.items];
-                                                newItems[i].done = !newItems[i].done;
-                                                handleSave({ ...note, items: newItems });
+                                {note.type === 'shopping' && (
+                                    <div className="space-y-1.5 mb-2" onClick={e => e.stopPropagation()}>
+                                        {note.items.slice(0, 3).map((item, i) => (
+                                            <div
+                                                key={i}
+                                                className="flex items-center gap-2 cursor-pointer group/item"
+                                                onClick={() => {
+                                                    const newItems = [...note.items];
+                                                    newItems[i].done = !newItems[i].done;
+                                                    handleSave({ ...note, items: newItems });
+                                                }}
+                                            >
+                                                <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${item.done ? 'bg-orange-500 border-orange-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700'}`}>
+                                                    {item.done && <Check size={10} className="text-white" />}
+                                                </div>
+                                                <span className={`text-xs ${item.done ? 'text-gray-400 line-through' : 'text-gray-700 dark:text-gray-300'}`}>{item.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div className="flex justify-between items-center mt-auto pt-2 border-t border-gray-50 dark:border-gray-700">
+                                    <div className="flex gap-2 flex-wrap">
+                                        {note.tags && note.tags.map(tag => (
+                                            <span key={tag} className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded-md text-[10px] font-bold">#{tag}</span>
+                                        ))}
+                                    </div>
+
+                                    {/* Restored Actions Row */}
+                                    <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleSave({ ...note, isPinned: !note.isPinned });
                                             }}
+                                            className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${note.isPinned ? 'text-orange-500' : 'text-gray-400 hover:text-orange-500'}`}
+                                            title={note.isPinned ? "Unpin" : "Pin to Top"}
                                         >
-                                            <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${item.done ? 'bg-orange-500 border-orange-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700'}`}>
-                                                {item.done && <Check size={10} className="text-white" />}
-                                            </div>
-                                            <span className={`text-xs ${item.done ? 'text-gray-400 line-through' : 'text-gray-700 dark:text-gray-300'}`}>{item.text}</span>
+                                            <Pin size={14} className={note.isPinned ? "fill-current" : ""} />
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleSave({ ...note, width: note.width === 'full' ? 'half' : 'full' });
+                                            }}
+                                            className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-colors hidden md:block"
+                                            title={note.width === 'full' ? "Half Width" : "Full Width"}
+                                        >
+                                            {note.width === 'full' ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                                        </button>
+
+                                        {note.ownerId === user?.uid && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setSharingNote(note); }}
+                                                className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-orange-600 transition-colors"
+                                            >
+                                                <Share2 size={14} />
+                                            </button>
+                                        )}
+                                        {note.ownerId === user?.uid && (
+                                            <button onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (window.confirm('Delete this note?')) {
+                                                    dataService.deleteNote(note.id);
+                                                    setTriggerReload(prev => prev + 1);
+                                                }
+                                            }} className="p-1.5 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 transition-colors">
+                                                <Trash2 size={14} />
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                navigate('/reminders', { state: { convertFromNote: note } });
+                                            }}
+                                            className="p-1.5 rounded-full hover:bg-orange-50 dark:hover:bg-orange-900/30 text-gray-400 hover:text-orange-500 transition-colors"
+                                            title="Convert to Reminder"
+                                        >
+                                            <ArrowRightLeft size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </Reorder.Item>
+                        ))}
+                    </AnimatePresence>
+                </Reorder.Group>
+            ) : (
+                <motion.div layout className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4 md:mt-0">
+                    <AnimatePresence>
+                        {filteredNotes.map((note) => (
+                            <motion.div
+                                layout
+                                ref={el => refs.current[note.id] = el}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                key={note.id}
+                                onClick={() => handleEdit(note)}
+                                className={`card group cursor-pointer hover:ring-2 hover:ring-orange-100 dark:hover:ring-orange-900 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-md transition-all border-l-4 relative ${note.type === 'voice' ? 'border-l-teal-500' :
+                                    note.type === 'shopping' ? 'border-l-yellow-500' :
+                                        'border-l-orange-500'
+                                    }`}
+                            >
+                                {/* Shared From Badge */}
+                                {note.ownerId && note.ownerId !== user?.uid && (
+                                    <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 z-20">
+                                        <Users size={10} /> Shared
+                                    </div>
+                                )}
+
+                                {note.sharedWith && note.sharedWith.length > 0 && note.ownerId === user?.uid && (
+                                    <div className="absolute -top-2 -right-2 bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 z-20">
+                                        <Share2 size={10} /> Shared
+                                    </div>
+                                )}
+
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="flex gap-2">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${note.type === 'voice' ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-100 dark:border-teal-800 text-teal-600 dark:text-teal-400' :
+                                            note.type === 'shopping' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-100 dark:border-yellow-800 text-yellow-600 dark:text-yellow-400' : 'bg-orange-50 dark:bg-orange-900/20 border-orange-100 dark:border-orange-800 text-orange-600 dark:text-orange-400'
+                                            }`}>
+                                            {note.type === 'voice' ? <Mic size={16} /> :
+                                                note.type === 'shopping' ? <ShoppingCart size={16} /> : <FileText size={16} />}
                                         </div>
+                                        <div className="min-w-0">
+                                            <h3 className="font-bold text-gray-900 dark:text-gray-100 leading-tight text-sm truncate pr-2">{note.title}</h3>
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{note.date}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                                        {note.ownerId === user?.uid && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setSharingNote(note); }}
+                                                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-orange-600 transition-colors"
+                                            >
+                                                <Share2 size={16} />
+                                            </button>
+                                        )}
+                                        {note.ownerId === user?.uid && (
+                                            <button onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (window.confirm('Delete this note?')) {
+                                                    dataService.deleteNote(note.id);
+                                                    setTriggerReload(prev => prev + 1);
+                                                }
+                                            }} className="p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 transition-colors">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                navigate('/reminders', { state: { convertFromNote: note } });
+                                            }}
+                                            className="p-2 rounded-full hover:bg-orange-50 dark:hover:bg-orange-900/30 text-gray-400 hover:text-orange-500 transition-colors"
+                                            title="Convert to Reminder"
+                                        >
+                                            <ArrowRightLeft size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {(note.type === 'voice' || note.audioData) && (
+                                    <div className="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-2 border border-gray-100 dark:border-gray-700 mb-3 group-hover:border-gray-200 transition-colors" onClick={e => e.stopPropagation()}>
+                                        <button
+                                            onClick={() => handlePlayAudio(note)}
+                                            className={`w-full h-8 bg-white dark:bg-gray-800 rounded-lg border flex items-center justify-center gap-2 text-xs font-medium transition-all shadow-sm ${playingNoteId === note.id ? 'border-orange-200 text-orange-600 bg-orange-50' : 'border-gray-200 text-gray-700 hover:text-teal-600'}`}
+                                        >
+                                            {playingNoteId === note.id ? <StopCircle size={14} className="fill-current" /> : <Play size={14} className="fill-current" />}
+                                            {playingNoteId === note.id ? 'Stop' : `Play${note.audioLength ? ` (${note.audioLength})` : ''}`}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {note.files && note.files.length > 0 && (
+                                    <div className="mb-3 space-y-1" onClick={e => e.stopPropagation()}>
+                                        {(searchQuery ? note.files : note.files.slice(0, 3)).map((file, idx) => (
+                                            <div key={idx} className={`flex flex-col p-1.5 rounded-lg bg-gray-50 dark:bg-gray-700/30 border transition-colors ${searchQuery && file.extractedText && file.extractedText.toLowerCase().includes(searchQuery.toLowerCase())
+                                                ? 'border-yellow-400 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/10 ring-1 ring-yellow-400/50'
+                                                : 'border-gray-200 dark:border-gray-600 hover:border-orange-200 dark:hover:border-gray-500'
+                                                }`}>
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2 overflow-hidden">
+                                                        <div className="text-gray-500 shrink-0">
+                                                            {file.type?.includes('image') ? <ImageIcon size={14} /> : <FileText size={14} />}
+                                                        </div>
+                                                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate max-w-[140px]">{file.name}</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (file.url) window.open(file.url, '_blank');
+                                                            else alert("Preview not available offline.");
+                                                        }}
+                                                        className="text-[10px] text-gray-400 hover:text-orange-600"
+                                                    >
+                                                        <Eye size={12} />
+                                                    </button>
+                                                </div>
+                                                {/* SEARCH MATCH IDENTIFIER & SNIPPET */}
+                                                {searchQuery && file.extractedText && file.extractedText.toLowerCase().includes(searchQuery.toLowerCase()) && (
+                                                    <div
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setPreviewData({ text: file.extractedText, title: file.name });
+                                                        }}
+                                                        className="mt-1 cursor-pointer group/snippet"
+                                                    >
+                                                        <div className="text-[10px] bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300 px-2 py-1.5 rounded-md font-mono leading-snug border border-yellow-200 dark:border-yellow-800/50 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors">
+                                                            <div className="flex items-center gap-1 mb-1 font-bold text-yellow-700 dark:text-yellow-400 uppercase tracking-wider text-[9px]">
+                                                                <Search size={10} /> Match in file
+                                                            </div>
+                                                            <span className="opacity-90 block italic break-words">
+                                                                "...
+                                                                {(() => {
+                                                                    const text = file.extractedText;
+                                                                    const query = searchQuery.toLowerCase();
+                                                                    const idx = text.toLowerCase().indexOf(query);
+                                                                    if (idx === -1) return text.substring(0, 60);
+
+                                                                    const start = Math.max(0, idx - 20);
+                                                                    const end = Math.min(text.length, idx + query.length + 60);
+                                                                    const sub = text.substring(start, end);
+
+                                                                    const parts = sub.split(new RegExp(`(${searchQuery})`, 'gi'));
+                                                                    return parts.map((part, i) =>
+                                                                        part.toLowerCase() === query ? <mark key={i} className="bg-yellow-300 dark:bg-yellow-600 dark:text-white rounded-sm px-0.5 mx-0.5 font-bold not-italic text-gray-900">{part}</mark> : part
+                                                                    );
+                                                                })()}
+                                                                ..."
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                        {!searchQuery && note.files.length > 3 && <span className="text-[10px] text-gray-400 pl-1">+{note.files.length - 3} more</span>}
+                                    </div>
+                                )}
+
+                                {note.type !== 'shopping' && note.content && (
+                                    <p className="text-gray-600 dark:text-gray-300 text-sm line-clamp-3 mb-4 leading-relaxed bg-gray-50/50 dark:bg-gray-800/50 p-2 rounded-lg break-words overflow-hidden w-full">{note.content}</p>
+                                )}
+
+                                {note.type === 'shopping' && (
+                                    <div className="space-y-1.5 mb-2" onClick={e => e.stopPropagation()}>
+                                        {note.items.slice(0, 3).map((item, i) => (
+                                            <div
+                                                key={i}
+                                                className="flex items-center gap-2 cursor-pointer group/item"
+                                                onClick={() => {
+                                                    const newItems = [...note.items];
+                                                    newItems[i].done = !newItems[i].done;
+                                                    handleSave({ ...note, items: newItems });
+                                                }}
+                                            >
+                                                <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${item.done ? 'bg-orange-500 border-orange-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700'}`}>
+                                                    {item.done && <Check size={10} className="text-white" />}
+                                                </div>
+                                                <span className={`text-xs ${item.done ? 'text-gray-400 line-through' : 'text-gray-700 dark:text-gray-300'}`}>{item.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div className="flex gap-2 mt-auto flex-wrap pt-2 border-t border-gray-50 dark:border-gray-700">
+                                    {note.tags && note.tags.map(tag => (
+                                        <span key={tag} className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded-md text-[10px] font-bold">#{tag}</span>
                                     ))}
                                 </div>
-                            )}
-
-                            <div className="flex gap-2 mt-auto flex-wrap pt-2 border-t border-gray-50 dark:border-gray-700">
-                                {note.tags && note.tags.map(tag => (
-                                    <span key={tag} className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded-md text-[10px] font-bold">#{tag}</span>
-                                ))}
+                            </motion.div>
+                        ))}
+                    </AnimatePresence>
+                    {filteredNotes.length === 0 && (
+                        <div className="col-span-full text-center py-20 text-gray-400 flex flex-col items-center">
+                            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
+                                <FileText size={32} className="opacity-50" />
                             </div>
-                        </motion.div>
-                    ))}
-                </AnimatePresence>
-
-                {filteredNotes.length === 0 && (
-                    <div className="col-span-full text-center py-20 text-gray-400 flex flex-col items-center">
-                        <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-                            <FileText size={32} className="opacity-50" />
+                            <p className="font-medium">No notes found.</p>
+                            <p className="text-sm opacity-60">Tap + to create one.</p>
                         </div>
-                        <p className="font-medium">No notes found.</p>
-                        <p className="text-sm opacity-60">Tap + to create one.</p>
-                    </div>
-                )}
-            </motion.div>
+                    )}
+                </motion.div>
+            )}
 
             {/* FLOATING ACTION BUTTON - DESKTOP & MOBILE */}
             <div className="fixed bottom-24 md:bottom-10 right-6 md:right-10 z-40 flex flex-col gap-3">

@@ -22,8 +22,14 @@ const ShareModal = ({ isOpen, onClose, note }) => {
             const result = await dataService.shareNote(note.id, email);
             if (result) {
                 setSuccessMsg(`Access granted to ${email}`);
+
+                // Auto-open email client
+                const subject = encodeURIComponent(`Shared Note: ${note.title}`);
+                const body = encodeURIComponent(`I've shared a note with you on RemindMe Buddy.\n\nYou can view it here: ${window.location.origin}/notes`); // Ideally deep link
+                window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+
                 setEmail('');
-                setTimeout(() => setSuccessMsg(''), 3000);
+                setTimeout(() => setSuccessMsg(''), 5000);
             } else {
                 setErrorMsg('Sharing failed. Please try again.');
             }

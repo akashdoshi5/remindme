@@ -679,6 +679,19 @@ export const dataService = {
         save();
     },
 
+    reorderNotes: async (newNotes) => {
+        // Optimistic local update
+        store.notes = newNotes;
+        save();
+
+        if (auth.currentUser) {
+            // For Firestore, maintaining exact array order might be tricky without an 'order' field.
+            // We'll update the 'order' field for all notes.
+            // Batch update is best here.
+            await firestoreService.reorderNotes(newNotes.map(n => n.id));
+        }
+    },
+
     shareNote: async (id, email) => {
         if (auth.currentUser) {
             await firestoreService.shareNote(id, email);
