@@ -490,6 +490,7 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
             exit={{ opacity: 0, scale: 0.9 }}
             dragListener={false}
             dragControls={dragControls}
+            dragElastic={0.1} // Reduced elasticity for solid feel
             onClick={() => handleEdit(note)}
             className={`card group cursor-pointer hover:ring-2 hover:ring-orange-100 dark:hover:ring-orange-900 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-md transition-all border-l-4 relative ${note.type === 'voice' ? 'border-l-teal-500' :
                 note.type === 'shopping' ? 'border-l-yellow-500' :
