@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useShare } from '../hooks/useShare';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, Search, Mic, Image as ImageIcon, Edit2, Trash2, X, MoreVertical, Share2, FileText, ShoppingCart, StopCircle, Play, ArrowRightLeft, Paperclip, Download, Eye, Users, GripVertical } from 'lucide-react';
+import { Plus, Search, Mic, Image as ImageIcon, Edit2, Trash2, X, MoreVertical, Share2, FileText, ShoppingCart, StopCircle, Play, ArrowRightLeft, Paperclip, Download, Eye, Users, GripVertical, Pin, Maximize2, Minimize2 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { useVoice } from '../hooks/useVoice';
 import { fileStorage } from '../services/fileStorage';
