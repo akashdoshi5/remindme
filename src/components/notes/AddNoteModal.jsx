@@ -11,7 +11,13 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
 
     useEffect(() => {
         const handleEsc = (e) => {
-            if (e.key === 'Escape') onClose();
+            if (e.key === 'Escape') {
+                if (performSaveRef.current) {
+                    performSaveRef.current(true);
+                } else {
+                    onClose();
+                }
+            }
         };
 
         // Handle Hardware Back Button
@@ -55,6 +61,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
     const audioChunksRef = useRef([]);
     const streamRef = useRef(null);
     const textareaRef = useRef(null);
+    const performSaveRef = useRef(null); // Ref to hold latest save function
 
     // --- EFFECT: Initialization & Body Scroll Lock ---
     useEffect(() => {
@@ -434,6 +441,11 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
         if (e) e.preventDefault();
         performSave(true);
     };
+
+    // Sync Ref for ESC handler
+    useEffect(() => {
+        performSaveRef.current = performSave;
+    });
 
     // Display Logic
     const displayContent = noteType === 'text' ? (content + (isListening && transcript ? ' ' + transcript : '')) : content;
