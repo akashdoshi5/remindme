@@ -50,11 +50,13 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
     const [files, setFiles] = useState([]);
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // Audio
+    // Audio State
     const { isListening, transcript, startListening, stopListening, isSupported, resetTranscript } = useVoice({ continuous: true });
     const [audioData, setAudioData] = useState(null);
     const [recordingStatus, setRecordingStatus] = useState('idle'); // 'idle', 'recording', 'paused'
     const [isPlaying, setIsPlaying] = useState(false);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
     const audioRef = useRef(null);
 
     const mediaRecorderRef = useRef(null);
@@ -62,6 +64,82 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
     const streamRef = useRef(null);
     const textareaRef = useRef(null);
     const performSaveRef = useRef(null); // Ref to hold latest save function
+
+    // ... (Init effects skipped) ...
+
+    // Audio Helpers
+    const formatTime = (time) => {
+        if (!time) return "0:00";
+        const minutes = Math.floor(time / 60);
+        const seconds = Math.floor(time % 60);
+        return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+    };
+
+    const handleSeek = (e) => {
+        const time = Number(e.target.value);
+        setCurrentTime(time);
+        if (audioRef.current) {
+            audioRef.current.currentTime = time;
+        }
+    };
+
+    const handlePlayAudio = () => {
+        if (!audioRef.current && audioData) {
+            audioRef.current = new Audio(audioData);
+
+            // Listeners
+            audioRef.current.onloadedmetadata = () => {
+                if (audioRef.current) setDuration(audioRef.current.duration);
+            };
+            audioRef.current.ontimeupdate = () => {
+                if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
+            };
+            audioRef.current.onended = () => setIsPlaying(false);
+
+            // Trigger load to get metadata immediately if possible
+            audioRef.current.load();
+        }
+
+        if (isPlaying) {
+            audioRef.current?.pause();
+            setIsPlaying(false);
+        } else {
+            audioRef.current?.play();
+            setIsPlaying(true);
+        }
+    };
+
+    // Ensure duration is set if audioData loads and play hasn't started
+    useEffect(() => {
+        if (audioData && !audioRef.current) {
+            const audio = new Audio(audioData);
+            audio.onloadedmetadata = () => {
+                setDuration(audio.duration);
+            };
+        }
+        // Cleanup if audioData removed
+        if (!audioData) {
+            setDuration(0);
+            setCurrentTime(0);
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current = null;
+            }
+        }
+    }, [audioData]);
+
+    const deleteAudio = () => {
+        if (window.confirm("Remove this audio recording?")) {
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current = null;
+            }
+            setAudioData(null);
+            setIsPlaying(false);
+            setCurrentTime(0);
+            setDuration(0);
+        }
+    };
 
     // --- EFFECT: Initialization & Body Scroll Lock ---
     useEffect(() => {
@@ -116,13 +194,21 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
     }, [isOpen, noteType, searchQuery, content]);
 
     // --- AUDIO LOGIC ---
-    const MAX_AUDIO_SIZE = 3 * 1024 * 1024; // 3 MB
+    const MAX_AUDIO_SIZE = 5 * 1024 * 1024; // Increased to 5MB
 
     const startRecordingRobust = React.useCallback(async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
-            const mediaRecorder = new MediaRecorder(stream);
+
+            // Mobile/Browser Compatibility: Detect supported MIME type
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' :
+                MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' :
+                    ''; // Default fallback
+
+            const options = mimeType ? { mimeType } : {};
+            const mediaRecorder = new MediaRecorder(stream, options);
+
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
             let currentSize = 0;
@@ -131,33 +217,17 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                 if (event.data.size > 0) {
                     currentSize += event.data.size;
                     if (currentSize > MAX_AUDIO_SIZE) {
-                        stopRecording();
+                        stopRecordingAsync();
                         stopListening();
-                        alert("Audio recording exceeded 3MB limit. Recording stopped.");
+                        alert("Audio recording exceeded limit. Recording stopped.");
                         return;
                     }
                     audioChunksRef.current.push(event.data);
                 }
             };
 
-            mediaRecorder.onstop = () => {
-                const mimeType = mediaRecorder.mimeType;
-                const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-
-                if (audioBlob.size > MAX_AUDIO_SIZE) {
-                    alert("Audio recording exceeded 3MB limit.");
-                    setAudioData(null);
-                } else {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        setAudioData(reader.result);
-                    };
-                    reader.readAsDataURL(audioBlob);
-                }
-
-                streamRef.current?.getTracks().forEach(track => track.stop());
-                streamRef.current = null;
-            };
+            // onstop is handled in stopRecordingAsync mostly, but we keep a fallback just in case
+            // actually, we will centralize logic in stopRecordingAsync to avoid duplication/race conditions
 
             mediaRecorder.start();
             setRecordingStatus('recording');
@@ -165,15 +235,49 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
             console.error("Error accessing microphone:", err);
             stopListening();
             setRecordingStatus('idle');
-            alert("Could not access microphone.");
+            // Don't alert immediately on mount if auto-start failed silently, but here it's explicit
+            if (!autoStartListening) alert("Could not access microphone.");
         }
-    }, [stopListening]);
+    }, [stopListening, autoStartListening]);
 
-    const stopRecording = () => {
-        if (mediaRecorderRef.current && (mediaRecorderRef.current.state === 'recording' || mediaRecorderRef.current.state === 'paused')) {
+    const stopRecordingAsync = () => {
+        return new Promise((resolve) => {
+            if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+                setRecordingStatus('idle');
+                resolve(null);
+                return;
+            }
+
+            mediaRecorderRef.current.onstop = () => {
+                const mimeType = mediaRecorderRef.current.mimeType || 'audio/webm'; // Fallback
+                const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+
+                let resultData = null;
+                if (audioBlob.size > MAX_AUDIO_SIZE) {
+                    alert("Audio recording exceeded limit.");
+                    setAudioData(null);
+                } else {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setAudioData(reader.result);
+                        resolve(reader.result);
+                    };
+                    reader.readAsDataURL(audioBlob);
+                    resultData = true; // Mark as processing
+                }
+
+                // Cleanup tracks
+                if (streamRef.current) {
+                    streamRef.current.getTracks().forEach(track => track.stop());
+                    streamRef.current = null;
+                }
+
+                setRecordingStatus('idle');
+                if (!resultData) resolve(null);
+            };
+
             mediaRecorderRef.current.stop();
-        }
-        setRecordingStatus('idle');
+        });
     };
 
     // Auto-start listening if requested
@@ -185,9 +289,13 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
             startRecordingRobust();
         } else if (!isOpen) {
             stopListening();
-            stopRecording();
+            // Important: If closing and recording, performSave handles it. 
+            // But if just hiding, we stop.
+            if (mediaRecorderRef.current?.state === 'recording') {
+                stopRecordingAsync();
+            }
         }
-    }, [isOpen, autoStartListening, noteToEdit, isSupported, resetTranscript, startListening, stopListening, startRecordingRobust]);
+    }, [isOpen, autoStartListening, noteToEdit, isSupported, resetTranscript, startListening, startRecordingRobust]);
 
     // Transcript handling
     useEffect(() => {
@@ -216,7 +324,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
     const toggleRecording = () => {
         if (recordingStatus !== 'idle') {
             stopListening();
-            stopRecording();
+            stopRecordingAsync();
         } else {
             setAudioData(null);
             startListening();
@@ -224,31 +332,9 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
         }
     };
 
-    const handlePlayAudio = () => {
-        if (!audioRef.current && audioData) {
-            audioRef.current = new Audio(audioData);
-            audioRef.current.onended = () => setIsPlaying(false);
-        }
 
-        if (isPlaying) {
-            audioRef.current.pause();
-            setIsPlaying(false);
-        } else {
-            audioRef.current.play();
-            setIsPlaying(true);
-        }
-    };
 
-    const deleteAudio = () => {
-        if (window.confirm("Remove this audio recording?")) {
-            if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current = null;
-            }
-            setAudioData(null);
-            setIsPlaying(false);
-        }
-    };
+
 
     const toggleNoteType = () => {
         if (noteType === 'text') {
@@ -350,24 +436,25 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
 
         setSaveStatus('saving');
 
+        // FORCE STOP RECORDING IF ACTIVE
+        let finalAudioData = audioData;
+        if (recordingStatus === 'recording' || recordingStatus === 'paused') {
+            stopListening();
+            // precise usage: await the promise
+            const recordedData = await stopRecordingAsync();
+            if (recordedData) finalAudioData = recordedData;
+        }
+
         try {
             // Derive Title
             let finalTitle = title.trim();
             if (!finalTitle && (noteType === 'text')) {
-                // Optional: Auto-generate if empty? User said "If title is not written then only text below".
-                // This implies we should NOT auto-generate a title visible in the UI as a header.
-                // But we need a title for the DB or search? 
-                // Let's set it to empty string or a placeholder that ISN'T displayed as a header in NotesPage.
-                // NotesPage logic: if (note.title && note.title !== 'New Note'...) show <h3>.
-                // So if we save '', it won't show. Perfection.
                 finalTitle = '';
             } else if (!finalTitle && noteType === 'shopping') {
-                finalTitle = 'Checklist'; // One exception maybe? Or keep empty.
+                finalTitle = 'Checklist';
             }
 
-            // If completely empty and no content, maybe default to "Untitled"?
-            // But for now let's respect the "No Title" wish.
-            if (!finalTitle && !content && items.length === 0 && files.length === 0) finalTitle = "Untitled Note";
+            if (!finalTitle && !content && items.length === 0 && files.length === 0 && !finalAudioData) finalTitle = "Untitled Note";
 
             const finalFiles = files.map(f => {
                 if (f.storageData) {
@@ -392,7 +479,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                 type: noteType,
                 date: noteToEdit ? noteToEdit.date : new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' }),
                 files: finalFiles,
-                audioData: audioData,
+                audioData: finalAudioData,
                 id: localId || undefined, // Use localId if we created one in this session
                 ownerId: noteToEdit?.ownerId, // Preserve owner
                 sharedWith: noteToEdit?.sharedWith // Preserve shared
@@ -414,7 +501,14 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
             lastSavedData.current = dataToSave;
             setSaveStatus('saved');
 
-            if (shouldClose) onClose();
+            if (shouldClose) {
+                // Ensure audio is stopped playing
+                if (audioRef.current) {
+                    audioRef.current.pause();
+                    setIsPlaying(false);
+                }
+                onClose();
+            }
 
         } catch (error) {
             console.error("Save failed", error);
@@ -427,15 +521,15 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
     useEffect(() => {
         if (!isOpen) return;
 
-        // Skip initial mount save unless verified dirty? 
-        // We'll rely on the 'saving' indicator.
+        // Don't auto-save if recording is active to avoid glitched partial states
+        if (recordingStatus === 'recording') return;
 
         const timer = setTimeout(() => {
             performSave(false);
         }, 1500);
 
         return () => clearTimeout(timer);
-    }, [content, items, tags, files, audioData, noteType, title]); // Dependencies for auto-save
+    }, [content, items, tags, files, audioData, noteType, title, recordingStatus]); // Dependencies: added recordingStatus
 
     const handleSubmit = (e) => {
         if (e) e.preventDefault();
@@ -482,12 +576,22 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                             <button onClick={handlePlayAudio} className="w-10 h-10 rounded-full bg-orange-500 shadow-lg shadow-orange-500/30 flex items-center justify-center text-white shrink-0 hover:scale-105 transition-transform">
                                 {isPlaying ? <Pause size={18} className="fill-current" /> : <Play size={18} className="fill-current ml-0.5" />}
                             </button>
-                            <div className="flex-1 min-w-0">
-                                <div className="h-1 bg-orange-200 dark:bg-orange-800 rounded-full overflow-hidden w-full">
-                                    <div className={`h-full bg-orange-500 ${isPlaying ? 'animate-progress' : 'w-full'}`}></div>
-                                </div>
-                                <div className="flex justify-between mt-1.5">
-                                    <span className="text-xs font-bold text-orange-600 dark:text-orange-400">Voice Note</span>
+                            <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max={duration || 100}
+                                    value={currentTime}
+                                    onChange={handleSeek}
+                                    className="w-full accent-orange-500 h-1.5 bg-orange-200 dark:bg-orange-800 rounded-lg cursor-pointer"
+                                />
+                                <div className="flex justify-between mt-1">
+                                    <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 font-mono">
+                                        {formatTime(currentTime)}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 font-mono">
+                                        {formatTime(duration)}
+                                    </span>
                                 </div>
                             </div>
                             <button
