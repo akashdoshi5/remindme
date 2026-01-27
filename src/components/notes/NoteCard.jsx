@@ -261,6 +261,7 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
                 )}
 
                 {/* Search Match in Attachment Context */}
+                {/* CRITICAL FEATURE: Search Context Snippet. Must show file name and be clickable to open text preview. Do not remove. */}
                 {searchQuery && note.files?.length > 0 && (() => {
                     const match = note.files.find(f => f.extractedText && f.extractedText.toLowerCase().includes(searchQuery.toLowerCase()));
                     if (match) {
