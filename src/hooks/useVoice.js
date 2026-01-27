@@ -7,24 +7,31 @@ export const useVoice = (config = {}) => {
     const [recognition, setRecognition] = useState(null);
 
     useEffect(() => {
-        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (!SpeechRecognition) {
             setError('Voice recognition is not supported in this browser.');
             return;
         }
 
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const recognitionInstance = new SpeechRecognition();
 
-        recognitionInstance.continuous = config.continuous !== undefined ? config.continuous : true; // Default to true for notes
+        recognitionInstance.continuous = config.continuous !== undefined ? config.continuous : true;
         recognitionInstance.interimResults = true;
-        recognitionInstance.lang = 'en-IN'; // Default to Indian English, can be parameterized
+        recognitionInstance.lang = 'en-US'; // Changed to US English for better general mobile support, or make configurable. 
+        // 'en-IN' is fine but 'en-US' is often the default model on phones if offline.
 
         recognitionInstance.onstart = () => setIsListening(true);
         recognitionInstance.onend = () => setIsListening(false);
         recognitionInstance.onerror = (event) => {
             console.error('Speech recognition error', event.error);
-            setError(event.error);
-            setIsListening(false);
+            // Ignore 'no-speech' errors as they just mean silence
+            if (event.error !== 'no-speech') {
+                setError(event.error);
+            }
+            if (event.error === 'not-allowed') {
+                setIsListening(false);
+            }
         };
 
         recognitionInstance.onresult = (event) => {

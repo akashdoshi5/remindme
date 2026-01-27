@@ -85,40 +85,52 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
 
     const handlePlayAudio = () => {
         if (!audioRef.current && audioData) {
-            audioRef.current = new Audio(audioData);
-
-            // Listeners
-            audioRef.current.onloadedmetadata = () => {
-                if (audioRef.current) setDuration(audioRef.current.duration);
-            };
-            audioRef.current.ontimeupdate = () => {
-                if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
-            };
-            audioRef.current.onended = () => setIsPlaying(false);
-
-            // Trigger load to get metadata immediately if possible
-            audioRef.current.load();
+            // Should have been initialized by effect, but fallback just in case
+            // forcing a re-run of effect logic or just alert?
+            // simpler: do nothing or let effect catch up. 
+            // actually if we click fast, effect might not have run? unlikley.
+            // keeping it safe:
+            return;
         }
 
-        if (isPlaying) {
-            audioRef.current?.pause();
-            setIsPlaying(false);
-        } else {
-            audioRef.current?.play();
-            setIsPlaying(true);
+        if (audioRef.current) {
+            if (isPlaying) {
+                audioRef.current.pause();
+                setIsPlaying(false);
+            } else {
+                audioRef.current.play()
+                    .catch(e => console.error("Play failed", e));
+                setIsPlaying(true);
+            }
         }
     };
 
-    // Ensure duration is set if audioData loads and play hasn't started
+    // Ensure audio is properly initialized when data loads
     useEffect(() => {
-        if (audioData && !audioRef.current) {
-            const audio = new Audio(audioData);
-            audio.onloadedmetadata = () => {
-                setDuration(audio.duration);
-            };
-        }
-        // Cleanup if audioData removed
-        if (!audioData) {
+        if (audioData) {
+            // Only create if not already created (or recreate if changed)
+            if (!audioRef.current || audioRef.current.src !== audioData) {
+                if (audioRef.current) {
+                    audioRef.current.pause();
+                    audioRef.current = null;
+                }
+
+                const audio = new Audio(audioData);
+                audioRef.current = audio;
+
+                audio.onloadedmetadata = () => {
+                    setDuration(audio.duration);
+                };
+                audio.ontimeupdate = () => {
+                    setCurrentTime(audio.currentTime);
+                };
+                audio.onended = () => {
+                    setIsPlaying(false);
+                    setCurrentTime(0);
+                };
+            }
+        } else {
+            // Cleanup if audioData removed
             setDuration(0);
             setCurrentTime(0);
             if (audioRef.current) {
