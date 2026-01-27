@@ -3,7 +3,7 @@ import { Reorder, useDragControls } from 'framer-motion';
 import {
     Mic, Image as ImageIcon, Play, Paperclip,
     Pin, MoreVertical, StopCircle, // Removed GripVertical
-    FileText, Share2, Users
+    FileText, Share2, Users, ExternalLink
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -287,14 +287,37 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
                     return (
                         <div
                             key={idx}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setPreviewData({ title: match.name, text: match.extractedText });
-                            }}
-                            className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-md text-xs text-gray-600 dark:text-gray-400 italic cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-900/20 transition-colors"
+                            className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-md text-xs text-gray-600 dark:text-gray-400 italic flex justify-between items-center gap-2"
                         >
-                            <span className="font-bold not-italic text-yellow-700 dark:text-yellow-500 block mb-0.5">Match in {match.name}:</span>
-                            {snippet && <span>"...{snippet}..."</span>}
+                            <div
+                                className="flex-1 cursor-pointer"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPreviewData({ title: match.name, text: match.extractedText });
+                                }}
+                            >
+                                <span className="font-bold not-italic text-yellow-700 dark:text-yellow-500 block mb-0.5">Match in {match.name}:</span>
+                                {snippet && <span>"...{snippet}..."</span>}
+                            </div>
+
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Open file in new tab (works for Blobs/URLs/Base64)
+                                    const win = window.open();
+                                    if (win) {
+                                        if (match.url) {
+                                            win.location.href = match.url;
+                                        } else if (match.data) {
+                                            win.document.write('<iframe src="' + match.data + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                                        }
+                                    }
+                                }}
+                                className="p-1.5 bg-white dark:bg-gray-800 rounded-full border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+                                title="Open Attachment"
+                            >
+                                <ExternalLink size={14} />
+                            </button>
                         </div>
                     );
                 })}
