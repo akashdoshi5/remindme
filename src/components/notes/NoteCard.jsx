@@ -63,10 +63,14 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
             if (!isSelected && onToggleSelect) {
                 longPressHappened.current = true;
                 onToggleSelect(note.id);
+
+                // 2. Start Drag ONLY if this is the first selection (start of mode)
+                // User requirement: "When 2nd note is selected, it should not be dragged"
+                if (!isSelectionMode) {
+                    if (navigator.vibrate) navigator.vibrate(50);
+                    dragControls.start(e, { snapToCursor: false });
+                }
             }
-            // 2. Start Drag
-            if (navigator.vibrate) navigator.vibrate(50);
-            dragControls.start(e, { snapToCursor: false });
         }, 300);
 
         setLongPressTimer(timer);
@@ -160,11 +164,10 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
             onContextMenu={(e) => e.preventDefault()}
             className={`card group cursor-pointer relative select-none outline-none overflow-hidden
                 ${isSelected
-                    ? 'ring-4 ring-orange-500 bg-orange-50 dark:bg-orange-900/20 z-10 shadow-xl border-transparent transition-all duration-200'
-                    : highlightedId === note.id
-                        ? 'ring-4 ring-cyan-500 ring-dashed bg-cyan-50/10 dark:bg-cyan-900/10 z-10 shadow-md border-transparent'
-                        : 'ring-0 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm border-l-4 md:hover:bg-gray-50 md:dark:hover:bg-gray-700/50 transition-all duration-200'
+                    ? 'ring-2 ring-orange-500 bg-orange-50 dark:bg-orange-900/20 z-10 shadow-lg border-transparent'
+                    : 'ring-0 border-gray-200 dark:border-gray-700 shadow-sm border-l-4 bg-white dark:bg-gray-800'
                 } 
+                transition-all duration-200
                 ${(!isSelected && highlightedId !== note.id) ? (
                     note.type === 'voice' ? 'border-l-teal-500' :
                         note.type === 'shopping' ? 'border-l-yellow-500' :
@@ -175,11 +178,17 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
             {/* Selection Mode Overlay: Tapping anywhere toggles selection */}
             {isSelectionMode && (
                 <div
-                    className="absolute inset-0 z-30 cursor-pointer"
+                    className="absolute inset-0 z-30"
                     onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         onClick(note);
+                    }}
+                    onPointerDown={(e) => {
+                        // Pass through for drag initiation if already selected?
+                        // If not selected, we want to select.
+                        // But if we want multi-drag, this overlay might block `useDragControls`.
+                        // For now, keep it simple.
                     }}
                 />
             )}
@@ -191,32 +200,37 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
                 </div>
             )}
 
-            <div className="flex justify-between items-start mb-2">
-                <div className="flex gap-2 items-center flex-wrap">
-                    <div className={`p-2 rounded-full ${note.type === 'voice' ? 'bg-teal-100 text-teal-600 dark:bg-teal-900/30' :
+            <div className="flex justify-between items-center mb-2 gap-3">
+                <div className="flex gap-2 items-center flex-1 min-w-0">
+                    {/* TYPE ICON */}
+                    <div className={`p-1.5 rounded-full shrink-0 ${note.type === 'voice' ? 'bg-teal-100 text-teal-600 dark:bg-teal-900/30' :
                         note.type === 'shopping' ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30' :
                             'bg-orange-100 text-orange-600 dark:bg-orange-900/30'
                         }`}>
-                        {note.type === 'voice' ? <Mic size={18} /> :
-                            note.type === 'shopping' ? <div className="font-bold px-1 relative top-[1px] text-xs">LIST</div> :
+                        {note.type === 'voice' ? <Mic size={14} /> :
+                            note.type === 'shopping' ? <div className="font-bold px-0.5 text-[10px]">LIST</div> :
                                 <div className="relative">
-                                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
-                                    <FileText size={18} />
+                                    <FileText size={14} />
                                 </div>
                         }
                     </div>
+
+                    {/* TITLE MOVED HERE */}
+                    <h3 className="font-bold text-gray-900 dark:text-gray-100 truncate text-sm">
+                        {note.title || 'Untitled'}
+                    </h3>
                 </div>
 
                 {/* RIGHT SIDE HEADER: Shared Badge + Pin Button */}
-                <div className="flex items-center gap-2">
-                    {/* Shared Indicator (Inline) */}
+                <div className="flex items-center gap-2 shrink-0">
+                    {/* Shared Indicator (Compact) */}
                     {(note.ownerId && note.ownerId !== user?.uid) ? (
-                        <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] px-2 py-1 rounded-full font-bold flex items-center gap-1">
-                            <Users size={10} /> Shared
+                        <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                            <Users size={10} />
                         </div>
                     ) : (note.sharedWith && note.sharedWith.length > 0) && (
-                        <div className="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-[10px] px-2 py-1 rounded-full font-bold flex items-center gap-1">
-                            <Share2 size={10} /> Shared
+                        <div className="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                            <Share2 size={10} />
                         </div>
                     )}
 
@@ -226,97 +240,94 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
                             e.stopPropagation();
                             handleSave({ ...note, isPinned: !note.isPinned });
                         }}
-                        className={`p-2 rounded-full transition-all ${note.isPinned
+                        className={`p-1.5 rounded-full transition-all ${note.isPinned
                             ? 'text-orange-500 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 rotate-45'
                             : 'text-gray-300 dark:text-gray-600 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
                             }`}
                         title={note.isPinned ? "Unpin Note" : "Pin Note"}
                     >
-                        <Pin size={18} fill={note.isPinned ? "currentColor" : "none"} />
+                        <Pin size={16} fill={note.isPinned ? "currentColor" : "none"} />
                     </button>
                 </div>
             </div>
 
             {/* Content Preview */}
-            <div className="space-y-2">
-                <div className="flex justify-between items-start">
-                    <h3 className="font-bold text-gray-900 dark:text-gray-100 line-clamp-1 flex-1 pr-6">
-                        {note.title || 'Untitled Note'}
-                    </h3>
-                </div>
-
+            <div className="space-y-1">
                 {/* Text Content */}
                 {note.content && (
-                    <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-3 whitespace-pre-wrap font-medium">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-4 whitespace-pre-wrap font-medium">
                         {note.content}
                     </p>
                 )}
+
+                {/* Search Match in Attachment Context */}
+                {searchQuery && note.files?.length > 0 && (() => {
+                    const match = note.files.find(f => f.extractedText && f.extractedText.toLowerCase().includes(searchQuery.toLowerCase()));
+                    if (match) {
+                        const lowerText = match.extractedText.toLowerCase();
+                        const index = lowerText.indexOf(searchQuery.toLowerCase());
+                        const start = Math.max(0, index - 20);
+                        const end = Math.min(match.extractedText.length, index + searchQuery.length + 40);
+                        const snippet = match.extractedText.substring(start, end);
+
+                        return (
+                            <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-md text-xs text-gray-600 dark:text-gray-400 italic">
+                                <span className="font-bold not-italic text-yellow-700 dark:text-yellow-500 block mb-0.5">Match in {match.name}:</span>
+                                "...{snippet}..."
+                            </div>
+                        );
+                    }
+                    return null;
+                })()}
 
                 {/* Checklist Preview */}
                 {note.type === 'shopping' && note.items && (
                     <div className="space-y-1 mt-2">
                         {note.items.slice(0, 3).map((item, idx) => (
                             <div key={idx} className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                                <span className={`w-4 h-4 rounded border flex items-center justify-center
+                                <span className={`w-3 h-3 rounded border flex items-center justify-center
                                     ${item.done ? 'bg-gray-200 dark:bg-gray-700 border-transparent' : 'border-gray-300 dark:border-gray-600'}`}>
-                                    {item.done && <Check size={10} />}
+                                    {item.done && <Check size={8} />}
                                 </span>
                                 <span className={item.done ? 'line-through opacity-50' : ''}>{item.text}</span>
                             </div>
                         ))}
                         {note.items.length > 3 && (
-                            <div className="text-xs text-gray-400 italic pl-6">
-                                + {note.items.length - 3} more items...
+                            <div className="text-[10px] text-gray-400 italic pl-5">
+                                + {note.items.length - 3} more...
                             </div>
                         )}
                     </div>
                 )}
 
-                {/* Attachments Preview */}
-                {note.files && note.files.length > 0 && (
-                    <div className="flex gap-2 overflow-x-auto debug-screens py-1 mt-2 scrollbar-none">
-                        {note.files.map((file, index) => (
-                            <div key={index} className="relative w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                                {file.type.startsWith('image/') ? (
-                                    <ImagePreview file={file} />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                        <Paperclip size={16} />
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                )}
+                {/* Attachments & Voice Pill */}
+                <div className="flex flex-wrap gap-2 mt-2">
+                    {/* Attachments Pill */}
+                    {note.files && note.files.length > 0 && (
+                        <div className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-md text-[10px] font-bold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+                            <Paperclip size={10} />
+                            <span>{note.files.length}</span>
+                        </div>
+                    )}
 
-                {/* Audio Player Preview */}
-                {note.audioData && (
-                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                    {/* Audio Player Preview (Compact) */}
+                    {note.audioData && (
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 handlePlayAudio(note);
                             }}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all w-full justify-center
+                            className={`flex items-center gap-2 px-2 py-1 rounded-md text-[10px] font-bold transition-all border
                                 ${playingNoteId === note.id
-                                    ? 'bg-orange-500 text-white shadow-md scale-105'
-                                    : 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 hover:bg-orange-200'
+                                    ? 'bg-orange-100 text-orange-600 border-orange-200'
+                                    : 'bg-gray-50 dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700'
                                 }`}
                         >
-                            {playingNoteId === note.id ? (
-                                <>
-                                    <StopCircle size={14} className="animate-pulse" />
-                                    <span>Stop Playing</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Play size={14} />
-                                    <span>Play Audio Note</span>
-                                </>
-                            )}
+                            {playingNoteId === note.id ? <StopCircle size={10} className="animate-pulse" /> : <Play size={10} />}
+                            <span>Voice Note</span>
                         </button>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
 
             {/* Footer / Meta - REMOVED Date and Drag Handle as per request */}

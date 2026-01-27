@@ -117,8 +117,8 @@ const RemindersPage = () => {
                 };
                 setEditingReminder(draftReminder);
                 setIsModalOpen(true);
-                // Clear state to prevent loop
-                window.history.replaceState({}, document.title);
+                // Clear state to prevent loop using Navigate to update React Router context
+                navigate(location.pathname, { replace: true, state: {} });
             }
         }
     }, [location.state, reminders]);
