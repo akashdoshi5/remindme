@@ -262,12 +262,27 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
 
                 {/* Search Match in Attachment Context */}
                 {/* CRITICAL FEATURE: Search Context Snippet. Must show file name and be clickable to open text preview. Do not remove. */}
-                {searchQuery && note.files?.length > 0 && note.files.filter(f => f.extractedText && f.extractedText.toLowerCase().includes(searchQuery.toLowerCase())).map((match, idx) => {
-                    const lowerText = match.extractedText.toLowerCase();
-                    const index = lowerText.indexOf(searchQuery.toLowerCase());
-                    const start = Math.max(0, index - 20);
-                    const end = Math.min(match.extractedText.length, index + searchQuery.length + 40);
-                    const snippet = match.extractedText.substring(start, end);
+                {/* Search Match in Attachment Context */}
+                {/* CRITICAL FEATURE: Search Context Snippet. Must show file name and be clickable to open text preview. Do not remove. */}
+                {searchQuery && note.files?.length > 0 && note.files.filter(f =>
+                    (f.extractedText && f.extractedText.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                    (f.name && f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                ).map((match, idx) => {
+                    const isTextMatch = match.extractedText && match.extractedText.toLowerCase().includes(searchQuery.toLowerCase());
+                    let snippet = null;
+
+                    if (isTextMatch) {
+                        const lowerText = match.extractedText.toLowerCase();
+                        const index = lowerText.indexOf(searchQuery.toLowerCase());
+                        const start = Math.max(0, index - 20);
+                        const end = Math.min(match.extractedText.length, index + searchQuery.length + 40);
+                        snippet = match.extractedText.substring(start, end);
+                    } else if (match.extractedText) {
+                        // Name match, but text exists -> show beginning of text as fallback? 
+                        // Or just show nothing? User asked for "preview".
+                        // Let's just show no snippet if it's a pure filename match to be clean, 
+                        // but clicking will still open the full text.
+                    }
 
                     return (
                         <div
@@ -279,7 +294,7 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
                             className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-md text-xs text-gray-600 dark:text-gray-400 italic cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-900/20 transition-colors"
                         >
                             <span className="font-bold not-italic text-yellow-700 dark:text-yellow-500 block mb-0.5">Match in {match.name}:</span>
-                            "...{snippet}..."
+                            {snippet && <span>"...{snippet}..."</span>}
                         </div>
                     );
                 })}
