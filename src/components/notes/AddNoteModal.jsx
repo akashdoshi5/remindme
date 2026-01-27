@@ -490,6 +490,13 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                                     <span className="text-xs font-bold text-orange-600 dark:text-orange-400">Voice Note</span>
                                 </div>
                             </div>
+                            <button
+                                onClick={deleteAudio}
+                                className="p-2 text-gray-400 hover:text-red-500 transition-colors hover:bg-white dark:hover:bg-gray-800 rounded-full"
+                                title="Delete Audio"
+                            >
+                                <Trash2 size={18} />
+                            </button>
                         </div>
                     )}
 
