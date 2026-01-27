@@ -7,7 +7,31 @@ import { ocrService } from '../../services/ocrService';
 import { dataService } from '../../services/data';
 
 const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text', autoStartListening = false, searchQuery = '' }) => {
-    if (!isOpen) return null;
+    // if (!isOpen) return null; // Removed to allow conditional rendering from parent to handle lifecycle
+
+    useEffect(() => {
+        const handleEsc = (e) => {
+            if (e.key === 'Escape') onClose();
+        };
+
+        // Handle Hardware Back Button
+        const handlePopState = (e) => {
+            e.preventDefault();
+            onClose();
+        };
+
+        if (isOpen) {
+            window.addEventListener('keydown', handleEsc);
+            // Push history state when modal opens
+            window.history.pushState({ modal: 'note' }, '', window.location.pathname);
+            window.addEventListener('popstate', handlePopState);
+        }
+
+        return () => {
+            window.removeEventListener('keydown', handleEsc);
+            window.removeEventListener('popstate', handlePopState);
+        };
+    }, [isOpen, onClose]);
 
     const [noteType, setNoteType] = useState('text'); // 'text' or 'shopping'
     const [items, setItems] = useState([{ text: '', done: false, id: crypto.randomUUID() }]);
@@ -32,7 +56,16 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
     const streamRef = useRef(null);
     const textareaRef = useRef(null);
 
-    // --- EFFECT: Initialization ---
+    // --- EFFECT: Initialization & Body Scroll Lock ---
+    useEffect(() => {
+        // Lock scroll on mount
+        document.body.style.overflow = 'hidden';
+        return () => {
+            // Unlock scroll on unmount match stylesheet default
+            document.body.style.overflow = '';
+        };
+    }, []);
+
     useEffect(() => {
         if (noteToEdit) {
             setTitle(noteToEdit.title && noteToEdit.title !== 'Untitled Note' && noteToEdit.title !== 'New Note' ? noteToEdit.title : '');
@@ -406,7 +439,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
     const displayContent = noteType === 'text' ? (content + (isListening && transcript ? ' ' + transcript : '')) : content;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 md:p-6 transition-all">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 md:p-6 transition-all overflow-hidden">
             <div className="bg-white dark:bg-gray-900 w-full max-w-2xl h-[85vh] md:h-[80vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800 animate-slide-up">
 
                 {/* 1. Header */}
@@ -526,11 +559,14 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                         <div className="mt-8 grid grid-cols-2 md:grid-cols-3 gap-3">
                             {files.map((file, idx) => (
                                 <div key={idx} className="relative group bg-gray-50 dark:bg-gray-800 rounded-xl p-3 border border-gray-100 dark:border-gray-700 flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-lg bg-white dark:bg-gray-700 flex items-center justify-center text-gray-500 shrink-0">
+                                    <div
+                                        onClick={() => window.open(file.url || URL.createObjectURL(file.file), '_blank')}
+                                        className="w-10 h-10 rounded-lg bg-white dark:bg-gray-700 flex items-center justify-center text-gray-500 shrink-0 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                                    >
                                         {file.type?.includes('image') ? <ImageIcon size={20} /> : <FileText size={20} />}
                                     </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium truncate text-gray-700 dark:text-gray-300">{file.name}</p>
+                                    <div className="min-w-0 flex-1 cursor-pointer" onClick={() => window.open(file.url || URL.createObjectURL(file.file), '_blank')}>
+                                        <p className="text-sm font-medium truncate text-gray-700 dark:text-gray-300 hover:underline">{file.name}</p>
                                         <div className="text-xs text-gray-400">
                                             {file.status === 'uploading' ? `${file.progress}%` : (file.status === 'ready' ? 'Attached' : file.status)}
                                         </div>
@@ -571,12 +607,12 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                         </div>
                     )}
 
-                    <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-1 md:gap-2">
+                    <div className="flex items-center justify-between gap-4 h-12">
+                        <div className="flex items-center gap-1 md:gap-2 h-full">
                             {/* Mic */}
                             <button
                                 onClick={toggleRecording}
-                                className={`p-3 rounded-full transition-all ${recordingStatus !== 'idle' ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
+                                className={`p-2.5 rounded-full transition-all flex items-center justify-center ${recordingStatus !== 'idle' ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
                                 title="Record Audio"
                             >
                                 {recordingStatus !== 'idle' ? <MicOff size={22} /> : <Mic size={22} />}

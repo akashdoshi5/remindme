@@ -646,7 +646,13 @@ export const dataService = {
     getHistory: () => [...(store.history || [])],
 
     // Notes
-    getNotes: () => [...(store.notes || [])],
+    getNotes: () => {
+        const unique = new Map();
+        (store.notes || []).forEach(n => {
+            if (!unique.has(n.id)) unique.set(n.id, n);
+        });
+        return Array.from(unique.values());
+    },
     addNote: async (note) => {
         if (auth.currentUser) {
             return await firestoreService.addNote(note);

@@ -10,6 +10,7 @@ import TextPreviewModal from '../components/common/TextPreviewModal';
 import { dataService } from '../services/data';
 import ShareModal from '../components/common/ShareModal';
 import { useAuth } from '../context/AuthContext';
+import NoteCard from '../components/notes/NoteCard';
 
 const NotesPage = () => {
     const { user } = useAuth();
@@ -17,15 +18,42 @@ const NotesPage = () => {
     const navigate = useNavigate();
     const refs = useRef({});
     const [playingNoteId, setPlayingNoteId] = useState(null);
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const isSelectionMode = selectedIds.size > 0;
+    const [highlightedId, setHighlightedId] = useState(null);
+
+    const handleToggleSelect = (id) => {
+        setHighlightedId(null); // Clear highlights immediately on selection
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const handleClearSelection = () => {
+        setSelectedIds(new Set());
+        setHighlightedId(null);
+    };
+
+    // Auto-clear highlight when selection mode active
+    useEffect(() => {
+        if (isSelectionMode && highlightedId) {
+            setHighlightedId(null);
+        }
+    }, [isSelectionMode, highlightedId]);
 
     // Highlight logic
     useEffect(() => {
         if (location.state?.focusId) {
+            setHighlightedId(location.state.focusId);
+            setTimeout(() => setHighlightedId(null), 3000);
+
+            // Scroll to element
             const element = refs.current[location.state.focusId];
             if (element) {
                 element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                element.classList.add('ring-4', 'ring-orange-200');
-                setTimeout(() => element.classList.remove('ring-4', 'ring-orange-200'), 2000);
             }
         }
 
@@ -121,6 +149,30 @@ const NotesPage = () => {
         return savedParams;
     };
 
+
+
+    // --- EFFECT: Handle Hardware Back Button for Selection Mode ---
+    React.useEffect(() => {
+        const handlePopState = (event) => {
+            if (isSelectionMode) {
+                // Return to normal mode (Deselect All)
+                handleClearSelection();
+                // Prevent browser back navigation if possible (stay on page)
+                window.history.pushState(null, '', window.location.pathname);
+            }
+        };
+
+        if (isSelectionMode) {
+            // Push a state so we have something to "pop"
+            window.history.pushState(null, '', window.location.pathname);
+            window.addEventListener('popstate', handlePopState);
+        }
+
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+        };
+    }, [isSelectionMode]);
+
     const getFilteredNotes = () => {
         let filtered = notes;
 
@@ -153,10 +205,118 @@ const NotesPage = () => {
         });
     };
 
+
+
+
+
+    const handleNoteClick = (note) => {
+        if (isSelectionMode) {
+            handleToggleSelect(note.id);
+        } else {
+            handleEdit(note);
+        }
+    };
+
+    const handleBatchDelete = () => {
+        if (window.confirm(`Delete ${selectedIds.size} notes?`)) {
+            selectedIds.forEach(id => dataService.deleteNote(id));
+            setTriggerReload(prev => prev + 1);
+            handleClearSelection();
+        }
+    };
+
+    const handleBatchPin = () => {
+        const selectedNotes = notes.filter(n => selectedIds.has(n.id));
+        // If ALL selected are pinned -> Unpin them.
+        // Otherwise -> Pin them all.
+        const allPinned = selectedNotes.every(n => n.isPinned);
+
+        selectedNotes.forEach(note => {
+            dataService.updateNote(note.id, { isPinned: !allPinned });
+        });
+        setTriggerReload(prev => prev + 1);
+        handleClearSelection();
+    };
+
+    const handleBatchShare = () => {
+        // We can't really batch share nicely in UI without a Loop of prompts or a new Modal.
+        // User asked for "Share" in batch actions.
+        // "Share" usually implies opening the Share Modal. 
+        // If multiple selected, maybe we shouldn't support sharing multiple via Email link (mailto limit).
+        // If internal sharing, we can add a list of users.
+        // For now, let's disable Share if > 1 or show alert.
+        if (selectedIds.size === 1) {
+            const note = notes.find(n => n.id === Array.from(selectedIds)[0]);
+            setSharingNote(note);
+            handleClearSelection();
+        } else {
+            alert("Batch sharing not supported yet. Please select one note.");
+        }
+    };
+
+    const handleBatchConvert = () => {
+        if (selectedIds.size === 1) {
+            const note = notes.find(n => n.id === Array.from(selectedIds)[0]);
+            navigate('/reminders', { state: { convertFromNote: note } });
+            handleClearSelection();
+        }
+    };
+
+
     const filteredNotes = getFilteredNotes();
 
     return (
-        <div className="max-w-6xl mx-auto pb-24 md:pb-10 relative min-h-screen">
+        <div
+            className="max-w-6xl mx-auto pb-24 md:pb-10 relative min-h-screen"
+            onClick={(e) => {
+                // Click outside to deselect
+                if (isSelectionMode && !e.target.closest('.card') && !e.target.closest('button')) {
+                    handleClearSelection();
+                }
+            }}
+        >
+            {/* FLOATING ACTION BAR FOR BATCH ACTIONS */}
+            <AnimatePresence>
+                {isSelectionMode && (
+                    <motion.div
+                        initial={{ y: 100, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: 100, opacity: 0 }}
+                        className="fixed bottom-24 md:bottom-10 left-0 right-0 mx-auto w-fit bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 border border-gray-100 dark:border-gray-800"
+                    >
+                        <span className="font-bold text-sm whitespace-nowrap text-gray-900 dark:text-white">{selectedIds.size} Selected</span>
+
+                        <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
+
+                        <div className="flex gap-4">
+                            <button onClick={handleBatchPin} title="Pin/Unpin" className="hover:text-orange-500 transition-colors">
+                                <Pin size={20} />
+                            </button>
+                            <button onClick={handleBatchDelete} title="Delete" className="hover:text-red-500 transition-colors">
+                                <Trash2 size={20} />
+                            </button>
+
+                            {selectedIds.size === 1 && (
+                                <>
+                                    <button onClick={handleBatchShare} title="Share" className="hover:text-blue-400 transition-colors">
+                                        <Share2 size={20} />
+                                    </button>
+                                    <button onClick={handleBatchConvert} title="Convert to Reminder" className="hover:text-orange-400 transition-colors">
+                                        <ArrowRightLeft size={20} />
+                                    </button>
+                                </>
+                            )}
+                        </div>
+
+                        <div className="h-6 w-px bg-gray-700 dark:bg-gray-200"></div>
+
+                        <button onClick={handleClearSelection} className="hover:opacity-75 transition-opacity">
+                            <X size={20} />
+                        </button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* STICKY HEADER & SEARCH */}
             <div className="sticky top-20 z-30 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-sm -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-800 md:static md:bg-transparent md:p-0 md:border-none md:mb-6 transition-all">
                 <div className="flex flex-col gap-3">
@@ -200,18 +360,20 @@ const NotesPage = () => {
 
 
 
-            <AddNoteModal
-                isOpen={isModalOpen}
-                onClose={() => {
-                    setIsModalOpen(false);
-                    setAutoStartVoice(false);
-                }}
-                onSave={handleSave}
-                noteToEdit={editingNote}
-                initialType={newNoteType}
-                autoStartListening={autoStartVoice}
-                searchQuery={searchQuery}
-            />
+            {isModalOpen && (
+                <AddNoteModal
+                    isOpen={isModalOpen}
+                    onClose={() => {
+                        setIsModalOpen(false);
+                        setAutoStartVoice(false);
+                    }}
+                    onSave={handleSave}
+                    noteToEdit={editingNote}
+                    initialType={newNoteType}
+                    autoStartListening={autoStartVoice}
+                    searchQuery={searchQuery}
+                />
+            )}
 
             <TextPreviewModal
                 isOpen={!!previewData}
@@ -228,230 +390,142 @@ const NotesPage = () => {
             />
 
             {/* Notes Grid */}
-            {(!searchQuery && activeTab === 'All Notes') ? (
-                <Reorder.Group axis="y" values={notes} onReorder={(newOrder) => {
-                    setNotes(newOrder); // Optimistic
-                    dataService.reorderNotes(newOrder);
-                }} as="div" className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4 md:mt-0">
-                    <AnimatePresence>
-                        {filteredNotes.map((note) => (
-                            <NoteCard
-                                key={note.id}
-                                note={note}
-                                user={user}
-                                handleEdit={handleEdit}
-                                handleSave={handleSave}
-                                setSharingNote={setSharingNote}
-                                setTriggerReload={setTriggerReload}
-                                navigate={navigate}
-                                playingNoteId={playingNoteId}
-                                handlePlayAudio={handlePlayAudio}
-                                searchQuery={searchQuery}
-                                setPreviewData={setPreviewData}
-                            />
-                        ))}
-                    </AnimatePresence>
-                </Reorder.Group>
-            ) : (
-                <motion.div layout className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4 md:mt-0">
-                    <AnimatePresence>
-                        {filteredNotes.map((note) => (
-                            <motion.div
-                                layout
-                                ref={el => refs.current[note.id] = el}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.95 }}
-                                key={note.id}
-                                onClick={() => handleEdit(note)}
-                                className={`card group cursor-pointer hover:ring-2 hover:ring-orange-100 dark:hover:ring-orange-900 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-md transition-all border-l-4 relative ${note.type === 'voice' ? 'border-l-teal-500' :
-                                    note.type === 'shopping' ? 'border-l-yellow-500' :
-                                        'border-l-orange-500'
-                                    }`}
-                            >
-                                {/* Shared From Badge */}
-                                {note.ownerId && note.ownerId !== user?.uid && (
-                                    <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 z-20">
-                                        <Users size={10} /> Shared
-                                    </div>
-                                )}
-
-                                {note.sharedWith && note.sharedWith.length > 0 && note.ownerId === user?.uid && (
-                                    <div className="absolute -top-2 -right-2 bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 z-20">
-                                        <Share2 size={10} /> Shared
-                                    </div>
-                                )}
-
-                                <div className="flex justify-between items-start mb-3">
-                                    <div className="flex gap-2">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${note.type === 'voice' ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-100 dark:border-teal-800 text-teal-600 dark:text-teal-400' :
-                                            note.type === 'shopping' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-100 dark:border-yellow-800 text-yellow-600 dark:text-yellow-400' : 'bg-orange-50 dark:bg-orange-900/20 border-orange-100 dark:border-orange-800 text-orange-600 dark:text-orange-400'
-                                            }`}>
-                                            {note.type === 'voice' ? <Mic size={16} /> :
-                                                note.type === 'shopping' ? <ShoppingCart size={16} /> : <FileText size={16} />}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <h3 className="font-bold text-gray-900 dark:text-gray-100 leading-tight text-sm truncate pr-2">{note.title}</h3>
-                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{note.date}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                                        {note.ownerId === user?.uid && (
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setSharingNote(note); }}
-                                                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-orange-600 transition-colors"
-                                            >
-                                                <Share2 size={16} />
-                                            </button>
-                                        )}
-                                        {note.ownerId === user?.uid && (
-                                            <button onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (window.confirm('Delete this note?')) {
-                                                    dataService.deleteNote(note.id);
-                                                    setTriggerReload(prev => prev + 1);
-                                                }
-                                            }} className="p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 transition-colors">
-                                                <Trash2 size={16} />
-                                            </button>
-                                        )}
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                navigate('/reminders', { state: { convertFromNote: note } });
-                                            }}
-                                            className="p-2 rounded-full hover:bg-orange-50 dark:hover:bg-orange-900/30 text-gray-400 hover:text-orange-500 transition-colors"
-                                            title="Convert to Reminder"
-                                        >
-                                            <ArrowRightLeft size={16} />
-                                        </button>
-                                    </div>
+            <div className="mt-4 md:mt-0 space-y-8">
+                {(!searchQuery && activeTab === 'All Notes') ? (
+                    <>
+                        {/* PINNED SECTION */}
+                        {filteredNotes.some(n => n.isPinned) && (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2 px-1">
+                                    <span className="text-[10px] font-black tracking-widest text-gray-400 dark:text-gray-500 uppercase">Pinned</span>
                                 </div>
-
-                                {(note.type === 'voice' || note.audioData) && (
-                                    <div className="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-2 border border-gray-100 dark:border-gray-700 mb-3 group-hover:border-gray-200 transition-colors" onClick={e => e.stopPropagation()}>
-                                        <button
-                                            onClick={() => handlePlayAudio(note)}
-                                            className={`w-full h-8 bg-white dark:bg-gray-800 rounded-lg border flex items-center justify-center gap-2 text-xs font-medium transition-all shadow-sm ${playingNoteId === note.id ? 'border-orange-200 text-orange-600 bg-orange-50' : 'border-gray-200 text-gray-700 hover:text-teal-600'}`}
-                                        >
-                                            {playingNoteId === note.id ? <StopCircle size={14} className="fill-current" /> : <Play size={14} className="fill-current" />}
-                                            {playingNoteId === note.id ? 'Stop' : `Play${note.audioLength ? ` (${note.audioLength})` : ''}`}
-                                        </button>
-                                    </div>
-                                )}
-
-                                {note.files && note.files.length > 0 && (
-                                    <div className="mb-3 space-y-1" onClick={e => e.stopPropagation()}>
-                                        {(searchQuery ? note.files : note.files.slice(0, 3)).map((file, idx) => (
-                                            <div key={idx} className={`flex flex-col p-1.5 rounded-lg bg-gray-50 dark:bg-gray-700/30 border transition-colors ${searchQuery && file.extractedText && file.extractedText.toLowerCase().includes(searchQuery.toLowerCase())
-                                                ? 'border-yellow-400 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/10 ring-1 ring-yellow-400/50'
-                                                : 'border-gray-200 dark:border-gray-600 hover:border-orange-200 dark:hover:border-gray-500'
-                                                }`}>
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2 overflow-hidden">
-                                                        <div className="text-gray-500 shrink-0">
-                                                            {file.type?.includes('image') ? <ImageIcon size={14} /> : <FileText size={14} />}
-                                                        </div>
-                                                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate max-w-[140px]">{file.name}</span>
-                                                    </div>
-                                                    <button
-                                                        onClick={() => {
-                                                            if (file.url) window.open(file.url, '_blank');
-                                                            else alert("Preview not available offline.");
-                                                        }}
-                                                        className="text-[10px] text-gray-400 hover:text-orange-600"
-                                                    >
-                                                        <Eye size={12} />
-                                                    </button>
-                                                </div>
-                                                {/* SEARCH MATCH IDENTIFIER & SNIPPET */}
-                                                {searchQuery && file.extractedText && file.extractedText.toLowerCase().includes(searchQuery.toLowerCase()) && (
-                                                    <div
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setPreviewData({ text: file.extractedText, title: file.name });
-                                                        }}
-                                                        className="mt-1 cursor-pointer group/snippet"
-                                                    >
-                                                        <div className="text-[10px] bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300 px-2 py-1.5 rounded-md font-mono leading-snug border border-yellow-200 dark:border-yellow-800/50 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors">
-                                                            <div className="flex items-center gap-1 mb-1 font-bold text-yellow-700 dark:text-yellow-400 uppercase tracking-wider text-[9px]">
-                                                                <Search size={10} /> Match in file
-                                                            </div>
-                                                            <span className="opacity-90 block italic break-words">
-                                                                "...
-                                                                {(() => {
-                                                                    const text = file.extractedText;
-                                                                    const query = searchQuery.toLowerCase();
-                                                                    const idx = text.toLowerCase().indexOf(query);
-                                                                    if (idx === -1) return text.substring(0, 60);
-
-                                                                    const start = Math.max(0, idx - 20);
-                                                                    const end = Math.min(text.length, idx + query.length + 60);
-                                                                    const sub = text.substring(start, end);
-
-                                                                    const parts = sub.split(new RegExp(`(${searchQuery})`, 'gi'));
-                                                                    return parts.map((part, i) =>
-                                                                        part.toLowerCase() === query ? <mark key={i} className="bg-yellow-300 dark:bg-yellow-600 dark:text-white rounded-sm px-0.5 mx-0.5 font-bold not-italic text-gray-900">{part}</mark> : part
-                                                                    );
-                                                                })()}
-                                                                ..."
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
+                                <Reorder.Group
+                                    axis="y"
+                                    values={filteredNotes.filter(n => n.isPinned)}
+                                    onReorder={(newPinnedOrder) => {
+                                        const unpinned = notes.filter(n => !n.isPinned);
+                                        const merged = [...newPinnedOrder, ...unpinned];
+                                        setNotes(merged);
+                                        dataService.reorderNotes(merged);
+                                    }}
+                                    as="div"
+                                    className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
+                                >
+                                    <AnimatePresence>
+                                        {filteredNotes.filter(n => n.isPinned).map((note) => (
+                                            <NoteCard
+                                                key={note.id}
+                                                note={note}
+                                                user={user}
+                                                isSelected={selectedIds.has(note.id)}
+                                                isSelectionMode={isSelectionMode}
+                                                highlightedId={highlightedId}
+                                                onToggleSelect={handleToggleSelect}
+                                                onClick={handleNoteClick}
+                                                handleEdit={handleEdit}
+                                                handleSave={handleSave}
+                                                setSharingNote={setSharingNote}
+                                                setTriggerReload={setTriggerReload}
+                                                navigate={navigate}
+                                                playingNoteId={playingNoteId}
+                                                handlePlayAudio={handlePlayAudio}
+                                                searchQuery={searchQuery}
+                                                setPreviewData={setPreviewData}
+                                                isReorderable={true}
+                                            />
                                         ))}
-                                        {!searchQuery && note.files.length > 3 && <span className="text-[10px] text-gray-400 pl-1">+{note.files.length - 3} more</span>}
-                                    </div>
-                                )}
-
-                                {note.type !== 'shopping' && note.content && (
-                                    <p className="text-gray-600 dark:text-gray-300 text-sm line-clamp-3 mb-4 leading-relaxed bg-gray-50/50 dark:bg-gray-800/50 p-2 rounded-lg break-words overflow-hidden w-full">{note.content}</p>
-                                )}
-
-                                {note.type === 'shopping' && (
-                                    <div className="space-y-1.5 mb-2" onClick={e => e.stopPropagation()}>
-                                        {note.items.slice(0, 3).map((item, i) => (
-                                            <div
-                                                key={i}
-                                                className="flex items-center gap-2 cursor-pointer group/item"
-                                                onClick={() => {
-                                                    const newItems = [...note.items];
-                                                    newItems[i].done = !newItems[i].done;
-                                                    handleSave({ ...note, items: newItems });
-                                                }}
-                                            >
-                                                <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${item.done ? 'bg-orange-500 border-orange-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700'}`}>
-                                                    {item.done && <Check size={10} className="text-white" />}
-                                                </div>
-                                                <span className={`text-xs ${item.done ? 'text-gray-400 line-through' : 'text-gray-700 dark:text-gray-300'}`}>{item.text}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                <div className="flex gap-2 mt-auto flex-wrap pt-2 border-t border-gray-50 dark:border-gray-700">
-                                    {note.tags && note.tags.map(tag => (
-                                        <span key={tag} className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded-md text-[10px] font-bold">#{tag}</span>
-                                    ))}
-                                </div>
-                            </motion.div>
-                        ))}
-                    </AnimatePresence>
-                    {filteredNotes.length === 0 && (
-                        <div className="col-span-full text-center py-20 text-gray-400 flex flex-col items-center">
-                            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-                                <FileText size={32} className="opacity-50" />
+                                    </AnimatePresence>
+                                </Reorder.Group>
                             </div>
-                            <p className="font-medium">No notes found.</p>
-                            <p className="text-sm opacity-60">Tap + to create one.</p>
-                        </div>
-                    )}
-                </motion.div>
-            )}
+                        )}
 
-            {/* FLOATING ACTION BUTTON - DESKTOP & MOBILE */}
-            <div className="fixed bottom-24 md:bottom-10 right-6 md:right-10 z-40 flex flex-col gap-3">
+                        {/* OTHERS SECTION */}
+                        <div className="space-y-4">
+                            {filteredNotes.some(n => n.isPinned) && (
+                                <div className="flex items-center gap-2 px-1">
+                                    <span className="text-[10px] font-black tracking-widest text-gray-400 dark:text-gray-500 uppercase">Others</span>
+                                </div>
+                            )}
+                            <Reorder.Group
+                                axis="y"
+                                values={filteredNotes.filter(n => !n.isPinned)}
+                                onReorder={(newOthersOrder) => {
+                                    const pinned = notes.filter(n => n.isPinned);
+                                    const merged = [...pinned, ...newOthersOrder];
+                                    setNotes(merged);
+                                    dataService.reorderNotes(merged);
+                                }}
+                                as="div"
+                                className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
+                            >
+                                <AnimatePresence>
+                                    {filteredNotes.filter(n => !n.isPinned).map((note) => (
+                                        <NoteCard
+                                            key={note.id}
+                                            note={note}
+                                            user={user}
+                                            isSelected={selectedIds.has(note.id)}
+                                            isSelectionMode={isSelectionMode}
+                                            highlightedId={highlightedId}
+                                            onToggleSelect={handleToggleSelect}
+                                            onClick={handleNoteClick}
+                                            handleEdit={handleEdit}
+                                            handleSave={handleSave}
+                                            setSharingNote={setSharingNote}
+                                            setTriggerReload={setTriggerReload}
+                                            navigate={navigate}
+                                            playingNoteId={playingNoteId}
+                                            handlePlayAudio={handlePlayAudio}
+                                            searchQuery={searchQuery}
+                                            setPreviewData={setPreviewData}
+                                            isReorderable={true}
+                                        />
+                                    ))}
+                                </AnimatePresence>
+                            </Reorder.Group>
+                        </div>
+                    </>
+                ) : (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <AnimatePresence>
+                            {filteredNotes.map((note) => (
+                                <NoteCard
+                                    key={note.id}
+                                    note={note}
+                                    user={user}
+                                    isSelected={selectedIds.has(note.id)}
+                                    isSelectionMode={isSelectionMode}
+                                    highlightedId={highlightedId}
+                                    onToggleSelect={handleToggleSelect}
+                                    onClick={handleNoteClick}
+                                    handleEdit={handleEdit}
+                                    handleSave={handleSave}
+                                    setSharingNote={setSharingNote}
+                                    setTriggerReload={setTriggerReload}
+                                    navigate={navigate}
+                                    playingNoteId={playingNoteId}
+                                    handlePlayAudio={handlePlayAudio}
+                                    searchQuery={searchQuery}
+                                    setPreviewData={setPreviewData}
+                                    isReorderable={false}
+                                />
+                            ))}
+                        </AnimatePresence>
+                    </div>
+                )}
+
+                {filteredNotes.length === 0 && (
+                    <div className="col-span-full text-center py-20 text-gray-400 flex flex-col items-center">
+                        <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
+                            <FileText size={32} className="opacity-50" />
+                        </div>
+                        <p className="font-medium">No notes found.</p>
+                        <p className="text-sm opacity-60">Tap + to create one.</p>
+                    </div>
+                )}
+            </div>
+
+            <div className="fixed bottom-24 md:bottom-10 right-6 md:right-10 z-40 flex flex-col gap-3 items-center">
                 <button
                     onClick={() => handleAddNew('text', true)}
                     className="w-12 h-12 bg-white dark:bg-gray-800 text-orange-600 shadow-lg rounded-full flex items-center justify-center border border-gray-100 dark:border-gray-700 hover:scale-105 transition-transform"
@@ -470,185 +544,5 @@ const NotesPage = () => {
         </div >
     );
 };
-
-// Helper Check icon
-const Check = ({ size, className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <polyline points="20 6 9 17 4 12"></polyline>
-    </svg>
-);
-
-// Extracted NoteCard Component for isolated DragControls
-const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTriggerReload, navigate, playingNoteId, handlePlayAudio, searchQuery, setPreviewData }) => {
-    const dragControls = useDragControls();
-
-    return (
-        <Reorder.Item
-            value={note}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            dragListener={false}
-            dragControls={dragControls}
-            dragElastic={0.1} // Reduced elasticity for solid feel
-            onClick={() => handleEdit(note)}
-            className={`card group cursor-pointer hover:ring-2 hover:ring-orange-100 dark:hover:ring-orange-900 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-md transition-all border-l-4 relative ${note.type === 'voice' ? 'border-l-teal-500' :
-                note.type === 'shopping' ? 'border-l-yellow-500' :
-                    'border-l-orange-500'
-                } ${note.width === 'full' ? 'md:col-span-2' : ''}`}
-        >
-            {/* Drag Handle */}
-            <div
-                className="absolute top-2 right-2 p-2 text-gray-300 hover:text-orange-500 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity z-50 touch-none"
-                onPointerDown={(e) => dragControls.start(e)}
-            >
-                <GripVertical size={16} />
-            </div>
-
-            {/* Pinned Badge */}
-            {note.isPinned && (
-                <div className="absolute top-0 right-0 p-2 z-20 pointer-events-none">
-                    <Pin size={14} className="fill-orange-500 text-orange-500 -rotate-45" />
-                </div>
-            )}
-
-            {/* Shared Badges - Fixed Visibility */}
-            <div className="absolute top-0 right-8 flex gap-1 z-20">
-                {note.ownerId && note.ownerId !== user?.uid && (
-                    <div className="bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-b-md shadow-sm flex items-center gap-1">
-                        <Users size={10} /> Shared w/ You
-                    </div>
-                )}
-                {note.sharedWith && note.sharedWith.length > 0 && note.ownerId === user?.uid && (
-                    <div className="bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-b-md shadow-sm flex items-center gap-1">
-                        <Share2 size={10} /> Shared
-                    </div>
-                )}
-            </div>
-
-            <div className="flex justify-between items-start mb-3 pr-8">
-                <div className="flex gap-2">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${note.type === 'voice' ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-100 dark:border-teal-800 text-teal-600 dark:text-teal-400' :
-                        note.type === 'shopping' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-100 dark:border-yellow-800 text-yellow-600 dark:text-yellow-400' : 'bg-orange-50 dark:bg-orange-900/20 border-orange-100 dark:border-orange-800 text-orange-600 dark:text-orange-400'
-                        }`}>
-                        {note.type === 'voice' ? <Mic size={16} /> :
-                            note.type === 'shopping' ? <ShoppingCart size={16} /> : <FileText size={16} />}
-                    </div>
-                    <div className="min-w-0">
-                        {/* Title Logic: Only show if explicitly set and not generic "New Note" */}
-                        {note.title && note.title !== 'New Note' && note.title !== 'Untitled Note' && (
-                            <h3 className="font-bold text-gray-900 dark:text-gray-100 leading-tight text-sm truncate pr-2">{note.title}</h3>
-                        )}
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{note.date}</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Content Body */}
-            {note.type !== 'shopping' && note.content && (
-                <p className="text-gray-600 dark:text-gray-300 text-sm line-clamp-3 mb-4 leading-relaxed bg-gray-50/50 dark:bg-gray-800/50 p-2 rounded-lg break-words overflow-hidden w-full">{note.content}</p>
-            )}
-
-            {note.type === 'shopping' && (
-                <div className="space-y-1.5 mb-2" onClick={e => e.stopPropagation()}>
-                    {note.items.slice(0, 3).map((item, i) => (
-                        <div
-                            key={i}
-                            className="flex items-center gap-2 cursor-pointer group/item"
-                            onClick={() => {
-                                const newItems = [...note.items];
-                                newItems[i].done = !newItems[i].done;
-                                handleSave({ ...note, items: newItems });
-                            }}
-                        >
-                            <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${item.done ? 'bg-orange-500 border-orange-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700'}`}>
-                                {item.done && <Check size={10} className="text-white" />}
-                            </div>
-                            <span className={`text-xs ${item.done ? 'text-gray-400 line-through' : 'text-gray-700 dark:text-gray-300'}`}>{item.text}</span>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* Audio Player and Files - Same as before, just abbreviated for this edit since they were correct */}
-            {(note.type === 'voice' || note.audioData) && (
-                <div className="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-2 border border-gray-100 dark:border-gray-700 mb-3 group-hover:border-gray-200 transition-colors" onClick={e => e.stopPropagation()}>
-                    <button
-                        onClick={() => handlePlayAudio(note)}
-                        className={`w-full h-8 bg-white dark:bg-gray-800 rounded-lg border flex items-center justify-center gap-2 text-xs font-medium transition-all shadow-sm ${playingNoteId === note.id ? 'border-orange-200 text-orange-600 bg-orange-50' : 'border-gray-200 text-gray-700 hover:text-teal-600'}`}
-                    >
-                        {playingNoteId === note.id ? <StopCircle size={14} className="fill-current" /> : <Play size={14} className="fill-current" />}
-                        {playingNoteId === note.id ? 'Stop' : `Play${note.audioLength ? ` (${note.audioLength})` : ''}`}
-                    </button>
-                </div>
-            )}
-
-            {/* Files logic... kept simple */}
-
-            <div className="flex justify-between items-center mt-auto pt-2 border-t border-gray-50 dark:border-gray-700">
-                <div className="flex gap-2 flex-wrap">
-                    {note.tags && note.tags.map(tag => (
-                        <span key={tag} className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded-md text-[10px] font-bold">#{tag}</span>
-                    ))}
-                </div>
-
-                {/* Actions Row */}
-                <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleSave({ ...note, isPinned: !note.isPinned });
-                        }}
-                        className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${note.isPinned ? 'text-orange-500' : 'text-gray-400 hover:text-orange-500'}`}
-                        title={note.isPinned ? "Unpin" : "Pin to Top"}
-                    >
-                        <Pin size={14} className={note.isPinned ? "fill-current" : ""} />
-                    </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleSave({ ...note, width: note.width === 'full' ? 'half' : 'full' });
-                        }}
-                        className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-colors hidden md:block"
-                        title={note.width === 'full' ? "Half Width" : "Full Width"}
-                    >
-                        {note.width === 'full' ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                    </button>
-
-                    {note.ownerId === user?.uid && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setSharingNote(note); }}
-                            className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-orange-600 transition-colors"
-                        >
-                            <Share2 size={14} />
-                        </button>
-                    )}
-                    {note.ownerId === user?.uid && (
-                        <button onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm('Delete this note?')) {
-                                dataService.deleteNote(note.id);
-                                setTriggerReload(prev => prev + 1);
-                            }
-                        }} className="p-1.5 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 transition-colors">
-                            <Trash2 size={14} />
-                        </button>
-                    )}
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            navigate('/reminders', { state: { convertFromNote: note } });
-                        }}
-                        className="p-1.5 rounded-full hover:bg-orange-50 dark:hover:bg-orange-900/30 text-gray-400 hover:text-orange-500 transition-colors"
-                        title="Convert to Reminder"
-                    >
-                        <ArrowRightLeft size={14} />
-                    </button>
-                </div>
-            </div>
-        </Reorder.Item>
-    );
-};
-
 
 export default NotesPage;
