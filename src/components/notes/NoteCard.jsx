@@ -271,7 +271,13 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
                         const snippet = match.extractedText.substring(start, end);
 
                         return (
-                            <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-md text-xs text-gray-600 dark:text-gray-400 italic">
+                            <div
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPreviewData({ title: match.name, text: match.extractedText });
+                                }}
+                                className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-md text-xs text-gray-600 dark:text-gray-400 italic cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-900/20 transition-colors"
+                            >
                                 <span className="font-bold not-italic text-yellow-700 dark:text-yellow-500 block mb-0.5">Match in {match.name}:</span>
                                 "...{snippet}..."
                             </div>
