@@ -457,6 +457,23 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
             if (recordedData) finalAudioData = recordedData;
         }
 
+        // CAPTURE PENDING TRANSCRIPT (Fix for "Done" button race condition)
+        // If we are listening, the current transcript hasn't been merged into 'content' state yet via effect.
+        // We must manually merge it for the save payload.
+        let finalContent = content;
+        let finalItems = items;
+
+        if (isListening && transcript) {
+            if (noteType === 'text') {
+                finalContent = (finalContent ? finalContent + ' ' : '') + transcript;
+            } else if (noteType === 'shopping') {
+                // For checklist, we might try to append as a new item if meaningful
+                // But checklist transcript logic is complex (it appends dynamically).
+                // The effect handles checklist updates. 
+                // However, for text note, it's critical.
+            }
+        }
+
         try {
             // Derive Title
             let finalTitle = title.trim();
@@ -466,7 +483,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                 finalTitle = 'Checklist';
             }
 
-            if (!finalTitle && !content && items.length === 0 && files.length === 0 && !finalAudioData) finalTitle = "Untitled Note";
+            if (!finalTitle && !finalContent && finalItems.length === 0 && files.length === 0 && !finalAudioData) finalTitle = "Untitled Note";
 
             const finalFiles = files.map(f => {
                 if (f.storageData) {
@@ -485,8 +502,8 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
 
             const dataToSave = {
                 title: finalTitle,
-                content: noteType === 'text' ? content : '',
-                items: noteType === 'shopping' ? items.filter(i => i.text.trim()) : undefined,
+                content: noteType === 'text' ? finalContent : '',
+                items: noteType === 'shopping' ? finalItems.filter(i => i.text.trim()) : undefined,
                 tags: tags.split(',').map(t => t.trim()).filter(Boolean),
                 type: noteType,
                 date: noteToEdit ? noteToEdit.date : new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' }),
