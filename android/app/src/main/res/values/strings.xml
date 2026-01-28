@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RemindMe Buddy</string>
+    <string name="title_activity_main">RemindMe Buddy</string>
+    <string name="package_name">com.remindmebuddy.app</string>
+    <string name="custom_url_scheme">com.remindmebuddy.app</string>
+</resources>

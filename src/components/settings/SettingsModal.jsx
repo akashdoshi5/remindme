@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Moon, Sun, Save, Smartphone, LogOut, User, Trash2 } from 'lucide-react';
+import { X, Moon, Sun, Save, Smartphone, LogOut, User, Trash2, Bell } from 'lucide-react';
 import { dataService } from '../../services/data';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -139,6 +139,37 @@ const SettingsModal = ({ isOpen, onClose }) => {
                             </div>
                         </div>
                     </div>
+
+                    {/* Debug / Test Section */}
+                    <div>
+                        <h3 className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Troubleshooting</h3>
+                        <button
+                            onClick={async () => {
+                                alert("Scheduling test notification for 5 seconds from now. Please close the app immediately to test background delivery.");
+                                // Import dynamically or pass from props? 
+                                // Direct import of hook logic is hard here inside a component without props.
+                                // We'll assume the user has the latest APK and this logic interacts with the system.
+                                // Actually, let's use the Capacitor plugin directly here for the specific test action
+                                // to ensure it runs insulated from other logic.
+                                const { LocalNotifications } = await import('@capacitor/local-notifications');
+                                await LocalNotifications.schedule({
+                                    notifications: [{
+                                        title: 'Test Reminder',
+                                        body: 'This is a test notification from RemindMe Buddy',
+                                        id: 999999,
+                                        schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
+                                        sound: 'default',
+                                        channelId: 'reminders',
+                                        importance: 5
+                                    }]
+                                });
+                            }}
+                            className="w-full p-3 rounded-xl bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 font-medium text-sm flex items-center justify-center gap-2"
+                        >
+                            <Bell size={16} /> Test Notification (5s)
+                        </button>
+                    </div>
+
                     {/* Danger Zone */}
                     <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
                         <h3 className="text-sm font-bold text-red-500 uppercase tracking-wider mb-2">Danger Zone</h3>

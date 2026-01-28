@@ -8,10 +8,15 @@ import {
     signOut,
     PhoneAuthProvider,
     RecaptchaVerifier,
-    signInWithPhoneNumber
+    signInWithPhoneNumber,
+    signInWithCredential,
+    setPersistence,
+    browserLocalPersistence
 } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
+import { Capacitor } from '@capacitor/core';
 
 const firebaseConfig = {
     apiKey: "AIzaSyBi1ZfMBLy3mA6EMOLtEfkWgqfCp2ghJwk",
@@ -26,14 +31,37 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+setPersistence(auth, browserLocalPersistence).catch((error) => {
+    console.error("Firebase persistence error", error);
+});
 const db = getFirestore(app);
+
+// Initialize Native Google Auth
+if (Capacitor.isNativePlatform()) {
+    GoogleAuth.initialize({
+        clientId: '973886994765-hm2vef586372i9d1crubnfq7dke3j0lf.apps.googleusercontent.com',
+        scopes: ['profile', 'email'],
+        grantOfflineAccess: true,
+    });
+}
 
 // Google Sign In
 const googleProvider = new GoogleAuthProvider();
 export const signInWithGoogle = async () => {
     try {
-        const result = await signInWithPopup(auth, googleProvider);
-        const user = result.user;
+        let user;
+        if (Capacitor.isNativePlatform()) {
+            // Native Google Sign-In
+            const googleUser = await GoogleAuth.signIn();
+            // Create credential
+            const credential = GoogleAuthProvider.credential(googleUser.authentication.idToken);
+            const result = await signInWithCredential(auth, credential);
+            user = result.user;
+        } else {
+            // Web Fallback
+            const result = await signInWithPopup(auth, googleProvider);
+            user = result.user;
+        }
         await createUserDocument(user);
         return user;
     } catch (error) {

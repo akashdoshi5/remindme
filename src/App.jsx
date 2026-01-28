@@ -148,7 +148,7 @@ const ProtectedRoute = ({ children }) => {
 
 const AppContent = () => {
   const { user } = useAuth();
-  const { requestPermission, sendNotification } = useNotifications();
+  const { requestPermission, sendNotification, scheduleReminders, clearDelivered } = useNotifications();
   const {
     isSearchOpen, closeSearch, openSearch,
     isSettingsOpen, closeSettings, openSettings,
@@ -157,13 +157,13 @@ const AppContent = () => {
 
   const [activeAlarm, setActiveAlarm] = useState(null);
 
-  // AudioContext is handled lazily in AlarmModal now to prevent unwanted noises.
-
   // Custom Hook handles all Data Synchronization
   useDataSync();
 
   // Request permission on load
-  requestPermission();
+  useEffect(() => {
+    requestPermission();
+  }, [requestPermission]);
 
   const dismissedAlarmsRef = React.useRef(new Set());
   const activeAlarmRef = React.useRef(null);
@@ -172,43 +172,51 @@ const AppContent = () => {
     activeAlarmRef.current = activeAlarm;
   }, [activeAlarm]);
 
-  // Check for due reminders every 10 seconds (more frequent checks)
+  // Schedule Reminders (Native) & In-App Alarm Check (Web/Foreground)
   useEffect(() => {
-    // Check for due reminders every 10 seconds
+    const syncReminders = () => {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const reminders = dataService.getRemindersForDate(todayStr);
+      // Schedule for Native (Background support)
+      scheduleReminders(reminders);
+    };
+
+    // Initial Sync
+    syncReminders();
+
+    const handleStorageUpdate = () => {
+      syncReminders();
+    };
+
+    window.addEventListener('storage-update', handleStorageUpdate);
+
+    // In-App Polling (Only for Modal when App is Open)
     const interval = setInterval(() => {
       const now = new Date();
       const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-
       const todayStr = new Date().toISOString().split('T')[0];
       const reminders = dataService.getRemindersForDate(todayStr);
 
       reminders.forEach(reminder => {
         if (reminder.displayTime === currentTime && (reminder.status === 'upcoming' || reminder.status === 'snoozed')) {
+          if (dismissedAlarmsRef.current.has(reminder.uniqueId)) return;
+          if (activeAlarmRef.current && activeAlarmRef.current.uniqueId === reminder.uniqueId) return;
 
-          // Check if already dismissed this session
-          if (dismissedAlarmsRef.current.has(reminder.uniqueId)) {
-            return;
-          }
-
-          // Check against Ref to see if we are already alerting for this one
-          if (activeAlarmRef.current && activeAlarmRef.current.uniqueId === reminder.uniqueId) {
-            return; // Already active, don't spam notification
-          }
-
-          setActiveAlarm(reminder); // trigger ref update via effect above
-
-          sendNotification(`Reminder: ${reminder.title}`, {
-            body: reminder.instructions || `It's time for ${reminder.type}`,
-            tag: reminder.uniqueId,
-            requireInteraction: true,
-            renotify: true,
-            data: { url: window.location.href } // For SW click handling
-          });
+          setActiveAlarm(reminder); // Show In-App Modal
+          // Note: We do NOT call sendNotification here for Native anymore, relying on scheduleReminders.
+          // For Web, we could call it, but focusing on Android fix.
         }
       });
-    }, 10000);
+    }, 10000); // Check every 10s
 
-    // Keyboard shortcuts
+    return () => {
+      window.removeEventListener('storage-update', handleStorageUpdate);
+      clearInterval(interval);
+    };
+  }, [scheduleReminders]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
@@ -218,10 +226,9 @@ const AppContent = () => {
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      clearInterval(interval);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [sendNotification, openSearch]);
+  }, [openSearch]);
 
   // Handle SW Actions
   useEffect(() => {
@@ -253,8 +260,25 @@ const AppContent = () => {
     };
 
     window.addEventListener('notification-action', handleAction);
-    return () => window.removeEventListener('notification-action', handleAction);
 
+    // Handle Service Worker Messages (Web)
+    const handleSWMessage = (event) => {
+      if (event.data && (event.data.action === 'snooze' || event.data.action === 'done')) {
+        // Dispatch as custom event to reuse the same logic
+        window.dispatchEvent(new CustomEvent('notification-action', { detail: event.data }));
+      }
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSWMessage);
+    }
+
+    return () => {
+      window.removeEventListener('notification-action', handleAction);
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+      }
+    };
   }, []);
 
   // Sync / Reactive UI: Listen for external data changes (e.g. phone snoozed the alarm)
@@ -353,6 +377,7 @@ const AppContent = () => {
           if (activeAlarm) {
             const instanceId = activeAlarm.instanceKey || null;
             dataService.snoozeReminder(activeAlarm.id, instanceId, duration || 15);
+            clearDelivered(activeAlarm.id); // Clear System Notification
             setActiveAlarm(null);
             window.dispatchEvent(new Event('storage-update'));
           }
@@ -361,6 +386,7 @@ const AppContent = () => {
           if (activeAlarm) {
             const instanceId = activeAlarm.instanceKey || null;
             dataService.completeReminder(activeAlarm.id, instanceId);
+            clearDelivered(activeAlarm.id); // Clear System Notification
             setActiveAlarm(null);
             window.dispatchEvent(new Event('storage-update'));
           }
