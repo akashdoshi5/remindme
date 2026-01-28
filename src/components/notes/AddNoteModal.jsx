@@ -206,7 +206,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
     }, [isOpen, noteType, searchQuery, content]);
 
     // --- AUDIO LOGIC ---
-    const MAX_AUDIO_SIZE = 5 * 1024 * 1024; // Increased to 5MB
+    const MAX_AUDIO_SIZE = 25 * 1024 * 1024; // Increased to 25MB
 
     const startRecordingRobust = React.useCallback(async () => {
         try {
@@ -378,10 +378,10 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
         const selectedFiles = Array.from(e.target.files);
         if (selectedFiles.length === 0) return;
 
-        const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+        const MAX_SIZE = 25 * 1024 * 1024; // 25MB
         const invalidFiles = selectedFiles.filter(f => f.size > MAX_SIZE);
         if (invalidFiles.length > 0) {
-            alert(`File(s) too large (Max 5MB):\n${invalidFiles.map(f => f.name).join('\n')}`);
+            alert(`File(s) too large (Max 25MB):\n${invalidFiles.map(f => f.name).join('\n')}`);
             return;
         }
 
