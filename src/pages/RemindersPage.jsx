@@ -99,22 +99,7 @@ const RemindersPage = () => {
             // Guard: Only initialize if not already editing to prevet overwrites during re-renders
             if (!editingReminder) {
                 const note = location.state.convertFromNote;
-                const now = new Date();
-                const h = String(now.getHours()).padStart(2, '0');
-                const m = String(now.getMinutes()).padStart(2, '0');
-                const timeStr = `${h}:${m}`;
-                const dateStr = now.toISOString().split('T')[0];
-
-                const draftReminder = {
-                    title: note.title,
-                    instructions: note.content,
-                    type: 'Other',
-                    id: null,
-                    isShared: false,
-                    status: 'upcoming',
-                    time: timeStr,
-                    date: dateStr
-                };
+                const draftReminder = dataService.convertNoteToReminder(note);
                 setEditingReminder(draftReminder);
                 setIsModalOpen(true);
                 // Clear state to prevent loop using Navigate to update React Router context

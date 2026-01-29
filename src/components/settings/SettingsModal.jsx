@@ -163,9 +163,9 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                     alert("Scheduling test notification for 5 seconds from now. Please close the app immediately to test background delivery.");
                                     const { LocalNotifications } = await import('@capacitor/local-notifications');
 
-                                    // FORCE Channel Creation V5
+                                    // FORCE Channel Creation V6
                                     await LocalNotifications.createChannel({
-                                        id: 'reminders_v5',
+                                        id: 'reminders_v6',
                                         name: 'Reminders (High Priority)',
                                         description: 'Reminders',
                                         importance: 5,
@@ -181,8 +181,8 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                             id: 999999,
                                             schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
                                             sound: 'default',
-                                            channelId: 'reminders_v5',
-                                            actionTypeId: 'REMINDER_ACTIONS_V5',
+                                            channelId: 'reminders_v6',
+                                            actionTypeId: 'REMINDER_ACTIONS_V6',
                                             extra: { uniqueId: 'test' }
                                         }]
                                     });

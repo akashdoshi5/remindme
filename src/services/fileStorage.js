@@ -1,6 +1,6 @@
 import { openDB } from 'idb';
 import { storage, auth } from './firebase'; // Import storage and auth
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 
 const DB_NAME = 'remindme-files-db';
 const STORE_NAME = 'files';
@@ -26,32 +26,39 @@ export const fileStorage = {
 
         // Cloud Storage (Firebase)
         if (user) {
-            return new Promise((resolve, reject) => {
-                const storageRef = ref(storage, `users/${user.uid}/files/${id}_${fileBlob.name}`);
-                const uploadTask = uploadBytesResumable(storageRef, fileBlob);
+            console.log(`Starting cloud upload to bucket: gs://remindme-app-9988.firebasestorage.app`);
+            console.log(`Path: users/${user.uid}/files/${id}`);
 
-                uploadTask.on('state_changed',
-                    (snapshot) => {
-                        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                        if (onProgress) onProgress(progress);
-                    },
-                    (error) => {
-                        console.error("Upload failed", error);
-                        reject(error);
-                    },
-                    async () => {
-                        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                        resolve({
-                            id: id,
-                            url: downloadURL,
-                            path: uploadTask.snapshot.ref.fullPath,
-                            type: 'cloud',
-                            name: fileBlob.name,
-                            mimeType: fileBlob.type
-                        });
-                    }
-                );
-            });
+            // Explicitly use the GS URL to avoid internal truncation bugs
+            const storageRef = ref(storage, `gs://remindme-app-9988.firebasestorage.app/users/${user.uid}/files/${id}`);
+
+            try {
+                // TRY MINIMAL UPLOAD FIRST (No metadata to avoid potential header/character issues)
+                const snapshot = await uploadBytes(storageRef, fileBlob);
+                console.log("Upload snapshot received:", snapshot);
+
+                const downloadURL = await getDownloadURL(snapshot.ref);
+
+                if (onProgress) onProgress(100);
+
+                return {
+                    id: id,
+                    url: downloadURL,
+                    path: snapshot.ref.fullPath,
+                    type: 'cloud',
+                    name: fileBlob.name,
+                    mimeType: fileBlob.type
+                };
+            } catch (error) {
+                // AGGRESSIVE LOGGING
+                console.group("CRITICAL STORAGE UPLOAD ERROR");
+                console.error("Code:", error.code);
+                console.error("Message:", error.message);
+                console.error("Server Response:", error.serverResponse);
+                console.error("Full Error Object:", error);
+                console.groupEnd();
+                throw error;
+            }
         }
 
         // Local Storage (IndexedDB)

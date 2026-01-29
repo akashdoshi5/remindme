@@ -115,11 +115,14 @@ export const dataService = {
             // If snoozed, check if we are still within snooze window
             if (log.snoozedUntil) {
                 const now = new Date();
+
+                // FIX: Support ISO Timestamp for robust sync (Primary)
+                if (log.snoozedUntil.includes('T')) {
+                    return now < new Date(log.snoozedUntil);
+                }
+
+                // Legacy Fallback (HH:MM)
                 const current = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-                // Simple string comparison for HH:MM works for same-day
-                // IMPORTANT: Snooze often sets time efficiently.
-                // If current time < snoozedUntil, we are Done (Silent).
-                // If current time >= snoozedUntil, we are NOT Done (Ring).
                 return current < log.snoozedUntil;
             }
             return true;
@@ -199,24 +202,34 @@ export const dataService = {
                         if (exception && exception.status === 'cancelled') return;
 
                         // Calculate Effective Time
+                        // Calculate Effective Time & Check Status
+                        // FIX: Handle ISO Snooze Time for correct status (even if snoozed to next day)
                         let displayTime = exception?.time || time; // Use exception time if exists
-                        if (log && log.snoozedUntil && log.status === 'snoozed') {
-                            displayTime = log.snoozedUntil;
+                        let checkDateTime = new Date(dateString);
+                        // Default to scheduled time
+                        if (displayTime && displayTime.includes(':')) {
+                            const [th, tm] = displayTime.split(':').map(Number);
+                            checkDateTime.setHours(th, tm, 0, 0);
                         }
 
-                        let eventTimeMinutes = 0;
-                        if (displayTime && displayTime.includes(':')) {
-                            const [h, m] = displayTime.split(':').map(Number);
-                            eventTimeMinutes = h * 60 + m;
+                        if (log && log.snoozedUntil && log.status === 'snoozed') {
+                            if (log.snoozedUntil.includes('T')) {
+                                // ISO Format (New)
+                                checkDateTime = new Date(log.snoozedUntil); // Absolute time
+                                // Update display time to HH:MM for UI
+                                displayTime = checkDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+                            } else {
+                                // Legacy Format
+                                displayTime = log.snoozedUntil;
+                                const [sth, stm] = displayTime.split(':').map(Number);
+                                checkDateTime.setHours(sth, stm, 0, 0);
+                            }
                         }
 
                         // STRICT STATUS LOGIC
                         let status = 'upcoming'; // Default
-
                         const now = new Date();
-                        const checkDateTime = new Date(dateString);
-                        const [th, tm] = displayTime.split(':').map(Number);
-                        checkDateTime.setHours(th, tm, 0, 0);
+                        // checkDateTime already set above
 
                         const twoHoursMs = 2 * 60 * 60 * 1000;
                         const diff = now.getTime() - checkDateTime.getTime();
@@ -318,20 +331,29 @@ export const dataService = {
                         if (exception && exception.date && exception.date !== dateString) return;
 
                         let displayTime = exception?.time || time;
-                        if (log && log.snoozedUntil && log.status === 'snoozed') {
-                            displayTime = log.snoozedUntil;
-                        }
+                        let checkDateTime = new Date(dateString);
 
-                        // ... Status Logic ...
-                        let status = 'upcoming';
-                        const now = new Date();
-                        const checkDateTime = new Date(dateString);
                         if (displayTime) {
                             const [th, tm] = displayTime.split(':').map(Number);
                             checkDateTime.setHours(th, tm, 0, 0);
                         } else {
                             checkDateTime.setHours(23, 59, 0, 0);
                         }
+
+                        if (log && log.snoozedUntil && log.status === 'snoozed') {
+                            if (log.snoozedUntil.includes('T')) {
+                                checkDateTime = new Date(log.snoozedUntil);
+                                displayTime = checkDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+                            } else {
+                                displayTime = log.snoozedUntil;
+                                const [sth, stm] = displayTime.split(':').map(Number);
+                                checkDateTime.setHours(sth, stm, 0, 0);
+                            }
+                        }
+
+                        // ... Status Logic ...
+                        let status = 'upcoming';
+                        const now = new Date();
 
                         // Recalculate diff/status similar to before...
                         const twoHoursMs = 2 * 60 * 60 * 1000;
@@ -386,15 +408,25 @@ export const dataService = {
                         const log = (r.logs || {})[key];
 
                         let displayTime = ex.time; // Use exception time
-                        if (log && log.snoozedUntil && log.status === 'snoozed') displayTime = log.snoozedUntil;
-
-                        let status = 'upcoming';
-                        const now = new Date();
-                        const checkDateTime = new Date(dateString); // It is ON this date
+                        let checkDateTime = new Date(dateString); // It is ON this date
                         if (displayTime) {
                             const [th, tm] = displayTime.split(':').map(Number);
                             checkDateTime.setHours(th, tm, 0, 0);
                         }
+
+                        if (log && log.snoozedUntil && log.status === 'snoozed') {
+                            if (log.snoozedUntil.includes('T')) {
+                                checkDateTime = new Date(log.snoozedUntil);
+                                displayTime = checkDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+                            } else {
+                                displayTime = log.snoozedUntil;
+                                const [sth, stm] = displayTime.split(':').map(Number);
+                                checkDateTime.setHours(sth, stm, 0, 0);
+                            }
+                        }
+
+                        let status = 'upcoming';
+                        const now = new Date();
 
                         const diff = now.getTime() - checkDateTime.getTime();
                         const twoHoursMs = 2 * 60 * 60 * 1000;
@@ -489,25 +521,26 @@ export const dataService = {
     },
 
     // NEW: Detailed Status Logging for Medication
-    logReminderStatus: (id, instanceKey, status) => {
+    logReminderStatus: async (id, instanceKey, status) => {
+        if (auth.currentUser) {
+            const key = `logs.${instanceKey}`;
+            const payload = {
+                [key]: {
+                    status: status,
+                    takenAt: status === 'taken' ? new Date().toISOString() : null
+                }
+            };
+            await firestoreService.updateReminder(id, payload);
+        }
+
         if (!store.reminders) return;
+
         store.reminders = store.reminders.map(r => {
-            if (r.id === id) {
+            if (String(r.id) === String(id)) {
                 const newLogs = { ...(r.logs || {}) };
                 newLogs[instanceKey] = {
                     status: status,
                     takenAt: status === 'taken' ? new Date().toISOString() : null,
-                    // Allow passing extra data in the status update if needed (tricky with current signature)
-                    // ... but wait, the signature IS fixed.
-                    // We need a way to pass 'snoozedUntil'. 
-                    // Let's modify the signature or assume 'status' can be an object? No, 'status' is string.
-                    // Let's Overload or use a new method?
-                    // Actually, let's just make a new method 'logReminderAction' or modify this one to take an optional 'meta' arg.
-                    // But I can't easily change all call sites right now.
-                    // Wait, the user prompt asked to FIX logic.
-                    // Let's use `logReminderStatusWithTime` for snoozing too? use 'customTimestamp' as 'snoozedUntil'?
-                    // That function sets 'takenAt'. Confusing.
-                    // Let's stick to this change below:
                 };
                 return { ...r, logs: newLogs };
             }
@@ -516,7 +549,7 @@ export const dataService = {
 
         // Also add to global history if 'taken'
         if (status === 'taken') {
-            const r = store.reminders.find(item => item.id === id);
+            const r = store.reminders.find(item => String(item.id) === String(id));
             if (r) {
                 if (!store.history) store.history = [];
                 store.history.push({
@@ -525,12 +558,12 @@ export const dataService = {
                     title: r.title,
                     type: r.category || r.type,
                     status: 'taken',
-                    date: new Date().toLocaleDateString('en-CA'),
+                    date: new Date().toISOString().split('T')[0],
                     timestamp: new Date().toISOString()
                 });
             }
         }
-        save();
+        await save();
     },
 
     // NEW: Status logging with custom timestamp
@@ -577,7 +610,7 @@ export const dataService = {
                     title: r.title,
                     type: r.category || r.type,
                     status: 'taken',
-                    date: new Date(customTimestamp).toLocaleDateString('en-CA'),
+                    date: new Date(customTimestamp).toISOString().split('T')[0],
                     timestamp: customTimestamp
                 });
             }
@@ -597,7 +630,7 @@ export const dataService = {
             }
             // Local
             if (!store.reminders) return;
-            store.reminders = store.reminders.map(r => r.id === id ? { ...r, status: 'done', completedDate: new Date().toLocaleDateString() } : r);
+            store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, status: 'done', completedDate: new Date().toLocaleDateString() } : r);
             save();
         }
     },
@@ -615,7 +648,15 @@ export const dataService = {
     snoozeReminder: async (id, instanceKey = null, minutes = 15) => {
         const now = new Date();
         now.setMinutes(now.getMinutes() + minutes);
-        const newTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+        // FIX: Use full ISO string for snooze target to support cross-day snoozes and timezone safety
+        const newTimeISO = now.toISOString();
+        const legacyTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+        // We prefer ISO, but existing code might expect something? 
+        // We'll update the callers to handle ISO (as we did in getRemindersForDate)
+        const newTime = newTimeISO;
+
 
         if (auth.currentUser) {
             if (instanceKey) {
@@ -657,37 +698,6 @@ export const dataService = {
         return store.reminders.find(r => String(r.id) === String(id));
     },
 
-    // logReminderStatus implementation (Merging 'logReminderStatusWithTime'?)
-    // If it was missing or partial, let's redefine it robustly here.
-    logReminderStatus: async (id, instanceKey, status, customTime = null) => {
-        const timestamp = customTime || new Date().toISOString();
-        if (auth.currentUser) {
-            const key = `logs.${instanceKey}`;
-            const payload = {
-                [key]: {
-                    status: status,
-                    takenAt: status === 'taken' ? timestamp : null
-                }
-            };
-            await firestoreService.updateReminder(id, payload);
-            return;
-        }
-
-        // Local
-        if (!store.reminders) return;
-        store.reminders = store.reminders.map(r => {
-            if (String(r.id) === String(id)) {
-                const newLogs = { ...(r.logs || {}) };
-                newLogs[instanceKey] = {
-                    status: status,
-                    takenAt: status === 'taken' ? timestamp : null
-                };
-                return { ...r, logs: newLogs };
-            }
-            return r;
-        });
-        save();
-    },
 
     // History & Reports
     getHistory: () => [...(store.history || [])],
@@ -856,5 +866,35 @@ export const dataService = {
         store = JSON.parse(JSON.stringify(defaultData));
         // Force reload to clear state effectively
         window.location.reload();
+    },
+
+    _reset: () => {
+        store = JSON.parse(JSON.stringify(defaultData));
+    },
+
+    // CONVERSION HELPERS
+    convertNoteToReminder: (note) => {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        return {
+            title: note.title,
+            instructions: note.content,
+            type: 'Other',
+            id: null,
+            isShared: false,
+            status: 'upcoming',
+            time: `${h}:${m}`,
+            date: now.toISOString().split('T')[0]
+        };
+    },
+
+    convertReminderToNote: (reminder) => {
+        return {
+            title: reminder.title,
+            content: `Frequency: ${reminder.frequency || 'Once'}\nInstructions: ${reminder.instructions || 'None'}`,
+            type: 'text',
+            tags: [reminder.type || 'Other']
+        };
     }
 };

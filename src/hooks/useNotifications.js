@@ -13,7 +13,7 @@ export const useNotifications = () => {
             // Create Channel for Android - V5 Force Update
             if (result.display === 'granted') {
                 await LocalNotifications.createChannel({
-                    id: 'reminders_v5', // V5: New channel ID to clear old settings
+                    id: 'reminders_v6', // V6: New channel ID to clear old settings
                     name: 'Reminders (High Priority)',
                     description: 'Reminders for medications and tasks',
                     importance: 5,
@@ -47,9 +47,9 @@ export const useNotifications = () => {
                             body: options.body || '',
                             id: new Date().getTime() % 2147483647,
                             schedule: { at: new Date(Date.now() + 100) },
-                            channelId: 'reminders_v5',
+                            channelId: 'reminders_v6',
                             sound: 'default',
-                            actionTypeId: 'REMINDER_ACTIONS_V5',
+                            actionTypeId: 'REMINDER_ACTIONS_V6',
                             extra: options.data || null
                         }
                     ]
@@ -123,9 +123,9 @@ export const useNotifications = () => {
                             at: date,
                             allowWhileIdle: true
                         },
-                        channelId: 'reminders_v5',
+                        channelId: 'reminders_v6',
                         sound: 'default',
-                        actionTypeId: 'REMINDER_ACTIONS_V5',
+                        actionTypeId: 'REMINDER_ACTIONS_V6',
                         extra: { uniqueId: r.uniqueId }
                     };
                 }).filter(n => n !== null && !isNaN(n.id));
@@ -177,7 +177,7 @@ export const useNotifications = () => {
                 try {
                     await LocalNotifications.registerActionTypes({
                         types: [{
-                            id: 'REMINDER_ACTIONS_V5',
+                            id: 'REMINDER_ACTIONS_V6',
                             actions: [
                                 {
                                     id: 'snooze',
@@ -193,10 +193,10 @@ export const useNotifications = () => {
                         }]
                     });
 
-                    // Create Channel V5
+                    // Create Channel V6
                     if (res.display === 'granted') {
                         await LocalNotifications.createChannel({
-                            id: 'reminders_v5',
+                            id: 'reminders_v6',
                             name: 'Reminders (High Priority)',
                             description: 'Reminders for medications and tasks',
                             importance: 5,

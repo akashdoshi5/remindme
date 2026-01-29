@@ -300,7 +300,7 @@ const AppContent = () => {
       />
       <AlarmModal
         reminder={activeAlarm}
-        isSilent={() => {
+        isSilent={(() => {
           const settings = dataService.getSettings();
           if (!settings || !settings.sleepStart || !settings.sleepEnd) return false;
 
@@ -318,7 +318,7 @@ const AppContent = () => {
           } else {
             return currentMinutes >= startMinutes && currentMinutes < endMinutes;
           }
-        }}
+        })()}
         onSnooze={(duration) => {
           if (activeAlarm) {
             const instanceId = activeAlarm.instanceKey || null;

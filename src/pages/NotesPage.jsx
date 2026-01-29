@@ -59,12 +59,7 @@ const NotesPage = () => {
 
         if (location.state?.convertFromReminder) {
             const reminder = location.state.convertFromReminder;
-            const convertedNote = {
-                title: reminder.title,
-                content: `Frequency: ${reminder.frequency}\nInstructions: ${reminder.instructions || 'None'}`,
-                type: 'text',
-                tags: [reminder.type]
-            };
+            const convertedNote = dataService.convertReminderToNote(reminder);
             setEditingNote(convertedNote);
             setIsModalOpen(true);
             window.history.replaceState({}, document.title);

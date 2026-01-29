@@ -171,9 +171,10 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
         const selected = Array.from(e.target.files);
         try {
             const processed = await Promise.all(selected.map(async (file) => {
-                const id = await fileStorage.saveFile(file);
+                const storageData = await fileStorage.saveFile(file);
                 return {
-                    id,
+                    id: storageData.id, // Keep for legacy if needed
+                    storageData: storageData,
                     name: file.name,
                     type: file.type,
                     size: file.size,
@@ -211,6 +212,21 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             }
         }
 
+        const finalFiles = files.map(f => {
+            if (f.storageData) {
+                return {
+                    id: f.storageData.id,
+                    name: f.name,
+                    type: f.type,
+                    url: f.storageData.url,
+                    storageType: f.storageData.type,
+                    path: f.storageData.path,
+                    extractedText: f.extractedText || ''
+                };
+            }
+            return f;
+        });
+
         const data = {
             title,
             type,
@@ -219,7 +235,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             isShared: reminderToEdit ? reminderToEdit.isShared : false,
             status: reminderToEdit ? reminderToEdit.status : 'upcoming',
             id: reminderToEdit ? reminderToEdit.id : undefined,
-            files: files,
+            files: finalFiles,
             date: startDate || new Date().toISOString().split('T')[0]
         };
 

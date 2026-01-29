@@ -13,11 +13,11 @@ export const initializeNotifications = async () => {
             await LocalNotifications.requestPermissions();
         }
 
-        // 2. Register Action Types (Buttons) - V5
+        // 2. Register Action Types (Buttons) - V6
         try {
             await LocalNotifications.registerActionTypes({
                 types: [{
-                    id: 'REMINDER_ACTIONS_V5',
+                    id: 'REMINDER_ACTIONS_V6',
                     actions: [
                         {
                             id: 'snooze',
@@ -32,24 +32,24 @@ export const initializeNotifications = async () => {
                     ]
                 }]
             });
-            console.log("Action Types V5 Registered");
+            console.log("Action Types V6 Registered");
         } catch (e) {
             console.error("Error registering action types:", e);
         }
 
-        // 3. Create Channel - V5
+        // 3. Create Channel - V8 (Migration for Sound Fix)
         try {
             await LocalNotifications.createChannel({
-                id: 'reminders_v5',
-                name: 'Reminders (High Priority)',
-                description: 'Reminders for medications and tasks',
+                id: 'reminders_v8',
+                name: 'Reminders (Sound & Priority)',
+                description: 'Medication and Important Reminders',
                 importance: 5,
                 visibility: 1,
-                sound: 'default',
+                sound: 'default', // Explicitly request default sound
                 vibration: true,
                 lights: true,
             });
-            console.log("Channel V5 Created");
+            console.log("Channel V8 Created");
         } catch (e) {
             console.error("Error creating channel:", e);
         }
