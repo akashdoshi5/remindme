@@ -110,6 +110,14 @@ const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
                         <h2 className="text-3xl font-bold mb-2">{reminder.title}</h2>
                         <p className="text-orange-100 text-lg">{reminder.time}</p>
 
+                        {/* Silent Mode Indicator */}
+                        {typeof isSilent === 'function' && isSilent() && (
+                            <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/20 text-white/90 text-sm font-medium backdrop-blur-md border border-white/10">
+                                <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
+                                Silent Mode Active (Sleep Schedule)
+                            </div>
+                        )}
+
                         {/* Ripple Effect Background */}
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-white/10 rounded-full blur-3xl -z-10 animate-pulse"></div>
                     </div>

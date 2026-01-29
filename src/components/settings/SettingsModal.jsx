@@ -146,27 +146,65 @@ const SettingsModal = ({ isOpen, onClose }) => {
                         <button
                             onClick={async () => {
                                 alert("Scheduling test notification for 5 seconds from now. Please close the app immediately to test background delivery.");
-                                // Import dynamically or pass from props? 
-                                // Direct import of hook logic is hard here inside a component without props.
-                                // We'll assume the user has the latest APK and this logic interacts with the system.
-                                // Actually, let's use the Capacitor plugin directly here for the specific test action
-                                // to ensure it runs insulated from other logic.
                                 const { LocalNotifications } = await import('@capacitor/local-notifications');
+
+                                // FORCE Registration of Actions V4
+                                await LocalNotifications.registerActionTypes({
+                                    types: [{
+                                        id: 'REMINDER_ACTIONS_V4',
+                                        actions: [
+                                            {
+                                                id: 'snooze',
+                                                title: 'Snooze',
+                                            },
+                                            {
+                                                id: 'done',
+                                                title: 'Mark as Done',
+                                            }
+                                        ]
+                                    }]
+                                });
+
+                                // FORCE Channel Creation V4
+                                await LocalNotifications.createChannel({
+                                    id: 'reminders_v4',
+                                    name: 'Reminders (High Priority)',
+                                    description: 'Reminders',
+                                    importance: 5,
+                                    visibility: 1,
+                                    sound: 'default',
+                                    vibration: true,
+                                });
+
                                 await LocalNotifications.schedule({
                                     notifications: [{
                                         title: 'Test Reminder',
-                                        body: 'This is a test notification from RemindMe Buddy',
+                                        body: 'Expand this notification to see buttons!',
                                         id: 999999,
                                         schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
                                         sound: 'default',
-                                        channelId: 'reminders',
-                                        importance: 5
+                                        channelId: 'reminders_v4',
+                                        actionTypeId: 'REMINDER_ACTIONS_V4',
+                                        importance: 5,
+                                        extra: { uniqueId: 'test' }
                                     }]
                                 });
                             }}
-                            className="w-full p-3 rounded-xl bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 font-medium text-sm flex items-center justify-center gap-2"
+                            className="w-full p-3 rounded-xl bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 font-medium text-sm flex items-center justify-center gap-2 mb-2"
                         >
                             <Bell size={16} /> Test Notification (5s)
+                        </button>
+
+                        <button
+                            onClick={async () => {
+                                // Open Android App Settings for the user to manually enable "Alarms" / "Battery"
+                                // There isn't a direct cross-platform way to "request" battery ignore in Cap without a specific plugin.
+                                // Best effort: Alert the user what to do.
+                                alert("1. Go to App Info > Battery > Unrestricted / No Restrictions.\n2. Go to App Info > Alarms & Reminders > Allow.\n3. Make sure 'Autostart' is on (if available).");
+                            }}
+                            className="w-full p-3 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium text-sm flex items-center justify-center gap-2"
+                        >
+                            <Smartphone size={16} /> Fix Background Issues
                         </button>
                     </div>
 

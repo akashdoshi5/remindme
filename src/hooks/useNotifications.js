@@ -10,16 +10,17 @@ export const useNotifications = () => {
             const result = await LocalNotifications.requestPermissions();
             setPermission(result.display);
 
-            // Create Channel for Android
+            // Create Channel for Android - V5 Force Update
             if (result.display === 'granted') {
                 await LocalNotifications.createChannel({
-                    id: 'reminders',
-                    name: 'Reminders',
+                    id: 'reminders_v5', // V5: New channel ID to clear old settings
+                    name: 'Reminders (High Priority)',
                     description: 'Reminders for medications and tasks',
-                    importance: 5, // High importance
-                    visibility: 1, // Public
+                    importance: 5,
+                    visibility: 1,
                     sound: 'default',
                     vibration: true,
+                    lights: true,
                 });
             }
             return result.display;
@@ -37,17 +38,17 @@ export const useNotifications = () => {
     const sendNotification = useCallback(async (title, options = {}) => {
         try {
             if (Capacitor.isNativePlatform()) {
-                // Immediate notification (for testing or immediate alerts)
+                // Immediate notification
                 await LocalNotifications.schedule({
                     notifications: [
                         {
                             title: title,
                             body: options.body || '',
-                            id: new Date().getTime(),
+                            id: new Date().getTime() % 2147483647,
                             schedule: { at: new Date(Date.now() + 100) },
-                            channelId: 'reminders',
+                            channelId: 'reminders_v5',
                             sound: 'default',
-                            actionTypeId: "",
+                            actionTypeId: 'REMINDER_ACTIONS_V5', // Ensure buttons appear
                             extra: options.data || null
                         }
                     ]
@@ -62,17 +63,12 @@ export const useNotifications = () => {
         }
     }, []);
 
-    // Clear delivered notifications (e.g. when snoozed/done via App)
     const clearDelivered = useCallback(async (id) => {
         if (!Capacitor.isNativePlatform()) return;
         try {
             if (id) {
-                // Remove specific
-                await LocalNotifications.removeDeliveredNotifications({
-                    notifications: [{ id: id }]
-                });
+                await LocalNotifications.removeDeliveredNotifications({ notifications: [{ id: id }] });
             } else {
-                // Remove all (fallback)
                 await LocalNotifications.removeAllDeliveredNotifications();
             }
         } catch (error) {
@@ -80,12 +76,10 @@ export const useNotifications = () => {
         }
     }, []);
 
-    // New: Schedule Batch Reminders
     const scheduleReminders = useCallback(async (reminders) => {
         if (!Capacitor.isNativePlatform()) return;
 
         try {
-            // Cancel all pending first to avoid duplicates (naive approach)
             const pending = await LocalNotifications.getPending();
             if (pending.notifications.length > 0) {
                 await LocalNotifications.cancel(pending);
@@ -97,27 +91,32 @@ export const useNotifications = () => {
                 const date = new Date();
                 date.setHours(h, m, 0, 0);
 
-                if (date <= new Date()) {
-                    return null;
-                }
+                if (date <= new Date()) return null;
+
+                const safeId = parseInt(r.id) % 2147483647;
+
+                // CLEANUP: If instruction is empty, don't fallback to generic text that might be unwanted.
+                // Just use empty string or rely on Title.
+                const bodyText = r.instructions ? r.instructions : '';
 
                 return {
-                    title: `Reminder: ${r.title}`,
-                    body: r.instructions || `It's time for ${r.type}`,
-                    id: parseInt(r.id), // Ensure ID matches what we used for storage
+                    title: r.title,
+                    body: bodyText,
+                    id: safeId,
                     schedule: {
                         at: date,
                         allowWhileIdle: true // Critical for Doze mode
                     },
-                    channelId: 'reminders',
-                    sound: 'default', // Explicitly request sound
+                    channelId: 'reminders_v5',
+                    sound: 'default',
+                    actionTypeId: 'REMINDER_ACTIONS_V5',
                     extra: { uniqueId: r.uniqueId }
                 };
             }).filter(n => n !== null && !isNaN(n.id));
 
             if (notificationsToSchedule.length > 0) {
                 await LocalNotifications.schedule({ notifications: notificationsToSchedule });
-                console.log(`Scheduled ${notificationsToSchedule.length} notifications`);
+                console.log(`Scheduled ${notificationsToSchedule.length} notifications (V5)`);
             }
 
         } catch (error) {
@@ -125,26 +124,58 @@ export const useNotifications = () => {
         }
     }, []);
 
+    // Registration of actions (Buttons)
     useEffect(() => {
         if (Capacitor.isNativePlatform()) {
             LocalNotifications.checkPermissions().then(async (res) => {
                 setPermission(res.display);
-                if (res.display === 'granted') {
-                    // Start listener
+
+                // ALWAYS Try to register types if native, regardless of permission state (sometimes needed pre-grant)
+                // or just do it on load.
+                try {
+                    await LocalNotifications.registerActionTypes({
+                        types: [{
+                            id: 'REMINDER_ACTIONS_V5',
+                            actions: [
+                                {
+                                    id: 'snooze',
+                                    title: 'Snooze',
+                                    foreground: false // Background action preferred
+                                },
+                                {
+                                    id: 'done',
+                                    title: 'Mark as Done',
+                                    foreground: false
+                                }
+                            ]
+                        }]
+                    });
+
+                    // Create Channel V5
+                    if (res.display === 'granted') {
+                        await LocalNotifications.createChannel({
+                            id: 'reminders_v5',
+                            name: 'Reminders (High Priority)',
+                            description: 'Reminders for medications and tasks',
+                            importance: 5,
+                            visibility: 1,
+                            sound: 'default',
+                            vibration: true,
+                            lights: true,
+                        });
+                    }
+
+                    // Listener for actions
                     LocalNotifications.addListener('localNotificationActionPerformed', (payload) => {
                         console.log('Notification action:', payload);
-                        window.dispatchEvent(new CustomEvent('notification-action', { detail: { action: payload.actionId, tag: payload.notification.extra?.uniqueId } }));
+                        // Dispatch event for UI or Service handling
+                        window.dispatchEvent(new CustomEvent('notification-action', {
+                            detail: { action: payload.actionId, tag: payload.notification.extra?.uniqueId }
+                        }));
                     });
-                    // Create Channel (ensure it exists)
-                    await LocalNotifications.createChannel({
-                        id: 'reminders',
-                        name: 'Reminders',
-                        description: 'Reminders for medications and tasks',
-                        importance: 5,
-                        visibility: 1,
-                        sound: 'default',
-                        vibration: true,
-                    });
+
+                } catch (e) {
+                    console.error("Error initializing notifications V5", e);
                 }
             });
         } else {
@@ -152,9 +183,19 @@ export const useNotifications = () => {
         }
     }, []);
 
+    const checkPermissions = useCallback(async () => {
+        if (Capacitor.isNativePlatform()) {
+            const result = await LocalNotifications.checkPermissions();
+            setPermission(result.display);
+            return result.display;
+        }
+        return Notification.permission;
+    }, []);
+
     return {
         permission,
         requestPermission,
+        checkPermissions,
         sendNotification,
         scheduleReminders,
         clearDelivered
