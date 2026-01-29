@@ -1,10 +1,10 @@
 {
   "appId": "com.remindmebuddy.app",
-  "appName": "RemindMe Buddy",
+  "appName": "RemindMe",
   "webDir": "dist",
   "plugins": {
     "LocalNotifications": {
-      "smallIcon": "ic_stat_notifications",
+      "smallIcon": "ic_stat_notification",
       "iconColor": "#488AFF",
       "sound": "default"
     }

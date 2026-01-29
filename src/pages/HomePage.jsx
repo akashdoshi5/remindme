@@ -39,7 +39,7 @@ import { useAuth } from '../context/AuthContext';
 
 import { useUI } from '../context/UIContext';
 
-import PermissionBanner from '../components/common/PermissionBanner';
+
 
 const HomePage = () => {
     const { t } = useLanguage();
@@ -82,7 +82,7 @@ const HomePage = () => {
 
     return (
         <div className="max-w-6xl mx-auto px-4 pb-20">
-            <PermissionBanner />
+
             <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}

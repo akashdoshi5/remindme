@@ -112,6 +112,12 @@ export const fileStorage = {
         return null;
     },
 
+    // RECOVERY
+    getAllLocalFiles: async () => {
+        const db = await dbPromise;
+        return await db.getAll(STORE_NAME);
+    },
+
     deleteFile: async (fileRef) => {
         const id = typeof fileRef === 'string' ? fileRef : fileRef.id;
 

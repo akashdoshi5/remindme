@@ -17,6 +17,7 @@ export const useDataSync = () => {
         // 2. Setup Listeners
         const unsubReminders = firestoreService.getRemindersRealtime((data) => {
             dataService.syncFromCloud('reminders', data);
+            window.dispatchEvent(new Event('storage-update'));
         });
 
         // Combined Notes Listener
@@ -29,6 +30,7 @@ export const useDataSync = () => {
             ownedNotes.forEach(n => map.set(n.id, n));
             sharedNotes.forEach(n => map.set(n.id, n));
             dataService.syncFromCloud('notes', Array.from(map.values()));
+            window.dispatchEvent(new Event('storage-update'));
         };
 
         const unsubNotesOwned = firestoreService.getNotesRealtime((data) => {
@@ -43,10 +45,12 @@ export const useDataSync = () => {
 
         const unsubCaregivers = firestoreService.getCaregiversRealtime((data) => {
             dataService.syncFromCloud('caregivers', data);
+            window.dispatchEvent(new Event('storage-update'));
         });
 
         const unsubSettings = firestoreService.getSettingsRealtime((data) => {
             dataService.syncFromCloud('settings', data);
+            window.dispatchEvent(new Event('storage-update'));
         });
 
         // 3. Cleanup on Unmount/User Change

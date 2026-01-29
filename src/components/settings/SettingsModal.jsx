@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Moon, Sun, Save, Smartphone, LogOut, User, Trash2, Bell } from 'lucide-react';
+import { X, Moon, Sun, Save, Smartphone, LogOut, User, Trash2, Bell, RefreshCw } from 'lucide-react';
 import { dataService } from '../../services/data';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -42,7 +42,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
 
                 <div className="flex-1 overflow-y-auto p-6 pb-32 md:pb-6 flex flex-col gap-6">
                     {/* User Profile Section */}
-                    {user && (
+                    {user ? (
                         <div className="flex items-center gap-4 pb-6 border-b border-gray-100 dark:border-gray-800">
                             <div className="w-16 h-16 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center overflow-hidden border-2 border-orange-200 dark:border-orange-800">
                                 {user.photoURL ? (
@@ -66,6 +66,19 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                     <LogOut size={12} /> Sign Out
                                 </button>
                             </div>
+                        </div>
+                    ) : (
+                        <div className="bg-orange-50 dark:bg-orange-900/10 p-4 rounded-xl flex items-center justify-between mb-6 border border-orange-100 dark:border-orange-800/30">
+                            <div>
+                                <h3 className="font-bold text-gray-900 dark:text-white">Guest Mode</h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Sign in to sync your data</p>
+                            </div>
+                            <button
+                                onClick={() => { onClose(); window.location.href = '/login'; }}
+                                className="px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg font-bold text-sm shadow-md shadow-orange-500/20 active:scale-95 transition-transform"
+                            >
+                                Log In
+                            </button>
                         </div>
                     )}
                     {/* Theme Settings */}
@@ -140,72 +153,70 @@ const SettingsModal = ({ isOpen, onClose }) => {
                         </div>
                     </div>
 
-                    {/* Debug / Test Section */}
+                    {/* Troubleshooting Section */}
                     <div>
                         <h3 className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Troubleshooting</h3>
-                        <button
-                            onClick={async () => {
-                                alert("Scheduling test notification for 5 seconds from now. Please close the app immediately to test background delivery.");
-                                const { LocalNotifications } = await import('@capacitor/local-notifications');
+                        <div className="space-y-3">
+                            {/* Test Notification */}
+                            <button
+                                onClick={async () => {
+                                    alert("Scheduling test notification for 5 seconds from now. Please close the app immediately to test background delivery.");
+                                    const { LocalNotifications } = await import('@capacitor/local-notifications');
 
-                                // FORCE Registration of Actions V4
-                                await LocalNotifications.registerActionTypes({
-                                    types: [{
-                                        id: 'REMINDER_ACTIONS_V4',
-                                        actions: [
-                                            {
-                                                id: 'snooze',
-                                                title: 'Snooze',
-                                            },
-                                            {
-                                                id: 'done',
-                                                title: 'Mark as Done',
-                                            }
-                                        ]
-                                    }]
-                                });
-
-                                // FORCE Channel Creation V4
-                                await LocalNotifications.createChannel({
-                                    id: 'reminders_v4',
-                                    name: 'Reminders (High Priority)',
-                                    description: 'Reminders',
-                                    importance: 5,
-                                    visibility: 1,
-                                    sound: 'default',
-                                    vibration: true,
-                                });
-
-                                await LocalNotifications.schedule({
-                                    notifications: [{
-                                        title: 'Test Reminder',
-                                        body: 'Expand this notification to see buttons!',
-                                        id: 999999,
-                                        schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
-                                        sound: 'default',
-                                        channelId: 'reminders_v4',
-                                        actionTypeId: 'REMINDER_ACTIONS_V4',
+                                    // FORCE Channel Creation V5
+                                    await LocalNotifications.createChannel({
+                                        id: 'reminders_v5',
+                                        name: 'Reminders (High Priority)',
+                                        description: 'Reminders',
                                         importance: 5,
-                                        extra: { uniqueId: 'test' }
-                                    }]
-                                });
-                            }}
-                            className="w-full p-3 rounded-xl bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 font-medium text-sm flex items-center justify-center gap-2 mb-2"
-                        >
-                            <Bell size={16} /> Test Notification (5s)
-                        </button>
+                                        visibility: 1,
+                                        sound: 'default',
+                                        vibration: true,
+                                    });
 
-                        <button
-                            onClick={async () => {
-                                // Open Android App Settings for the user to manually enable "Alarms" / "Battery"
-                                // There isn't a direct cross-platform way to "request" battery ignore in Cap without a specific plugin.
-                                // Best effort: Alert the user what to do.
-                                alert("1. Go to App Info > Battery > Unrestricted / No Restrictions.\n2. Go to App Info > Alarms & Reminders > Allow.\n3. Make sure 'Autostart' is on (if available).");
-                            }}
-                            className="w-full p-3 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium text-sm flex items-center justify-center gap-2"
-                        >
-                            <Smartphone size={16} /> Fix Background Issues
-                        </button>
+                                    await LocalNotifications.schedule({
+                                        notifications: [{
+                                            title: 'Test Reminder',
+                                            body: 'If you see this, notifications are working!',
+                                            id: 999999,
+                                            schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
+                                            sound: 'default',
+                                            channelId: 'reminders_v5',
+                                            actionTypeId: 'REMINDER_ACTIONS_V5',
+                                            extra: { uniqueId: 'test' }
+                                        }]
+                                    });
+                                }}
+                                className="w-full p-3 rounded-xl bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 font-medium text-sm flex items-center justify-center gap-2"
+                            >
+                                <Bell size={16} /> Test Notification (5s)
+                            </button>
+
+                            {/* Fix Background Issues */}
+                            <button
+                                onClick={async () => {
+                                    alert("1. Go to App Info > Battery > Unrestricted.\n2. Go to App Info > Alarms & Reminders > Allow.\n3. Turn on Autostart (Xiaomi/Oppo).");
+                                }}
+                                className="w-full p-3 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium text-sm flex items-center justify-center gap-2"
+                            >
+                                <Smartphone size={16} /> Fix Background Issues
+                            </button>
+
+                            {/* Recovery */}
+                            <button
+                                onClick={async () => {
+                                    if (window.confirm("Start scanning for lost files?")) {
+                                        const { recoveryService } = await import('../../services/recoveryService');
+                                        const result = await recoveryService.scanAndRecover(user ? user.uid : 'guest');
+                                        alert(result.message);
+                                        if (result.recoveredCount > 0) window.location.reload();
+                                    }
+                                }}
+                                className="w-full p-3 rounded-xl bg-amber-50 dark:bg-amber-900/10 text-amber-600 dark:text-amber-400 font-medium text-sm flex items-center justify-center gap-2"
+                            >
+                                <RefreshCw size={16} /> Scan & Recover Lost Files
+                            </button>
+                        </div>
                     </div>
 
                     {/* Danger Zone */}
@@ -213,7 +224,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
                         <h3 className="text-sm font-bold text-red-500 uppercase tracking-wider mb-2">Danger Zone</h3>
                         <button
                             onClick={() => {
-                                if (window.confirm("Are you sure? This will PERMANENTLY DELETE all your notes, reminders, and files from the cloud. This action cannot be undone.")) {
+                                if (window.confirm("PERMANENTLY DELETE all data? This cannot be undone.")) {
                                     if (window.confirm("Really delete everything?")) {
                                         dataService.deleteAllData();
                                     }

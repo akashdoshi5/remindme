@@ -1,7 +1,7 @@
 export const translations = {
     en: {
         appTitle: 'RemindMe',
-        welcome: 'Welcome',
+        welcome: 'Welcome back',
         greeting: 'Hello',
         upcomingReminders: 'Upcoming Reminders',
         pastReminders: 'Past Reminders',

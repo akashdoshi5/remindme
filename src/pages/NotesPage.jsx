@@ -139,11 +139,13 @@ const NotesPage = () => {
 
     const handleSave = async (data) => {
         let savedParams;
-        if (data.id) {
+        if (data.id && !data.forceCreate) {
             await dataService.updateNote(data.id, data);
             savedParams = data;
         } else {
-            savedParams = await dataService.addNote(data);
+            // Remove forceCreate flag before sending to service
+            const { forceCreate, ...cleanData } = data;
+            savedParams = await dataService.addNote(cleanData);
         }
         setTriggerReload(prev => prev + 1);
         return savedParams;

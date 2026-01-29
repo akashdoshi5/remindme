@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Activity, Users, Settings, X, LogOut, Globe, ChevronRight } from 'lucide-react';
+import { Activity, Users, Settings, X, LogOut, Globe, ChevronRight, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -26,6 +26,43 @@ const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
                     <button onClick={onClose} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 transaction-colors">
                         <X size={20} className="text-gray-600 dark:text-gray-400" />
                     </button>
+                </div>
+
+                {/* AUTH STATUS HEADER */}
+                <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full overflow-hidden bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center border-2 border-orange-200 dark:border-orange-800">
+                        {useAuth().user?.photoURL ? (
+                            <img src={useAuth().user.photoURL} alt="User" className="w-full h-full object-cover" />
+                        ) : (
+                            <User size={24} className="text-orange-500" />
+                        )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        {useAuth().user ? (
+                            <>
+                                <h3 className="font-bold text-gray-900 dark:text-white truncate">
+                                    {useAuth().user.displayName || 'Logged In'}
+                                </h3>
+                                <p className="text-xs text-green-600 font-medium flex items-center gap-1">
+                                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                    Sync Active
+                                </p>
+                                <p className="text-xs text-gray-400 truncate mt-0.5">{useAuth().user.email}</p>
+                            </>
+                        ) : (
+                            <>
+                                <h3 className="font-bold text-gray-900 dark:text-white">Guest Mode</h3>
+                                <p className="text-xs text-red-500 font-medium">Data not synced</p>
+                                <Link
+                                    to="/login"
+                                    onClick={onClose}
+                                    className="text-xs text-blue-600 font-bold mt-1 block hover:underline"
+                                >
+                                    Tap to Login & Sync
+                                </Link>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 mb-6">

@@ -385,15 +385,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
             return;
         }
 
-        // Limit Check (Simplified for brevity)
-        const allNotes = dataService.getNotes();
-        let currentDbCount = allNotes.reduce((acc, note) => acc + (note.files ? note.files.length : 0), 0);
-        if (noteToEdit) currentDbCount = Math.max(0, currentDbCount - (noteToEdit.files?.length || 0));
 
-        if (currentDbCount + files.length + selectedFiles.length > 50) {
-            alert("Storage Limit Exceeded (Max 50 files total).");
-            return;
-        }
 
         const newFileEntries = selectedFiles.map(f => ({
             tempId: crypto.randomUUID(),
@@ -433,12 +425,17 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
 
     // Submit
     // Auto-save logic
-    const [localId, setLocalId] = useState(noteToEdit?.id || null);
+    // CRITICAL: Pre-generate ID for new notes to prevent duplicates on auto-save race conditions
+    const [localId, setLocalId] = useState(noteToEdit?.id || crypto.randomUUID());
+    const [isNew, setIsNew] = useState(!noteToEdit);
     const [saveStatus, setSaveStatus] = useState('saved'); // 'saved', 'saving', 'error'
     const lastSavedData = useRef(null);
 
-    // Initial ID sync
-    useEffect(() => { setLocalId(noteToEdit?.id || null); }, [noteToEdit]);
+    // Initial ID sync (if reopening for different note)
+    useEffect(() => {
+        setLocalId(noteToEdit?.id || crypto.randomUUID());
+        setIsNew(!noteToEdit);
+    }, [noteToEdit]);
 
     const performSave = async (shouldClose = false) => {
         if (files.some(f => f.status === 'uploading')) {
@@ -509,9 +506,10 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                 date: noteToEdit ? noteToEdit.date : new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' }),
                 files: finalFiles,
                 audioData: finalAudioData,
-                id: localId || undefined, // Use localId if we created one in this session
+                id: localId, // Always present now
                 ownerId: noteToEdit?.ownerId, // Preserve owner
-                sharedWith: noteToEdit?.sharedWith // Preserve shared
+                sharedWith: noteToEdit?.sharedWith, // Preserve shared
+                forceCreate: isNew // Flag for parent to know this is a first-time save
             };
 
             // Simple check to avoid saving unchanged data recursively
@@ -523,9 +521,14 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
             const savedNote = await onSave(dataToSave);
 
             if (savedNote && savedNote.id) {
+                // We shouldn't strictly need to update localId if we pre-genned it, 
+                // but if backend overrides it, we respect that.
                 setLocalId(savedNote.id);
                 dataToSave.id = savedNote.id;
             }
+
+            // Mark as no longer new after first successful save
+            setIsNew(false);
 
             lastSavedData.current = dataToSave;
             setSaveStatus('saved');
@@ -558,7 +561,52 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
         }, 1500);
 
         return () => clearTimeout(timer);
-    }, [content, items, tags, files, audioData, noteType, title, recordingStatus]); // Dependencies: added recordingStatus
+    }, [content, items, tags, files, audioData, noteType, title, recordingStatus]);
+
+    // IMMEDIATE Save on File Upload Completion
+    // This addresses the user requirement: "when attachment is attached, note should explicitly save"
+    // IMPROVEMENT: For existing notes, we only save the 'files' field to avoid overwriting text/title concurrently/redundantly.
+    const prevFilesRef = useRef(files);
+    useEffect(() => {
+        const prevFiles = prevFilesRef.current;
+        const hasNewUpload = files.some(f => f.status === 'ready' && prevFiles.find(pf => pf.tempId === f.tempId)?.status === 'uploading');
+
+        if (hasNewUpload) {
+            console.log("File upload completed.");
+
+            if (isNew) {
+                // New Note: Must do full save to create ID
+                console.log("New Note: Forcing full save.");
+                performSave(false);
+            } else {
+                // Existing Note: Update ONLY files to avoid disturbing other fields
+                console.log("Existing Note: Saving files only.");
+
+                const finalFiles = files.map(f => {
+                    if (f.storageData) {
+                        return {
+                            id: f.storageData.id,
+                            name: f.name,
+                            type: f.type,
+                            url: f.storageData.url,
+                            storageType: f.storageData.type,
+                            path: f.storageData.path,
+                            extractedText: f.text
+                        };
+                    }
+                    return f;
+                });
+
+                // Call save directly with PARTIAL data
+                // onSave handles 'updateNote' which merges this payload
+                onSave({
+                    id: localId,
+                    files: finalFiles
+                }).catch(e => console.error("Partial file save failed", e));
+            }
+        }
+        prevFilesRef.current = files;
+    }, [files, isNew, localId, onSave]); // Added dependencies for safety
 
     const handleSubmit = (e) => {
         if (e) e.preventDefault();

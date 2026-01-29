@@ -9,8 +9,10 @@ import AlarmModal from './components/reminders/AlarmModal';
 import SettingsModal from './components/settings/SettingsModal';
 import { firestoreService } from './services/firestoreService';
 import { useDataSync } from './hooks/useDataSync';
+import { useReminders } from './hooks/useReminders';
 
 import PermissionBanner from './components/common/PermissionBanner';
+import AppVersionManager from './components/common/AppVersionManager';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -152,6 +154,17 @@ const AppContent = () => {
   // ... inside AppContent
   const { user } = useAuth();
   const { requestPermission, checkPermissions, permission, sendNotification, scheduleReminders, clearDelivered } = useNotifications();
+  const {
+    openSearch, closeSearch, isSearchOpen,
+    openSettings, closeSettings, isSettingsOpen,
+    openMobileMenu, closeMobileMenu, isMobileMenuOpen
+  } = useUI();
+  const [activeAlarm, setActiveAlarm] = useState(null);
+
+  // Initialize Data Sync
+  useDataSync();
+  // Initialize Reminder Loop
+  useReminders(setActiveAlarm);
 
   // Check permission on resume
   useEffect(() => {
@@ -164,22 +177,83 @@ const AppContent = () => {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [checkPermissions]);
 
+  // Handle Notification Actions (Snooze/Done from System Tray)
+  useEffect(() => {
+    const handleNotificationAction = (event) => {
+      console.log("Global Notification Action Received:", event.detail);
+      const { action, tag } = event.detail; // tag is uniqueId
+
+      if (activeAlarm || tag) {
+        // If we have an active alarm or a tag to identify the reminder
+        // Note: activeAlarm might be null if app was backgrounded when action clicked?
+        // But 'tag' (uniqueId) allows us to act on it regardless.
+
+        // Extract ID from tag or fallback to activeAlarm
+        let reminderId = activeAlarm?.id;
+        let instanceKey = activeAlarm?.instanceKey;
+
+        if (tag && tag.includes('_')) {
+          const parts = tag.split('_');
+          reminderId = parts[0];
+          instanceKey = tag.replace(`${reminderId}_`, '');
+        }
+
+        if (reminderId) {
+          if (action === 'snooze') {
+            // Default to 10 minutes as requested
+            dataService.snoozeReminder(reminderId, instanceKey, 10);
+            console.log(`Notification Action: Snoozed ${reminderId} for 10m`);
+          } else if (action === 'done') {
+            dataService.completeReminder(reminderId, instanceKey);
+            console.log(`Notification Action: Completed ${reminderId}`);
+          }
+
+          // CRITICAL: Close the modal if it's open
+          setActiveAlarm(null);
+
+          // Clear the system notification (visual hygiene)
+          // Use modulo safe ID
+          const safeId = parseInt(reminderId) % 2147483647;
+          clearDelivered(safeId);
+        }
+      }
+    };
+
+    window.addEventListener('notification-action', handleNotificationAction);
+    return () => window.removeEventListener('notification-action', handleNotificationAction);
+  }, [activeAlarm, clearDelivered]);
+
+  // Sync Logic: Close Modal if status changes remotely (e.g. Snoozed/Done on phone)
+  useEffect(() => {
+    if (!activeAlarm) return;
+
+    const checkStatus = () => {
+      const isDone = dataService.isReminderDone(activeAlarm.id, activeAlarm.instanceKey);
+      if (isDone) {
+        console.log("Active alarm marked done/snoozed remotely. Closing modal.");
+        setActiveAlarm(null);
+      }
+    };
+
+    window.addEventListener('storage-update', checkStatus);
+    return () => window.removeEventListener('storage-update', checkStatus);
+  }, [activeAlarm]);
+
   // ... existing code ...
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-gray-50/50 dark:bg-gray-950 transition-colors duration-300">
-      <Header
-        onSearchClick={openSearch}
-        onVoiceClick={handleVoiceSearch}
-        onSettingsClick={openSettings}
-      />
+      <Header />
 
       {/* Permission Warning */}
       <PermissionBanner permission={permission} onCheckAgain={checkPermissions} />
+      <AppVersionManager />
 
       <main className="flex-1 container py-6 md:py-10 pb-24 md:pb-10">
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
           <Route path="/reminders" element={<RemindersPage />} />
           <Route path="/notes" element={<NotesPage />} />
           <Route path="/reports" element={<ReportsPage />} />

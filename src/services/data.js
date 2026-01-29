@@ -22,15 +22,6 @@ const defaultData = {
 const loadStore = () => {
     try {
         const key = getStorageKey();
-
-        // ROBUST FIX: For authenticated users, we want to rely on Cloud Data ONLY.
-        // We ignore (and clear) local cache to prevent out-of-sync "ghost" data.
-        if (currentUserId) {
-            console.log("Authenticated User: Clearing local cache to force Cloud Sync.");
-            localStorage.removeItem(key);
-            return JSON.parse(JSON.stringify(defaultData));
-        }
-
         const local = localStorage.getItem(key);
         return local ? JSON.parse(local) : JSON.parse(JSON.stringify(defaultData));
     } catch (e) {
@@ -53,10 +44,42 @@ const save = () => {
 
 export const dataService = {
     // ACCOUNT SWITCHING
-    setUserId: (uid) => {
+    setUserId: async (uid) => {
         if (currentUserId === uid) return; // No change
+
+        // 1. Auto-Migration from Guest (if applicable)
+        if (!currentUserId && uid) {
+            const guestKey = `${BASE_STORAGE_KEY}_guest`;
+            const guestDataStr = localStorage.getItem(guestKey);
+            if (guestDataStr) {
+                try {
+                    const guestData = JSON.parse(guestDataStr);
+                    const hasData = (guestData.reminders?.length > 0) || (guestData.notes?.length > 0);
+                    if (hasData) {
+                        console.log("Found guest data. Migrating to:", uid);
+                        await firestoreService.migrateLocalData(guestData);
+                        console.log("Guest migration successful. Clearing guest storage.");
+                        localStorage.removeItem(guestKey);
+                    }
+                } catch (e) {
+                    console.error("Error migrating guest data", e);
+                }
+            }
+        }
+
+        // 2. Switch User
         currentUserId = uid;
-        store = loadStore(); // Switch database
+        store = loadStore(); // Load whatever local data exists for this user
+
+        // 3. Sync-Up Check REMOVED
+        // We rely on Firestore SDK's offline persistence and 'useDataSync' to propagate changes.
+        // Blindly pushing local 'store' to cloud here caused overwrites of fresh cloud data (e.g. Snooze from Web).
+
+        // if (uid && ((store.reminders && store.reminders.length > 0) || (store.notes && store.notes.length > 0))) {
+        //    console.log("Authenticated User: Syncing local cache to Cloud...");
+        //    firestoreService.migrateLocalData(store).catch(e => console.error("Sync-up failed", e));
+        // }
+
         notifyListeners();
     },
 
@@ -79,6 +102,31 @@ export const dataService = {
 
     // Reminders
     getReminders: () => [...(store.reminders || [])],
+
+    isReminderDone: (id, instanceKey) => {
+        const r = (store.reminders || []).find(i => String(i.id) === String(id));
+        if (!r) return true; // If not found, assume complete to avoid errors
+
+        const log = (r.logs || {})[instanceKey];
+        if (!log) return false; // Not acted upon
+
+        if (log.status === 'taken') return true;
+        if (log.status === 'missed') return true; // Don't ring for missed
+        if (log.status === 'snoozed') {
+            // If snoozed, check if we are still within snooze window
+            if (log.snoozedUntil) {
+                const now = new Date();
+                const current = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+                // Simple string comparison for HH:MM works for same-day
+                // IMPORTANT: Snooze often sets time efficiently.
+                // If current time < snoozedUntil, we are Done (Silent).
+                // If current time >= snoozedUntil, we are NOT Done (Ring).
+                return current < log.snoozedUntil;
+            }
+            return true;
+        }
+        return false;
+    },
 
     // NEW: Get expanded view for a specific day
     getRemindersForDate: (dateString) => {

@@ -52,15 +52,14 @@ export const firestoreService = {
             if (localData.notes && localData.notes.length > 0) {
                 const notesRef = collection(db, 'notes');
                 for (const n of localData.notes) {
-                    // Check if note already exists?
-                    // For migration, we assume new IDs or mapped IDs.
                     const newNote = {
                         ...n,
                         ownerId: user.uid,
-                        sharedWith: [], // Initial
-                        createdAt: new Date().toISOString()
+                        sharedWith: [],
+                        createdAt: n.createdAt || new Date().toISOString()
                     };
-                    await addDoc(notesRef, newNote);
+                    // Use setDoc with existing ID to prevent duplicates (idempotent)
+                    await setDoc(doc(notesRef, String(n.id)), newNote);
                 }
             }
 
@@ -285,7 +284,6 @@ export const firestoreService = {
         if (!user) return;
 
         // Sanitize: ensure no undefined ID or other fields are passed
-        // eslint-disable-next-line no-unused-vars
         const { id, ...noteData } = note;
 
         // Helper to remove undefined keys (Firestore rejection fix)
@@ -301,8 +299,15 @@ export const firestoreService = {
             createdAt: new Date().toISOString(),
             sharedWith: [] // Array of emails
         };
-        const ref = await addDoc(collection(db, 'notes'), newNote);
-        return { ...newNote, id: ref.id };
+
+        // If ID provided (from offline draft or pre-generation), use it with setDoc (Upsert-ish)
+        if (note.id) {
+            await setDoc(doc(db, 'notes', String(note.id)), newNote);
+            return { ...newNote, id: note.id };
+        } else {
+            const ref = await addDoc(collection(db, 'notes'), newNote);
+            return { ...newNote, id: ref.id };
+        }
     },
 
     updateNote: async (id, updates) => {
