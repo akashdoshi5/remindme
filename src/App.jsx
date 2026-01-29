@@ -174,21 +174,31 @@ const AppContent = () => {
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Register SW for Web Notification Actions
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .catch(err => console.error('SW Fail', err));
+
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'NOTIFICATION_ACTION') {
+          window.dispatchEvent(new CustomEvent('notification-action', {
+            detail: { action: event.data.action, tag: event.data.tag || event.data.data?.uniqueId }
+          }));
+        }
+      });
+    }
+
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [checkPermissions]);
 
   // Handle Notification Actions (Snooze/Done from System Tray)
   useEffect(() => {
-    const handleNotificationAction = (event) => {
+    const handleNotificationAction = async (event) => {
       console.log("Global Notification Action Received:", event.detail);
-      const { action, tag } = event.detail; // tag is uniqueId
+      const { action, tag } = event.detail;
 
       if (activeAlarm || tag) {
-        // If we have an active alarm or a tag to identify the reminder
-        // Note: activeAlarm might be null if app was backgrounded when action clicked?
-        // But 'tag' (uniqueId) allows us to act on it regardless.
-
-        // Extract ID from tag or fallback to activeAlarm
         let reminderId = activeAlarm?.id;
         let instanceKey = activeAlarm?.instanceKey;
 
@@ -200,21 +210,24 @@ const AppContent = () => {
 
         if (reminderId) {
           if (action === 'snooze') {
-            // Default to 10 minutes as requested
-            dataService.snoozeReminder(reminderId, instanceKey, 10);
-            console.log(`Notification Action: Snoozed ${reminderId} for 10m`);
+            await dataService.snoozeReminder(reminderId, instanceKey, 10);
+            console.log(`Notification Action: Snoozed ${reminderId}`);
           } else if (action === 'done') {
-            dataService.completeReminder(reminderId, instanceKey);
+            await dataService.completeReminder(reminderId, instanceKey);
             console.log(`Notification Action: Completed ${reminderId}`);
           }
 
-          // CRITICAL: Close the modal if it's open
           setActiveAlarm(null);
+          clearDelivered(parseInt(reminderId) % 2147483647);
 
-          // Clear the system notification (visual hygiene)
-          // Use modulo safe ID
-          const safeId = parseInt(reminderId) % 2147483647;
-          clearDelivered(safeId);
+          // Clear Web Notifications
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready.then(reg => {
+              reg.getNotifications({ tag: tag }).then(notifications => {
+                notifications.forEach(n => n.close());
+              });
+            });
+          }
         }
       }
     };
@@ -223,15 +236,25 @@ const AppContent = () => {
     return () => window.removeEventListener('notification-action', handleNotificationAction);
   }, [activeAlarm, clearDelivered]);
 
-  // Sync Logic: Close Modal if status changes remotely (e.g. Snoozed/Done on phone)
+  // Sync Logic: Close Modal if status changes remotely
   useEffect(() => {
     if (!activeAlarm) return;
 
     const checkStatus = () => {
+      // Robust check using ID and Instance
       const isDone = dataService.isReminderDone(activeAlarm.id, activeAlarm.instanceKey);
+      console.log(`Sync Check [${activeAlarm.title}]: Done=${isDone}`);
+
       if (isDone) {
         console.log("Active alarm marked done/snoozed remotely. Closing modal.");
         setActiveAlarm(null);
+        // Also clear web notification if it exists for this alarm
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.ready.then(reg => {
+            const tag = `${activeAlarm.id}_${activeAlarm.instanceKey}`;
+            reg.getNotifications({ tag }).then(ns => ns.forEach(n => n.close()));
+          });
+        }
       }
     };
 

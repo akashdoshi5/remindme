@@ -35,10 +35,11 @@ export const useNotifications = () => {
         }
     }, []);
 
+
     const sendNotification = useCallback(async (title, options = {}) => {
         try {
             if (Capacitor.isNativePlatform()) {
-                // Immediate notification
+                // ... existing native logic ...
                 await LocalNotifications.schedule({
                     notifications: [
                         {
@@ -48,13 +49,32 @@ export const useNotifications = () => {
                             schedule: { at: new Date(Date.now() + 100) },
                             channelId: 'reminders_v5',
                             sound: 'default',
-                            actionTypeId: 'REMINDER_ACTIONS_V5', // Ensure buttons appear
+                            actionTypeId: 'REMINDER_ACTIONS_V5',
                             extra: options.data || null
                         }
                     ]
                 });
             } else {
-                if (Notification.permission === 'granted') {
+                // WEB: Use Service Worker for Buttons
+                if ('serviceWorker' in navigator && Notification.permission === 'granted') {
+                    const registration = await navigator.serviceWorker.ready;
+
+                    // Define Actions
+                    const actions = [
+                        { action: 'snooze', title: 'Snooze' },
+                        { action: 'done', title: 'Mark as Done' }
+                    ];
+
+                    await registration.showNotification(title, {
+                        ...options,
+                        icon: '/icon.png', // Ensure icon exists
+                        actions: actions,
+                        tag: options.data?.uniqueId, // To allow closing specific one
+                        requireInteraction: true, // Keep it visible until interaction
+                        data: options.data
+                    });
+                } else if (Notification.permission === 'granted') {
+                    // Fallback for non-SW support (rare)
                     new Notification(title, options);
                 }
             }
