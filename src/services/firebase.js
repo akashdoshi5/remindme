@@ -22,7 +22,7 @@ const firebaseConfig = {
     apiKey: "AIzaSyBi1ZfMBLy3mA6EMOLtEfkWgqfCp2ghJwk",
     authDomain: "remindme-app-9988.firebaseapp.com",
     projectId: "remindme-app-9988",
-    storageBucket: "remindme-app-9988.firebasestorage.app",
+    storageBucket: "remindme-app-9988.appspot.com",
     messagingSenderId: "973886994765",
     appId: "1:973886994765:web:7896eeb6d24442e1c69f04",
     measurementId: "G-77J75R9XMZ"

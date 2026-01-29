@@ -71,14 +71,13 @@ export const dataService = {
         currentUserId = uid;
         store = loadStore(); // Load whatever local data exists for this user
 
-        // 3. Sync-Up Check REMOVED
+        // 3. Sync-Up Check
         // We rely on Firestore SDK's offline persistence and 'useDataSync' to propagate changes.
-        // Blindly pushing local 'store' to cloud here caused overwrites of fresh cloud data (e.g. Snooze from Web).
-
-        // if (uid && ((store.reminders && store.reminders.length > 0) || (store.notes && store.notes.length > 0))) {
-        //    console.log("Authenticated User: Syncing local cache to Cloud...");
-        //    firestoreService.migrateLocalData(store).catch(e => console.error("Sync-up failed", e));
-        // }
+        // However, we still need to trigger an initial migration if local data exists for this user.
+        if (uid && ((store.reminders && store.reminders.length > 0) || (store.notes && store.notes.length > 0))) {
+            console.log("Authenticated User: Syncing local cache to Cloud...");
+            firestoreService.migrateLocalData(store).catch(e => console.error("Sync-up failed", e));
+        }
 
         notifyListeners();
     },
