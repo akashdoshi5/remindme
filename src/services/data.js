@@ -258,14 +258,12 @@ export const dataService = {
                             status: status,
                             takenAt: log ? log.takenAt : null,
                             isVirtual: true,
-                            originalStatus: log ? log.status : 'upcoming' // Keep track if needed
+                            originalStatus: log ? log.status : 'upcoming', // Keep track if needed
+                            targetDate: dateString // EXPLICIT TARGET DATE for scheduling
                         });
                     });
                 }
             }
-            // 2. Handle Simple/Legacy Reminders
-            // ... (Keeping imports and initial setup)
-
             // 2. Handle Simple/Legacy Reminders (including new Intervals)
             else {
                 // Determine if it should show today
@@ -381,7 +379,8 @@ export const dataService = {
                             status: status,
                             takenAt: log ? log.takenAt : null,
                             isVirtual: true,
-                            isMovedIn: false
+                            isMovedIn: false,
+                            targetDate: dateString // EXPLICIT TARGET DATE
                         });
                     });
                 }
@@ -452,7 +451,8 @@ export const dataService = {
                             status: status,
                             takenAt: log ? log.takenAt : null,
                             isVirtual: true,
-                            isMovedIn: true
+                            isMovedIn: true,
+                            targetDate: dateString // EXPLICIT TARGET DATE
                         });
                     }
                 });
@@ -465,6 +465,25 @@ export const dataService = {
             if (!b.displayTime) return -1;
             return a.displayTime.localeCompare(b.displayTime);
         });
+    },
+
+    getUpcomingReminders: (days = 7) => {
+        const allUpcoming = [];
+        const today = new Date();
+
+        for (let i = 0; i < days; i++) {
+            const date = new Date(today);
+            date.setDate(today.getDate() + i);
+            const dateStr = date.toLocaleDateString('en-CA');
+
+            const reminders = dataService.getRemindersForDate(dateStr);
+            // Filter only valid upcoming ones (not taken, not missed/past - unless snoozed active)
+            const active = reminders.filter(r =>
+                r.status === 'upcoming' || r.status === 'snoozed'
+            );
+            allUpcoming.push(...active);
+        }
+        return allUpcoming;
     },
 
 

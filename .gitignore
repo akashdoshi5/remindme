@@ -129,3 +129,5 @@ ui-debug.log
 # OS
 Thumbs.db
 .DS_Store
+
+cmdline-tools.zip

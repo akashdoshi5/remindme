@@ -17,7 +17,7 @@ export const initializeNotifications = async () => {
         try {
             await LocalNotifications.registerActionTypes({
                 types: [{
-                    id: 'REMINDER_ACTIONS_V6',
+                    id: 'REMINDER_ACTIONS_V10',
                     actions: [
                         {
                             id: 'snooze',
@@ -32,7 +32,7 @@ export const initializeNotifications = async () => {
                     ]
                 }]
             });
-            console.log("Action Types V6 Registered");
+            console.log("Action Types V10 Registered");
         } catch (e) {
             console.error("Error registering action types:", e);
         }
@@ -40,12 +40,11 @@ export const initializeNotifications = async () => {
         // 3. Create Channel - V9 (Migration for Icon/Sound)
         try {
             await LocalNotifications.createChannel({
-                id: 'reminders_v9',
-                name: 'Reminders (Sound & Priority)',
+                id: 'reminders_v10',
+                name: 'Reminders (V10)',
                 description: 'Medication and Important Reminders',
                 importance: 5,
                 visibility: 1,
-                sound: 'default', // Explicitly request default sound
                 vibration: true,
                 lights: true,
             });

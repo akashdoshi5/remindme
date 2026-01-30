@@ -163,14 +163,13 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                     alert("Scheduling test notification for 5 seconds from now. Please close the app immediately to test background delivery.");
                                     const { LocalNotifications } = await import('@capacitor/local-notifications');
 
-                                    // FORCE Channel Creation V6
+                                    // FORCE Channel Creation V10
                                     await LocalNotifications.createChannel({
-                                        id: 'reminders_v6',
-                                        name: 'Reminders (High Priority)',
+                                        id: 'reminders_v10',
+                                        name: 'Reminders (V10)',
                                         description: 'Reminders',
                                         importance: 5,
                                         visibility: 1,
-                                        sound: 'default',
                                         vibration: true,
                                     });
 
@@ -180,9 +179,9 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                             body: 'If you see this, notifications are working!',
                                             id: 999999,
                                             schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
-                                            sound: 'default',
-                                            channelId: 'reminders_v6',
-                                            actionTypeId: 'REMINDER_ACTIONS_V6',
+                                            smallIcon: 'ic_notification_bell',
+                                            channelId: 'reminders_v10',
+                                            actionTypeId: 'REMINDER_ACTIONS_V10',
                                             extra: { uniqueId: 'test' }
                                         }]
                                     });

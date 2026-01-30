@@ -11,9 +11,11 @@ export const useReminders = (setActiveAlarm) => {
     useEffect(() => {
         const loadReminders = () => {
             const todayStr = new Date().toLocaleDateString('en-CA');
-            const all = dataService.getRemindersForDate(todayStr); // Get expanded instances (with displayTime)
-            setReminders(all);
-            scheduleReminders(all);
+            // FIX: Schedule next 7 days of reminders to ensure background reliability
+            const allFuture = dataService.getUpcomingReminders(7);
+            // const all = dataService.getRemindersForDate(todayStr); 
+            setReminders(allFuture);
+            scheduleReminders(allFuture);
         };
 
         loadReminders();

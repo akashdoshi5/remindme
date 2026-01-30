@@ -13,12 +13,11 @@ export const useNotifications = () => {
             // Create Channel for Android - V5 Force Update
             if (result.display === 'granted') {
                 await LocalNotifications.createChannel({
-                    id: 'reminders_v9', // V9: Icon & Sound Fix
-                    name: 'Reminders (Sound & Priority)',
+                    id: 'reminders_v10', // V10: Force Sound Reset
+                    name: 'Reminders (V10)',
                     description: 'Reminders for medications and tasks',
                     importance: 5,
                     visibility: 1,
-                    sound: 'default',
                     vibration: true,
                     lights: true,
                 });
@@ -47,10 +46,9 @@ export const useNotifications = () => {
                             body: options.body || '',
                             id: new Date().getTime() % 2147483647,
                             schedule: { at: new Date(Date.now() + 100) },
-                            channelId: 'reminders_v9',
-                            sound: 'default',
+                            channelId: 'reminders_v10',
                             smallIcon: 'ic_notification_bell', // Explicitly set icon
-                            actionTypeId: 'REMINDER_ACTIONS_V9',
+                            actionTypeId: 'REMINDER_ACTIONS_V10',
                             extra: options.data || null
                         }
                     ]
@@ -108,17 +106,24 @@ export const useNotifications = () => {
                 const notificationsToSchedule = reminders.map(r => {
                     if (!r.displayTime) return null;
                     const [h, m] = r.displayTime.split(':').map(Number);
+
                     let date = new Date();
+                    if (r.targetDate) {
+                        date = new Date(r.targetDate); // Parse YYYY-MM-DD
+                    }
+
                     date.setHours(h, m, 0, 0);
 
                     const now = new Date();
 
                     // Logic for Daily/Recurring: If passed today, schedule for tomorrow
-                    if (date <= now) {
+                    // ONLY if we don't have an explicit target date (which implies confidence)
+                    // If targetDate came from getUpcomingReminders, it is correct.
+                    if (!r.targetDate && date <= now) {
                         if (r.frequency === 'Daily' || (r.schedule && r.schedule.type === 'recurring')) {
                             date.setDate(date.getDate() + 1);
                         } else {
-                            // If it's a one-time event in the past, don't schedule
+                            // Single time passed
                             return null;
                         }
                     }
@@ -127,7 +132,7 @@ export const useNotifications = () => {
                     // But for simplified view, the `reminders` passed here are usually "Active" ones. 
                     // However, `scheduleReminders` takes a list. 
                     // If `r.date` exists (One Time) and it's different from Today, we should respect that date.
-                    if (r.date && r.frequency === 'Once') {
+                    if (r.date && r.frequency === 'Once' && !r.targetDate) {
                         const targetDate = new Date(r.date);
                         targetDate.setHours(h, m, 0, 0);
                         if (targetDate <= now) return null;
@@ -137,6 +142,9 @@ export const useNotifications = () => {
                     const safeId = parseInt(r.id) % 2147483647;
                     const bodyText = r.instructions ? r.instructions : (r.type === 'Medication' ? 'Time for your meds!' : 'Reminder');
 
+                    // EXTRA SAFETY: Don't schedule past events (tolerance 1 min)
+                    if (date.getTime() < now.getTime() - 60000) return null;
+
                     return {
                         title: r.title,
                         body: bodyText,
@@ -145,10 +153,9 @@ export const useNotifications = () => {
                             at: date,
                             allowWhileIdle: true
                         },
-                        channelId: 'reminders_v9',
-                        sound: 'default',
+                        channelId: 'reminders_v10',
                         smallIcon: 'ic_notification_bell',
-                        actionTypeId: 'REMINDER_ACTIONS_V9',
+                        actionTypeId: 'REMINDER_ACTIONS_V10',
                         extra: { uniqueId: r.uniqueId }
                     };
                 }).filter(n => n !== null && !isNaN(n.id));
@@ -200,31 +207,32 @@ export const useNotifications = () => {
                 try {
                     await LocalNotifications.registerActionTypes({
                         types: [{
-                            id: 'REMINDER_ACTIONS_V9',
+                            id: 'REMINDER_ACTIONS_V10',
                             actions: [
                                 {
                                     id: 'snooze',
                                     title: 'Snooze',
-                                    foreground: false // Background action preferred
+                                    foreground: true // Try foreground to see if buttons appear more reliably or if it brings app to front
                                 },
                                 {
                                     id: 'done',
                                     title: 'Mark as Done',
-                                    foreground: false
+                                    foreground: true
                                 }
                             ]
                         }]
                     });
 
+                    console.log("Registered Actions V9 with Foreground=True");
+
                     // Create Channel V6
                     if (res.display === 'granted') {
                         await LocalNotifications.createChannel({
-                            id: 'reminders_v9',
-                            name: 'Reminders (Sound & Priority)',
+                            id: 'reminders_v10',
+                            name: 'Reminders (V10)',
                             description: 'Reminders for medications and tasks',
                             importance: 5,
                             visibility: 1,
-                            sound: 'default',
                             vibration: true,
                             lights: true,
                         });
