@@ -4,7 +4,7 @@
   "webDir": "dist",
   "plugins": {
     "LocalNotifications": {
-      "smallIcon": "ic_stat_notification",
+      "smallIcon": "ic_notification_bell",
       "iconColor": "#F97316",
       "sound": "default",
       "presentationOptions": [

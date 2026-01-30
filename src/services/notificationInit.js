@@ -37,10 +37,10 @@ export const initializeNotifications = async () => {
             console.error("Error registering action types:", e);
         }
 
-        // 3. Create Channel - V8 (Migration for Sound Fix)
+        // 3. Create Channel - V9 (Migration for Icon/Sound)
         try {
             await LocalNotifications.createChannel({
-                id: 'reminders_v8',
+                id: 'reminders_v9',
                 name: 'Reminders (Sound & Priority)',
                 description: 'Medication and Important Reminders',
                 importance: 5,
@@ -49,7 +49,7 @@ export const initializeNotifications = async () => {
                 vibration: true,
                 lights: true,
             });
-            console.log("Channel V8 Created");
+            console.log("Channel V9 Created");
         } catch (e) {
             console.error("Error creating channel:", e);
         }

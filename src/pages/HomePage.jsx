@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Bell, FileText, Users, ArrowRight, Activity, Clock, CheckCircle, AlertCircle, Search } from 'lucide-react';
+import { Bell, FileText, Users, ArrowRight, Activity, Clock, CheckCircle, AlertCircle, Search, Droplets, Calendar, Dumbbell, Star, Pill } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -80,6 +80,17 @@ const HomePage = () => {
         };
     }, []);
 
+    const getIconForType = (type) => {
+        switch (type) {
+            case 'Medication': return <Pill size={24} />;
+            case 'Water': return <Droplets size={24} />;
+            case 'Exercise': return <Dumbbell size={24} />;
+            case 'Appointments': return <Calendar size={24} />;
+            case 'Other': return <Star size={24} />;
+            default: return <Bell size={24} />;
+        }
+    };
+
     return (
         <div className="max-w-6xl mx-auto px-4 pb-20">
 
@@ -147,7 +158,7 @@ const HomePage = () => {
                             >
                                 <div className="flex items-center gap-4">
                                     <div className="bg-orange-50 dark:bg-orange-900/30 p-3 rounded-xl text-orange-600 dark:text-orange-400">
-                                        <Bell size={24} />
+                                        {getIconForType(r.type)}
                                     </div>
                                     <div>
                                         <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100">{r.title}</h3>

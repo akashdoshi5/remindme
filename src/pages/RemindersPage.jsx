@@ -4,7 +4,7 @@ import AddReminderModal from '../components/reminders/AddReminderModal';
 import { dataService } from '../services/data';
 import { useLanguage } from '../context/LanguageContext';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Plus, Search, Calendar, Clock, Bell, Share2, MoreVertical, CheckCircle, XCircle, Filter, ChevronLeft, ChevronRight, Mic, AlertTriangle, Edit2, Trash2, Check, ArrowRightLeft, Sun, Moon, Settings, RefreshCcw } from 'lucide-react';
+import { Plus, Search, Calendar, Clock, Bell, Share2, MoreVertical, CheckCircle, XCircle, Filter, ChevronLeft, ChevronRight, Mic, AlertTriangle, Edit2, Trash2, Check, ArrowRightLeft, Sun, Moon, Settings, RefreshCcw, Droplets, Dumbbell, Star, Pill } from 'lucide-react';
 
 const RemindersPage = () => {
     const { t } = useLanguage();
@@ -322,7 +322,18 @@ const RemindersPage = () => {
                                         >
                                             <div className="p-3 md:p-4 flex-1 flex flex-row items-center justify-between gap-3">
                                                 <div className="flex items-center gap-3 md:gap-4 flex-1">
-                                                    <div className="text-xl md:text-2xl shrink-0">{reminder.type === 'Medication' ? '💊' : <Bell className="text-gray-700 dark:text-gray-300" size={24} />}</div>
+                                                    <div className="text-xl md:text-2xl shrink-0">
+                                                        {(() => {
+                                                            switch (reminder.type) {
+                                                                case 'Medication': return <Pill size={24} className="text-blue-500" />;
+                                                                case 'Water': return <Droplets size={24} className="text-blue-400" />;
+                                                                case 'Exercise': return <Dumbbell size={24} className="text-orange-500" />;
+                                                                case 'Appointments': return <Calendar size={24} className="text-purple-500" />;
+                                                                case 'Other': return <Star size={24} className="text-yellow-500" />;
+                                                                default: return <Bell className="text-gray-700 dark:text-gray-300" size={24} />;
+                                                            }
+                                                        })()}
+                                                    </div>
                                                     <div className="min-w-0">
                                                         <h3 className="font-bold text-base md:text-lg text-gray-900 dark:text-gray-100 truncate leading-tight">{reminder.title}</h3>
                                                         {reminder.instructions && <p className="text-gray-500 dark:text-gray-400 text-xs md:text-sm truncate">{reminder.instructions}</p>}

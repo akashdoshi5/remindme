@@ -13,8 +13,8 @@ export const useNotifications = () => {
             // Create Channel for Android - V5 Force Update
             if (result.display === 'granted') {
                 await LocalNotifications.createChannel({
-                    id: 'reminders_v6', // V6: New channel ID to clear old settings
-                    name: 'Reminders (High Priority)',
+                    id: 'reminders_v9', // V9: Icon & Sound Fix
+                    name: 'Reminders (Sound & Priority)',
                     description: 'Reminders for medications and tasks',
                     importance: 5,
                     visibility: 1,
@@ -47,9 +47,10 @@ export const useNotifications = () => {
                             body: options.body || '',
                             id: new Date().getTime() % 2147483647,
                             schedule: { at: new Date(Date.now() + 100) },
-                            channelId: 'reminders_v6',
+                            channelId: 'reminders_v9',
                             sound: 'default',
-                            actionTypeId: 'REMINDER_ACTIONS_V6',
+                            smallIcon: 'ic_notification_bell', // Explicitly set icon
+                            actionTypeId: 'REMINDER_ACTIONS_V9',
                             extra: options.data || null
                         }
                     ]
@@ -107,13 +108,34 @@ export const useNotifications = () => {
                 const notificationsToSchedule = reminders.map(r => {
                     if (!r.displayTime) return null;
                     const [h, m] = r.displayTime.split(':').map(Number);
-                    const date = new Date();
+                    let date = new Date();
                     date.setHours(h, m, 0, 0);
 
-                    if (date <= new Date()) return null;
+                    const now = new Date();
+
+                    // Logic for Daily/Recurring: If passed today, schedule for tomorrow
+                    if (date <= now) {
+                        if (r.frequency === 'Daily' || (r.schedule && r.schedule.type === 'recurring')) {
+                            date.setDate(date.getDate() + 1);
+                        } else {
+                            // If it's a one-time event in the past, don't schedule
+                            return null;
+                        }
+                    }
+
+                    // Extra safety: If specific date is set and it's not today/future, handle logic?
+                    // But for simplified view, the `reminders` passed here are usually "Active" ones. 
+                    // However, `scheduleReminders` takes a list. 
+                    // If `r.date` exists (One Time) and it's different from Today, we should respect that date.
+                    if (r.date && r.frequency === 'Once') {
+                        const targetDate = new Date(r.date);
+                        targetDate.setHours(h, m, 0, 0);
+                        if (targetDate <= now) return null;
+                        date = targetDate;
+                    }
 
                     const safeId = parseInt(r.id) % 2147483647;
-                    const bodyText = r.instructions ? r.instructions : '';
+                    const bodyText = r.instructions ? r.instructions : (r.type === 'Medication' ? 'Time for your meds!' : 'Reminder');
 
                     return {
                         title: r.title,
@@ -123,9 +145,10 @@ export const useNotifications = () => {
                             at: date,
                             allowWhileIdle: true
                         },
-                        channelId: 'reminders_v6',
+                        channelId: 'reminders_v9',
                         sound: 'default',
-                        actionTypeId: 'REMINDER_ACTIONS_V6',
+                        smallIcon: 'ic_notification_bell',
+                        actionTypeId: 'REMINDER_ACTIONS_V9',
                         extra: { uniqueId: r.uniqueId }
                     };
                 }).filter(n => n !== null && !isNaN(n.id));
@@ -177,7 +200,7 @@ export const useNotifications = () => {
                 try {
                     await LocalNotifications.registerActionTypes({
                         types: [{
-                            id: 'REMINDER_ACTIONS_V6',
+                            id: 'REMINDER_ACTIONS_V9',
                             actions: [
                                 {
                                     id: 'snooze',
@@ -196,8 +219,8 @@ export const useNotifications = () => {
                     // Create Channel V6
                     if (res.display === 'granted') {
                         await LocalNotifications.createChannel({
-                            id: 'reminders_v6',
-                            name: 'Reminders (High Priority)',
+                            id: 'reminders_v9',
+                            name: 'Reminders (Sound & Priority)',
                             description: 'Reminders for medications and tasks',
                             importance: 5,
                             visibility: 1,

@@ -345,7 +345,6 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                     onChange={(e) => setType(e.target.value)}
                                 >
                                     <option>Medication</option>
-                                    <option>View Only</option>
                                     <option>Appointments</option>
                                     <option>Water</option>
                                     <option>Exercise</option>
