@@ -13,6 +13,7 @@ import { useReminders } from './hooks/useReminders';
 
 import PermissionBanner from './components/common/PermissionBanner';
 import AppVersionManager from './components/common/AppVersionManager';
+import { NotificationDebugPanel } from './components/common/NotificationDebugPanel';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -341,6 +342,7 @@ const AppContent = () => {
         }}
         onClose={() => setActiveAlarm(null)}
       />
+      <NotificationDebugPanel />
     </div>
   );
 };

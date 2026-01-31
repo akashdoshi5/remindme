@@ -165,8 +165,20 @@ export const useNotifications = () => {
 
                 if (notificationsToSchedule.length > 0) {
                     console.log('🔔 Scheduling', notificationsToSchedule.length, 'Android notifications');
+                    console.table(notificationsToSchedule.map(n => ({
+                        Title: n.title,
+                        Time: new Date(n.schedule.at).toLocaleString(),
+                        ID: n.id,
+                        Sound: n.sound
+                    })));
                     await LocalNotifications.schedule({ notifications: notificationsToSchedule });
-                    console.log(`✅ Scheduled ${notificationsToSchedule.length} notifications successfully`);
+                    console.log(`✅ Successfully scheduled ${notificationsToSchedule.length} notifications`);
+
+                    // Verify they were scheduled
+                    const pending = await LocalNotifications.getPending();
+                    console.log(`✅ Verified: ${pending.notifications.length} notifications in pending queue`);
+                } else {
+                    console.log('⚠️ No notifications to schedule (all filtered out)');
                 }
             } else {
                 // WEB NOTIFICATION LOGIC
