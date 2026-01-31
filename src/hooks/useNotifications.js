@@ -108,12 +108,16 @@ export const useNotifications = () => {
                     if (!r.displayTime) return null;
                     const [h, m] = r.displayTime.split(':').map(Number);
 
-                    let date = new Date();
+                    let date;
                     if (r.targetDate) {
-                        date = new Date(r.targetDate); // Parse YYYY-MM-DD
+                        // CRITICAL FIX: Parse date components to avoid UTC timezone issues
+                        // new Date('2026-01-31') is interpreted as UTC, causing timezone shifts
+                        const [year, month, day] = r.targetDate.split('-').map(Number);
+                        date = new Date(year, month - 1, day, h, m, 0, 0);
+                    } else {
+                        date = new Date();
+                        date.setHours(h, m, 0, 0);
                     }
-
-                    date.setHours(h, m, 0, 0);
 
                     const now = new Date();
 
@@ -134,8 +138,8 @@ export const useNotifications = () => {
                     // However, `scheduleReminders` takes a list. 
                     // If `r.date` exists (One Time) and it's different from Today, we should respect that date.
                     if (r.date && r.frequency === 'Once' && !r.targetDate) {
-                        const targetDate = new Date(r.date);
-                        targetDate.setHours(h, m, 0, 0);
+                        const [year, month, day] = r.date.split('-').map(Number);
+                        const targetDate = new Date(year, month - 1, day, h, m, 0, 0);
                         if (targetDate <= now) return null;
                         date = targetDate;
                     }
