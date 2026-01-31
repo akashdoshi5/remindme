@@ -188,24 +188,44 @@ export const useNotifications = () => {
                         actionTypeId: 'REMINDER_ACTIONS_V10',
                         extra: { uniqueId: r.uniqueId }
                     };
-                }).filter(n => n !== null && !isNaN(n.id));
+                });
 
-                if (notificationsToSchedule.length > 0) {
-                    console.log('🔔 Scheduling', notificationsToSchedule.length, 'Android notifications');
-                    console.table(notificationsToSchedule.map(n => ({
+                console.log('🔍 Before final filter:', notificationsToSchedule.length, 'items (including nulls)');
+                console.log('   Null count:', notificationsToSchedule.filter(n => n === null).length);
+                console.log('   Non-null count:', notificationsToSchedule.filter(n => n !== null).length);
+
+                const filtered = notificationsToSchedule.filter(n => n !== null && !isNaN(n.id));
+                console.log('✅ After final filter:', filtered.length, 'valid notifications');
+
+                if (filtered.length !== notificationsToSchedule.filter(n => n !== null).length) {
+                    console.error('⚠️ Some notifications filtered out due to NaN IDs!');
+                    notificationsToSchedule.forEach((n, i) => {
+                        if (n !== null && isNaN(n.id)) {
+                            console.error('   Invalid ID at index', i, ':', n.id, 'for', n.title);
+                        }
+                    });
+                }
+
+
+                if (filtered.length > 0) {
+                    console.log('🔔 Scheduling', filtered.length, 'Android notifications');
+                    console.table(filtered.map(n => ({
                         Title: n.title,
                         Time: new Date(n.schedule.at).toLocaleString(),
                         ID: n.id,
                         Sound: n.sound
                     })));
-                    await LocalNotifications.schedule({ notifications: notificationsToSchedule });
-                    console.log(`✅ Successfully scheduled ${notificationsToSchedule.length} notifications`);
+
+                    await LocalNotifications.schedule({
+                        notifications: filtered
+                    });
+                    console.log('✅ Scheduled successfully!');
 
                     // Verify they were scheduled
                     const pending = await LocalNotifications.getPending();
                     console.log(`✅ Verified: ${pending.notifications.length} notifications in pending queue`);
                 } else {
-                    console.log('⚠️ No notifications to schedule (all filtered out)');
+                    console.warn('⚠️ No notifications to schedule after filtering');
                 }
             } else {
                 // WEB NOTIFICATION LOGIC
