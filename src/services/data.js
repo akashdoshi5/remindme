@@ -272,6 +272,24 @@ export const dataService = {
                 else if (r.frequency === 'Daily') show = true;
                 else if (r.frequency === 'Today') show = (r.date === dateString || (!r.date && dateString === todayStr));
                 else if (r.date === dateString) show = true;
+                else if (r.frequency === 'Weekly') {
+                    // Calculate day difference from start
+                    const start = new Date(r.schedule?.startDate || r.date || '2000-01-01');
+                    const current = new Date(dateString);
+                    // Reset hours to avoid timezone/time diff issues
+                    start.setHours(0, 0, 0, 0);
+                    current.setHours(0, 0, 0, 0);
+
+                    const diffTime = current - start;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                    // Show if diffDays is non-negative and divisible by 7
+                    if (diffDays >= 0 && diffDays % 7 === 0) show = true;
+                } else if (r.frequency && (r.frequency.includes(',') || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].some(d => r.frequency.includes(d)))) {
+                    // Custom Days
+                    const dayName = new Date(dateString).toLocaleDateString('en-US', { weekday: 'short' });
+                    if (r.frequency.includes(dayName)) show = true;
+                }
 
                 // Also check start date if it exists for daily? 
                 const globalStart = r.schedule?.startDate || r.date;
