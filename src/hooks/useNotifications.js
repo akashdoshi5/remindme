@@ -179,7 +179,7 @@ export const useNotifications = () => {
                     body: bodyText,
                     id: safeId,
                     schedule: {
-                        at: date.getTime(), // CRITICAL: Timestamp for serialization
+                        at: date, // CRITICAL FIX: Must be Date object for Native Bridge
                         allowWhileIdle: true
                     },
                     sound: 'default',
