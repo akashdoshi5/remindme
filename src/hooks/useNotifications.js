@@ -165,7 +165,7 @@ export const useNotifications = () => {
                         body: bodyText,
                         id: safeId,
                         schedule: {
-                            at: date,
+                            at: date.getTime(), // CRITICAL: Use timestamp to avoid timezone bugs
                             allowWhileIdle: true
                         },
                         sound: 'default', // CRITICAL: Explicit sound parameter
