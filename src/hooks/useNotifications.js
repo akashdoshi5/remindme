@@ -109,9 +109,15 @@ export const useNotifications = () => {
             // STEP 1: Process reminders into notification objects (SHARED LOGIC)
             // This allows debugging the filtering logic on Web Console
 
+            let filteredCount = 0;
+            let pastCount = 0;
+            let invalidCount = 0;
+            let firstFilterReason = "";
+
             const notificationsToSchedule = reminders.map(r => {
                 if (!r.displayTime) {
-                    console.log('❌ Filtered (no displayTime):', r.title);
+                    filteredCount++;
+                    /* console.log('❌ Filtered (no displayTime):', r.title); */
                     return null;
                 }
                 const [h, m] = r.displayTime.split(':').map(Number);
@@ -121,11 +127,11 @@ export const useNotifications = () => {
                     // CRITICAL FIX: Parse date components to avoid UTC timezone issues
                     const [year, month, day] = r.targetDate.split('-').map(Number);
                     date = new Date(year, month - 1, day, h, m, 0, 0);
-                    console.log('🎯', r.title, '- targetDate:', r.targetDate, '→ parsed:', date.toString());
+                    /* console.log('🎯', r.title, '- targetDate:', r.targetDate, '→ parsed:', date.toString()); */
                 } else {
                     date = new Date();
                     date.setHours(h, m, 0, 0);
-                    console.log('📍', r.title, '- no targetDate, using today with time:', date.toString());
+                    /* console.log('📍', r.title, '- no targetDate, using today with time:', date.toString()); */
                 }
 
                 const now = new Date();
@@ -134,10 +140,12 @@ export const useNotifications = () => {
                 // ONLY if we don't have an explicit target date (which implies confidence)
                 if (!r.targetDate && date <= now) {
                     if (r.frequency === 'Daily' || (r.schedule && r.schedule.type === 'recurring')) {
-                        console.log('🔁', r.title, '- Recurring/Daily, time passed, moving to tomorrow');
+                        /* console.log('🔁', r.title, '- Recurring/Daily, time passed, moving to tomorrow'); */
                         date.setDate(date.getDate() + 1);
                     } else {
-                        console.log('❌ Filtered (no targetDate, time passed, not recurring):', r.title, 'date:', date.toString(), 'now:', now.toString());
+                        filteredCount++;
+                        if (!firstFilterReason) firstFilterReason = `Passed & Not Recurring (${r.title})`;
+                        /* console.log('❌ Filtered (no targetDate, time passed, not recurring):', r.title); */
                         return null;
                     }
                 }
@@ -146,11 +154,13 @@ export const useNotifications = () => {
                     const [year, month, day] = r.date.split('-').map(Number);
                     const targetDate = new Date(year, month - 1, day, h, m, 0, 0);
                     if (targetDate <= now) {
-                        console.log('❌ Filtered (Once frequency, r.date in past):', r.title);
+                        filteredCount++;
+                        if (!firstFilterReason) firstFilterReason = `Once & Passed (${r.title})`;
+                        /* console.log('❌ Filtered (Once frequency, r.date in past):', r.title); */
                         return null;
                     }
                     date = targetDate;
-                    console.log('📅', r.title, '- Using r.date for Once reminder:', date.toString());
+                    /* console.log('📅', r.title, '- Using r.date for Once reminder:', date.toString()); */
                 }
 
                 const safeId = parseInt(r.id) % 2147483647;
@@ -158,7 +168,9 @@ export const useNotifications = () => {
 
                 // EXTRA SAFETY: Don't schedule past events (tolerance 5 min)
                 if (date.getTime() < now.getTime() - 300000) {
-                    console.log('❌ Filtered (> 5min in past):', r.title, 'date:', date.toString());
+                    pastCount++;
+                    if (!firstFilterReason) firstFilterReason = `>5min Past (${r.title} @ ${date.toLocaleTimeString()})`;
+                    /* console.log('❌ Filtered (> 5min in past):', r.title, 'date:', date.toString()); */
                     return null;
                 }
 
@@ -178,63 +190,68 @@ export const useNotifications = () => {
                 };
             });
 
-            console.log('🔍 Shared Logic Filter Check:');
-            console.log('   Total Input:', reminders.length);
-            console.log('   Mapped (Pre-Null-Filter):', notificationsToSchedule.length);
+            /* console.log('🔍 Shared Logic Filter Check:'); */
+            /* console.log('   Total Input:', reminders.length); */
+            /* console.log('   Mapped (Pre-Null-Filter):', notificationsToSchedule.length); */
 
             const filtered = notificationsToSchedule.filter(n => n !== null && !isNaN(n.id));
-            console.log('✅ Final Valid Notifications:', filtered.length);
+            /* console.log('✅ Final Valid Notifications:', filtered.length); */
+
+            if (filtered.length === 0 && reminders.length > 0) {
+                alert(`Debug: 0/${reminders.length} scheduled. Filtered: ${filteredCount}, Past: ${pastCount}. First Reason: ${firstFilterReason}`);
+            } else if (filtered.length > 0) {
+                // alert(`Debug: Prepared ${filtered.length} notifications. First: ${filtered[0].title} @ ${new Date(filtered[0].schedule.at).toLocaleTimeString()}`);
+            }
 
             if (filtered.length > 0) {
+                /*
                 console.table(filtered.map(n => ({
                     Title: n.title,
                     Time: new Date(n.schedule.at).toLocaleString(),
                     ID: n.id,
                     Timestamp: n.schedule.at
                 })));
+                */
             }
 
             // STEP 2: Platform Execution
             if (Capacitor.isNativePlatform()) {
                 const pending = await LocalNotifications.getPending();
-                console.log('🗑️ Cancelling', pending.notifications.length, 'old notifications');
+                /* console.log('🗑️ Cancelling', pending.notifications.length, 'old notifications'); */
                 if (pending.notifications.length > 0) {
                     await LocalNotifications.cancel(pending);
                 }
 
                 if (filtered.length > 0) {
-                    console.log('🔔 Scheduling', filtered.length, 'Android notifications');
-                    await LocalNotifications.schedule({
-                        notifications: filtered
-                    });
-                    console.log('✅ Scheduled successfully!');
+                    /* console.log('🔔 Scheduling', filtered.length, 'Android notifications'); */
+                    try {
+                        const result = await LocalNotifications.schedule({
+                            notifications: filtered
+                        });
+                        // alert(`Success! Scheduled ${filtered.length}.`);
+                    } catch (schedError) {
+                        alert(`Native Schedule Failed: ${schedError.message}`);
+                        console.error(schedError);
+                    }
+                    /* console.log('✅ Scheduled successfully!'); */
 
                     // Verify
                     const p = await LocalNotifications.getPending();
-                    console.log('📡 Verified Pending Count:', p.notifications.length);
+                    /* console.log('📡 Verified Pending Count:', p.notifications.length); */
+                    if (p.notifications.length === 0) {
+                        alert('CRITICAL: Native says success but 0 pending found! Check Logcat.');
+                    }
                 } else {
-                    console.warn('⚠️ No notifications to schedule after filtering');
+                    /* console.warn('⚠️ No notifications to schedule after filtering'); */
                 }
             } else {
-                // Actually `useReminders.js` (hook) handles the trigger for immediate alarms.
-                // This `scheduleReminders` function is triggered ONCE when data changes to offload scheduling to OS.
-                // For Web, we can't really "offload" effectively without SW.
-                // SO: "Notification from browser ... did not arrive" means `useReminders` likely decided to ring (Modal) 
-                // but didn't fire a system notification?
-
-                // Let's verify `useReminders.js` again? 
-                // If `useReminders` calls `sendNotification` when alarm fires, then we are good.
-                // If `useReminders` EXPECTS `scheduleReminders` to handle it, then Web is broken.
-
-                // Assumption: `useReminders` only plays audio/modal. 
-                // Let's check `useReminders.js` briefly next?
-                // But for now, I will unlock this block to at least console log or attempt simple timeouts if feasible.
-                // Given the constraint, if `useReminders` relies on this, we need to replicate scheduling.
+                // ...
                 console.log("Web Scheduling: Browser requires open tab. Relying on useReminders Polling for now.");
             }
 
         } catch (error) {
             console.error("Scheduling Error:", error);
+            alert("General Schedule Error: " + error.message);
         }
     }, []);
 
