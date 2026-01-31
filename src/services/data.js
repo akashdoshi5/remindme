@@ -294,6 +294,9 @@ export const dataService = {
 
                             if (r.time && startDateStr === dateString) {
                                 [startH, startM] = r.time.split(':').map(Number);
+                                // CRITICAL FIX: Always include the start time for the start date, ignoring sleep limit check for the first item
+                                // We handled this by initializing currentMinutes = start time.
+                                // We must ensure the loop runs at least once or we force push below.
                             } else {
                                 [startH, startM] = sleepEnd.split(':').map(Number);
                             }
@@ -304,12 +307,21 @@ export const dataService = {
 
                             const step = intervalHours * 60;
                             if (step > 0) {
-                                while (currentMinutes < limitMinutes) {
+                                // FIX: Use <= to allow reminder exactly AT bedtime
+                                // Also handle case where start time > limit (late night reminder) - show it anyway if it's the specific scheduled time?
+                                // Strategy: run loop. If result empty and it's start date, add start time.
+
+                                while (currentMinutes <= limitMinutes) {
                                     const h = Math.floor(currentMinutes / 60);
                                     const m = currentMinutes % 60;
                                     const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
                                     times.push(timeStr);
                                     currentMinutes += step;
+                                }
+
+                                // Fallback: If Today and user set a time LATER than sleep window (e.g. 11pm), obey them.
+                                if (times.length === 0 && startDateStr === dateString && r.time) {
+                                    times.push(r.time);
                                 }
                             }
                         }
