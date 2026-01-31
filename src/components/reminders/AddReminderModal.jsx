@@ -194,6 +194,21 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     const handleSubmit = async (e) => {
         e.preventDefault();
 
+        // VALIDATION: Prevent History Corruption
+        // If the reminder started in the past, do NOT allow moving the start date forward (later).
+        // Moving it backward (earlier) is allowed to extend history.
+        if (reminderToEdit && editScope !== 'this') {
+            const oldStart = reminderToEdit.schedule?.startDate || reminderToEdit.date;
+            if (oldStart) {
+                const todayStr = new Date().toLocaleDateString('en-CA');
+                // If it's a past reminder AND we are trying to move start date forward
+                if (oldStart < todayStr && startDate > oldStart) {
+                    alert("Cannot move the Start Date forward for an active past reminder.\n\nYou can only extend it backward (earlier) to preserve history.");
+                    return;
+                }
+            }
+        }
+
         if (editScope === 'this' && reminderToEdit) {
             let targetDateStr = startDate;
             if (reminderToEdit.instanceKey) {
