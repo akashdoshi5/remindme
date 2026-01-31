@@ -68,9 +68,10 @@ const HelpGuide = ({ isOpen, onClose }) => {
                                 <ShieldCheck size={24} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Yesterday & Today Only</h3>
+                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Smart History</h3>
                                 <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-                                    To keep your history accurate, you can only update reports for <strong>Today</strong> or <strong>Yesterday</strong> (1-day history lock). Older records are permanently locked.
+                                    You can only update reports for <strong>Today</strong> or <strong>Yesterday</strong>. <br />
+                                    Also, deleting a schedule stops future events but keeps your <strong>past history</strong> safe.
                                 </p>
                             </div>
                         </div>
