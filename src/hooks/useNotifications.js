@@ -142,8 +142,9 @@ export const useNotifications = () => {
                     const safeId = parseInt(r.id) % 2147483647;
                     const bodyText = r.instructions ? r.instructions : (r.type === 'Medication' ? 'Time for your meds!' : 'Reminder');
 
-                    // EXTRA SAFETY: Don't schedule past events (tolerance 1 min)
-                    if (date.getTime() < now.getTime() - 60000) return null;
+                    // EXTRA SAFETY: Don't schedule past events (tolerance 5 min)
+                    // This ensures if the loop runs slightly after the minute, we still schedule it for OS execution if needed
+                    if (date.getTime() < now.getTime() - 300000) return null;
 
                     return {
                         title: r.title,

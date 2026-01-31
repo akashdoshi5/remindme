@@ -253,6 +253,11 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             } else {
                 // Editing single instance of a course -> Ensure time is set!
                 data.time = time;
+                if (!time) {
+                    alert("Please select a time.");
+                    setIsSaving(false);
+                    return;
+                }
             }
         } else {
             let finalFrequency = frequency;
@@ -267,6 +272,12 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                     durationDays: durationDays,
                     times: { default: time }
                 };
+            }
+            // CRITICAL: Ensure time is valid before saving for 'this' instance
+            if (!time) {
+                alert("Please select a time.");
+                setIsSaving(false);
+                return;
             }
             data.time = time;
         }

@@ -10,6 +10,8 @@ const ShareModal = ({ isOpen, onClose, note }) => {
     const [successMsg, setSuccessMsg] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
 
+    // Use derived state from props to ensure updates are reflected immediately
+    // If the parent updates 'note', this component re-renders and sees the new 'sharedWith'
     const sharedWith = note.sharedWith || [];
 
     const handleShare = async (e) => {
@@ -23,9 +25,10 @@ const ShareModal = ({ isOpen, onClose, note }) => {
             if (result) {
                 setSuccessMsg(`Access granted to ${email}`);
 
-                // Auto-open email client
+                // PRODUCTION URL
+                const appUrl = 'https://remindme-app-9988.web.app';
                 const subject = encodeURIComponent(`Shared Note: ${note.title}`);
-                const body = encodeURIComponent(`I've shared a note with you on RemindMe Buddy.\n\nYou can view it here: ${window.location.origin}/notes`); // Ideally deep link
+                const body = encodeURIComponent(`I've shared a note with you on RemindMe Buddy.\n\nYou can view it here: ${appUrl}/notes`);
                 window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
 
                 setEmail('');
@@ -35,7 +38,7 @@ const ShareModal = ({ isOpen, onClose, note }) => {
             }
         } catch (err) {
             console.error(err);
-            setErrorMsg('Error sharing note.');
+            setErrorMsg('Error sharing note. Ensure you are online.');
         } finally {
             setIsLoading(false);
         }
@@ -45,6 +48,7 @@ const ShareModal = ({ isOpen, onClose, note }) => {
         if (!confirm(`Remove access for ${userEmail}?`)) return;
         try {
             await dataService.unshareNote(note.id, userEmail);
+            // Note: Parent component must handle the data refresh to update the 'note' prop
         } catch (err) {
             console.error(err);
             alert("Failed to remove user.");
@@ -88,7 +92,7 @@ const ShareModal = ({ isOpen, onClose, note }) => {
                         <div className="mb-4 bg-green-50 dark:bg-green-900/20 p-3 rounded-lg flex flex-col gap-2">
                             <p className="text-sm text-green-600 dark:text-green-400">{successMsg}</p>
                             <a
-                                href={`mailto:${email || ''}?subject=Shared Note: ${note.title}&body=I've shared a note with you on RemindMe Buddy. You can view it here: ${window.location.origin}/notes`}
+                                href={`mailto:${email || ''}?subject=Shared Note: ${note.title}&body=I've shared a note with you on RemindMe Buddy. You can view it here: https://remindme-app-9988.web.app/notes`}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-xs flex items-center justify-center gap-1 bg-green-600 text-white py-1.5 rounded-md hover:bg-green-700 font-bold"
@@ -118,6 +122,7 @@ const ShareModal = ({ isOpen, onClose, note }) => {
                                 <button
                                     onClick={() => handleUnshare(userEmail)}
                                     className="text-gray-400 hover:text-red-500 transition-colors"
+                                    title="Revoke access"
                                 >
                                     <Trash2 size={16} />
                                 </button>

@@ -146,6 +146,16 @@ const NotesPage = () => {
         return savedParams;
     };
 
+    // Auto-update sharingNote if it changes (e.g. user unshared)
+    useEffect(() => {
+        if (sharingNote) {
+            const updated = notes.find(n => n.id === sharingNote.id);
+            if (updated) {
+                setSharingNote(updated);
+            }
+        }
+    }, [notes, sharingNote?.id]);
+
 
 
     // --- EFFECT: Handle Hardware Back Button for Selection Mode ---
