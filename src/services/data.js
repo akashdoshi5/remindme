@@ -237,6 +237,10 @@ export const dataService = {
                 // If exceeded duration
                 if (diffInDays >= univSchedule.durationDays) return;
             }
+            // Check End Date (Soft Delete / Expiry)
+            if (univSchedule.endDate) {
+                if (dateString > univSchedule.endDate) return;
+            }
 
             // 1. Handle Complex Schedules (Medication)
             if (r.schedule && r.schedule.type === 'recurring') {
@@ -262,7 +266,6 @@ export const dataService = {
                         // Exception: Cancelled/Hidden
                         if (exception && exception.status === 'cancelled') return;
 
-                        // Calculate Effective Time
                         // Calculate Effective Time & Check Status
                         // FIX: Handle ISO Snooze Time for correct status (even if snoozed to next day)
                         let displayTime = exception?.time || time; // Use exception time if exists
@@ -632,8 +635,6 @@ export const dataService = {
         return allUpcoming;
     },
 
-
-
     addReminder: async (reminder) => {
         if (activeProfile) return; // Read Only
         if (auth.currentUser) {
@@ -669,8 +670,6 @@ export const dataService = {
             // Normal update (local)
             store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, ...updates } : r);
         }
-
-
 
         // CRITICAL: Fire storage-update IMMEDIATELY for notification re-scheduling
         save();
@@ -752,13 +751,6 @@ export const dataService = {
                     takenAt: customTimestamp
                 }
             };
-            // Also update history in Firestore if needed? 
-            // Current `updateReminder` just updates the reminder doc. 
-            // History is separate or derived? 
-            // In `dataService.updateReminder` logic implies history is local or not fully synced separately?
-            // Actually `firestoreService` has `addHistory`? No, history is derived or inside user doc?
-            // `data.js` says `store.history` is local. Cloud might imply history is just logs.
-            // Let's ensure at least the Reminder Log is updated.
             await firestoreService.updateReminder(id, payload);
         }
 
@@ -818,47 +810,51 @@ export const dataService = {
         // 1. Find the reminder to check dates
         const reminder = store.reminders?.find(r => String(r.id) === String(id));
 
-        // Helper: Check if start date is in the past
-        const isStartedInPast = () => {
-            if (!reminder) return false;
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+        if (!reminder) return;
 
-            const startDateStr = reminder.schedule?.startDate || reminder.date;
-            if (!startDateStr) return false; // Default to delete if no start date
+        const index = store.reminders.findIndex(r => String(r.id) === String(id));
+        if (index === -1) return;
 
-            const startDate = new Date(startDateStr);
-            // startDate is usually YYYY-MM-DD, parsing it might be UTC or Local depending on browser.
-            // 'en-CA' format YYYY-MM-DD usually parses as UTC in some contexts or local.
-            // Safest is string comparison if format matches?
-            // Let's use string comparison for YYYY-MM-DD
-            const todayStr = today.toLocaleDateString('en-CA');
-            return startDateStr < todayStr;
-        };
+        // Safe Delete Check: Recurring & Started in the Past
+        const todayStr = new Date().toLocaleDateString('en-CA');
+        const startDate = reminder.schedule?.startDate || reminder.date;
+        const isPastRecurring = (reminder.schedule?.type === 'recurring' || (reminder.frequency && reminder.frequency !== 'Once')) &&
+            startDate && startDate < todayStr;
 
-        if (reminder && isStartedInPast()) {
-            // SOFT DELETE (End Date = Yesterday)
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yesterdayStr = yesterday.toLocaleDateString('en-CA');
+        if (isPastRecurring) {
+            // SOFT DELETE
+            // End Date = Today - 2 Days (Day Before Yesterday)
+            const softEndDateObj = new Date();
+            softEndDateObj.setDate(softEndDateObj.getDate() - 2);
+            const softEndDate = softEndDateObj.toLocaleDateString('en-CA');
 
-            const updates = { endDate: yesterdayStr, status: 'ended' };
-
-            if (auth.currentUser) {
-                await firestoreService.updateReminder(id, updates);
-            } else {
-                store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, ...updates } : r);
-                save();
-            }
+            store.reminders[index] = {
+                ...reminder,
+                schedule: {
+                    ...(reminder.schedule || {}),
+                    endDate: softEndDate
+                },
+                status: 'ended' // Optional flag if needed
+            };
         } else {
-            // HARD DELETE (Future or Today or Not Found)
-            if (auth.currentUser) {
+            // HARD DELETE
+            store.reminders.splice(index, 1);
+        }
+
+        save();
+        if (auth.currentUser) {
+            if (isPastRecurring) {
+                // For Firestore, we send the updated reminder object
+                await firestoreService.updateReminder(id, {
+                    schedule: {
+                        ...(reminder.schedule || {}),
+                        endDate: store.reminders[index].schedule.endDate
+                    },
+                    status: 'ended'
+                });
+            } else {
                 await firestoreService.deleteReminder(id);
-                return;
             }
-            if (!store.reminders) return;
-            store.reminders = store.reminders.filter(r => String(r.id) !== String(id));
-            save();
         }
     },
 
@@ -866,15 +862,7 @@ export const dataService = {
         if (activeProfile) return; // Read Only
         const now = new Date();
         now.setMinutes(now.getMinutes() + minutes);
-
-        // FIX: Use full ISO string for snooze target to support cross-day snoozes and timezone safety
-        const newTimeISO = now.toISOString();
-        const legacyTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-
-        // We prefer ISO, but existing code might expect something? 
-        // We'll update the callers to handle ISO (as we did in getRemindersForDate)
-        const newTime = newTimeISO;
-
+        const newTime = now.toISOString();
 
         if (auth.currentUser) {
             if (instanceKey) {
@@ -916,7 +904,6 @@ export const dataService = {
         return store.reminders.find(r => String(r.id) === String(id));
     },
 
-
     // History & Reports
     getHistory: () => [...(store.history || [])],
 
@@ -928,6 +915,7 @@ export const dataService = {
         });
         return Array.from(unique.values());
     },
+
     addNote: async (note) => {
         if (auth.currentUser) {
             return await firestoreService.addNote(note);
@@ -938,9 +926,9 @@ export const dataService = {
         save();
         return newNote;
     },
+
     updateNote: async (id, updates) => {
         if (auth.currentUser) {
-            // sanitize updates to remove ownerId, sharedWith, createdAt, etc.
             // eslint-disable-next-line no-unused-vars
             const { ownerId, sharedWith, createdAt, ownerEmail, ...cleanUpdates } = updates;
             await firestoreService.updateNote(id, cleanUpdates);
@@ -950,6 +938,7 @@ export const dataService = {
         store.notes = store.notes.map(n => n.id === id ? { ...n, ...updates } : n);
         save();
     },
+
     deleteNote: async (id) => {
         if (auth.currentUser) {
             await firestoreService.deleteNote(id);
@@ -961,14 +950,9 @@ export const dataService = {
     },
 
     reorderNotes: async (newNotes) => {
-        // Optimistic local update
         store.notes = newNotes;
         save();
-
         if (auth.currentUser) {
-            // For Firestore, maintaining exact array order might be tricky without an 'order' field.
-            // We'll update the 'order' field for all notes.
-            // Batch update is best here.
             await firestoreService.reorderNotes(newNotes.map(n => n.id));
         }
     },
@@ -978,7 +962,7 @@ export const dataService = {
             await firestoreService.shareNote(id, email);
             return true;
         }
-        return false; // Not supported offline
+        return false;
     },
 
     unshareNote: async (id, email) => {
@@ -991,6 +975,7 @@ export const dataService = {
 
     // Caregivers
     getCaregivers: () => activeProfile ? [] : [...(store.caregivers || [])],
+
     addCaregiver: async (caregiver) => {
         if (auth.currentUser) {
             await firestoreService.addCaregiver(caregiver);
@@ -1002,14 +987,13 @@ export const dataService = {
         save();
         return newCaregiver;
     },
+
     updateCaregiver: (id, updates) => {
-        // Not implemented in firestoreService yet? 
-        // Just mocking it for now or local only? 
-        // Caregiver updates usually minimal.
         if (!store.caregivers) return;
         store.caregivers = store.caregivers.map(c => c.id === id ? { ...c, ...updates } : c);
         save();
     },
+
     deleteCaregiver: async (id) => {
         if (auth.currentUser) {
             await firestoreService.deleteCaregiver(id);
@@ -1023,8 +1007,6 @@ export const dataService = {
     // Search
     search: (query) => {
         const lowerQ = query.toLowerCase();
-
-        // Simple synonym mapping
         const synonyms = {
             'doctor': ['dr', 'dr.'],
             'dr': ['doctor', 'dr.'],
@@ -1034,7 +1016,6 @@ export const dataService = {
             'visit': ['appointment']
         };
 
-        // Expand query terms
         const terms = [lowerQ];
         Object.keys(synonyms).forEach(key => {
             if (lowerQ.includes(key)) {
@@ -1067,6 +1048,7 @@ export const dataService = {
 
     // Settings
     getSettings: () => ({ ...(store.settings || { sleepStart: '22:00', sleepEnd: '08:00' }) }),
+
     updateSettings: async (newSettings) => {
         store.settings = { ...(store.settings || {}), ...newSettings };
         save();
@@ -1082,7 +1064,6 @@ export const dataService = {
         }
         localStorage.removeItem(getStorageKey());
         store = JSON.parse(JSON.stringify(defaultData));
-        // Force reload to clear state effectively
         window.location.reload();
     },
 

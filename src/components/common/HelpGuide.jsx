@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, BookOpen, Clock, ShieldCheck, Users } from 'lucide-react';
+import { X, Calendar, Bell, Shield, Clock, Search, BookOpen, ShieldCheck, Users } from 'lucide-react';
 
 const HelpGuide = ({ isOpen, onClose }) => {
     if (!isOpen) return null;

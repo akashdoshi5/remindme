@@ -448,12 +448,34 @@ const RemindersPage = () => {
                                                         </div>
 
                                                         <div className="flex gap-2 shrink-0">
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); initiateDelete(reminder); }}
-                                                                className="p-2 md:p-3 rounded-xl bg-gray-100 dark:bg-gray-700 text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
-                                                            >
-                                                                <Trash2 size={18} />
-                                                            </button>
+                                                            {(() => {
+                                                                // Lock Logic: Disable delete for history older than Yesterday
+                                                                const yesterday = new Date();
+                                                                yesterday.setDate(yesterday.getDate() - 1);
+                                                                yesterday.setHours(0, 0, 0, 0);
+                                                                const isLocked = new Date(selectedDate) < yesterday;
+
+                                                                if (isLocked) {
+                                                                    return (
+                                                                        <button
+                                                                            disabled
+                                                                            title="Cannot delete past history"
+                                                                            className="p-2 md:p-3 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed"
+                                                                        >
+                                                                            <Trash2 size={18} />
+                                                                        </button>
+                                                                    );
+                                                                }
+
+                                                                return (
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); initiateDelete(reminder); }}
+                                                                        className="p-2 md:p-3 rounded-xl bg-gray-100 dark:bg-gray-700 text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                                                    >
+                                                                        <Trash2 size={18} />
+                                                                    </button>
+                                                                );
+                                                            })()}
 
                                                             {(() => {
                                                                 // Action Window Logic

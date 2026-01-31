@@ -203,6 +203,18 @@ export const useNotifications = () => {
                     return null;
                 }
 
+                // CHECK END DATE (Soft Delete / Expiry)
+                if (r.schedule?.endDate) {
+                    const end = new Date(r.schedule.endDate);
+                    end.setHours(23, 59, 59, 999);
+                    if (date > end) {
+                        /* console.log('❌ Filtered (Past End Date):', r.title); */
+                        filteredCount++;
+                        if (!firstFilterReason) firstFilterReason = `Past End Date (${r.title})`;
+                        return null;
+                    }
+                }
+
                 return {
                     title: r.title,
                     body: bodyText,
