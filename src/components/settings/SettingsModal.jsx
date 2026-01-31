@@ -10,8 +10,6 @@ const SettingsModal = ({ isOpen, onClose }) => {
     const { user, logout } = useAuth();
     const [showDebug, setShowDebug] = useState(false);
 
-    if (!isOpen) return null;
-
     const [sleepStart, setSleepStart] = useState('22:00');
     const [sleepEnd, setSleepEnd] = useState('08:00');
 
@@ -22,6 +20,8 @@ const SettingsModal = ({ isOpen, onClose }) => {
             setSleepEnd(current.sleepEnd || '08:00');
         }
     }, [isOpen]);
+
+    if (!isOpen) return null;
 
     const handleSave = () => {
         dataService.updateSettings({

@@ -1,251 +1,252 @@
-import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Bell, FileText, Users, ArrowRight, Activity, Clock, CheckCircle, AlertCircle, Search, Droplets, Calendar, Dumbbell, Star, Pill } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useLanguage } from '../context/LanguageContext';
-
-const DashboardCard = ({ title, description, icon: Icon, color, link, linkText, delay }) => {
-    const colorClasses = {
-        orange: { bg: 'bg-orange-50', text: 'text-orange-600', iconBg: 'bg-orange-100', border: 'hover:border-orange-200' },
-        teal: { bg: 'bg-teal-50', text: 'text-teal-600', iconBg: 'bg-teal-100', border: 'hover:border-teal-200' },
-        green: { bg: 'bg-green-50', text: 'text-green-600', iconBg: 'bg-green-100', border: 'hover:border-green-200' }
-    };
-
-    const theme = colorClasses[color];
-
-    return (
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay, duration: 0.4 }}
-            className={`card group flex flex-col items-center text-center p-8 transition-all hover:shadow-xl hover:-translate-y-1 border border-transparent ${theme.border}`}
-        >
-            <div className={`w-20 h-20 rounded-2xl flex items-center justify-center mb-6 ${theme.iconBg} ${theme.text} shadow-sm group-hover:scale-110 transition-transform duration-300`}>
-                <Icon size={40} />
-            </div>
-            <h3 className="text-2xl font-bold mb-3 text-gray-900 group-hover:text-gray-700 transition-colors">{title}</h3>
-            <p className="text-gray-500 mb-8 flex-1 leading-relaxed text-lg px-2">{description}</p>
-            <Link
-                to={link}
-                className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${theme.bg} ${theme.text} hover:brightness-95`}
-            >
-                {linkText} <ArrowRight size={18} />
-            </Link>
-        </motion.div>
-    );
-};
-
+import { Bell, Users, FileText, ChevronRight, Activity, Plus, Clock, Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { dataService } from '../services/data';
+import { firestoreService } from '../services/firestoreService'; // For caregiver query
 import { useAuth } from '../context/AuthContext';
-
-import { useUI } from '../context/UIContext';
-
-
+import HelpGuide from '../components/common/HelpGuide'; // Import
 
 const HomePage = () => {
-    const { t } = useLanguage();
-    const { user } = useAuth();
-    const { openSearch } = useUI();
-    const [todayReminders, setTodayReminders] = React.useState({ upcoming: [], past: [] });
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const [stats, setStats] = useState({ upcoming: 0, taken: 0, missed: 0 });
+    const [nextReminder, setNextReminder] = useState(null);
+    const [caregivers, setCaregivers] = useState([]);
+    const [notes, setNotes] = useState([]);
+    const [dateGreeting, setDateGreeting] = useState('');
+    const [showHelp, setShowHelp] = useState(false); // State for Guide
 
-    const getGreeting = () => {
+    useEffect(() => {
+        // 1. Greeting
         const hour = new Date().getHours();
-        if (hour < 5) return "Good Night";
-        if (hour < 12) return "Good Morning";
-        if (hour < 17) return "Good Afternoon";
-        if (hour < 21) return "Good Evening";
-        return "Good Night";
-    };
+        if (hour < 12) setDateGreeting('Good Morning');
+        else if (hour < 18) setDateGreeting('Good Afternoon');
+        else setDateGreeting('Good Evening');
 
-    const refreshData = () => {
-        const todayStr = new Date().toLocaleDateString('en-CA');
-        import('../services/data').then(({ dataService }) => {
-            const allToday = dataService.getRemindersForDate(todayStr);
+        // 2. Load Local Data
+        const loadDashboard = async () => {
+            const reminders = dataService.getReminders();
+            const allNotes = dataService.getNotes();
 
-            // Split into Prioritized Lists
-            const upcoming = allToday.filter(r => r.status === 'upcoming' || r.status === 'snoozed');
-            const past = allToday.filter(r => r.status === 'missed' || r.status === 'taken' || r.status === 'done');
+            // Stats & Next Reminder
+            const now = new Date();
+            const todayStr = now.toISOString().split('T')[0];
 
-            setTodayReminders({ upcoming, past });
-        });
-    };
+            // Expand ONLY today's reminders
+            const todaysInstances = dataService.expandRemindersForDate(todayStr, reminders);
 
-    React.useEffect(() => {
-        refreshData();
-        const interval = setInterval(refreshData, 60000); // 1 min refresh
-        window.addEventListener('storage-update', refreshData);
-        return () => {
-            clearInterval(interval);
-            window.removeEventListener('storage-update', refreshData);
+            let taken = 0;
+            let missed = 0;
+            let upcoming = 0;
+            let next = null;
+
+            todaysInstances.sort((a, b) => (a.displayTime || '').localeCompare(b.displayTime || ''));
+
+            todaysInstances.forEach(r => {
+                const rTime = r.displayTime || '00:00';
+                const [h, m] = rTime.split(':').map(Number);
+                const rDate = new Date();
+                rDate.setHours(h, m, 0, 0);
+
+                if (r.status === 'taken') taken++;
+                else if (r.status === 'missed') missed++;
+                else {
+                    upcoming++;
+                    // Find next upcoming
+                    if (!next && rDate > now) {
+                        next = r;
+                    }
+                }
+            });
+
+            setStats({ upcoming, taken, missed });
+            setNextReminder(next);
+
+            // Recent Notes (Top 3)
+            setNotes(allNotes.slice(0, 3));
+
+            // 3. Load Caregivers (Patients) if logged in
+            // We want "Who I am caring for" -> "My Patients"
+            if (user) {
+                try {
+                    const myEmail = user.email;
+                    const patients = await firestoreService.getPatientsForCaregiver(myEmail);
+                    setCaregivers(patients);
+                } catch (e) {
+                    console.error("Home: Failed to load patients", e);
+                }
+            }
         };
-    }, []);
 
-    const getIconForType = (type) => {
-        switch (type) {
-            case 'Medication': return <Pill size={24} />;
-            case 'Water': return <Droplets size={24} />;
-            case 'Exercise': return <Dumbbell size={24} />;
-            case 'Appointments': return <Calendar size={24} />;
-            case 'Other': return <Star size={24} />;
-            default: return <Bell size={24} />;
-        }
-    };
+        loadDashboard();
+
+        // Listen for updates
+        window.addEventListener('storage-update', loadDashboard);
+        return () => window.removeEventListener('storage-update', loadDashboard);
+    }, [user]);
 
     return (
-        <div className="max-w-6xl mx-auto px-4 pb-20">
+        <div className="p-6 pb-24 space-y-6 max-w-4xl mx-auto animate-fade-in">
+            {/* Help Guide Modal */}
+            <HelpGuide isOpen={showHelp} onClose={() => setShowHelp(false)} />
 
-            <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5 }}
-                className="text-center mb-10 pt-8"
-            >
-                <h1 className="text-4xl md:text-5xl font-extrabold mb-4 tracking-tight text-gray-900 dark:text-gray-100">
-                    {getGreeting()}, {user?.displayName?.split(' ')[0] || 'Friend'}
-                </h1>
-
-                {/* Global Search Bar (Prominent) */}
-                <div
-                    onClick={openSearch}
-                    className="max-w-xl mx-auto mt-8 bg-white dark:bg-gray-800 rounded-full shadow-lg shadow-gray-200/50 dark:shadow-none border border-gray-100 dark:border-gray-700 p-2 flex items-center gap-3 cursor-pointer hover:scale-[1.02] transition-transform group"
-                >
-                    <div className="w-10 h-10 bg-orange-50 dark:bg-orange-900/20 rounded-full flex items-center justify-center text-orange-500">
-                        <Search size={20} />
+            {/* Header */}
+            <div className="flex justify-between items-center">
+                <div>
+                    <div className="flex items-center gap-2">
+                        <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+                            {dateGreeting}, {user?.displayName?.split(' ')[0] || 'Friend'}
+                        </h1>
+                        <button
+                            onClick={() => setShowHelp(true)}
+                            className="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 p-1.5 rounded-full hover:scale-105 transition-transform"
+                            title="How to use"
+                        >
+                            <span className="text-xs font-bold">?</span>
+                        </button>
                     </div>
-                    <span className="text-gray-400 dark:text-gray-500 font-medium text-lg flex-1 text-left">
-                        Search notes, reminders...
-                    </span>
-                    <div className="hidden md:flex items-center gap-2 pr-4 text-xs text-gray-300 font-bold tracking-wider">
-                        CMD K
-                    </div>
+                    <p className="text-gray-500 dark:text-gray-400">Here is your daily snapshot</p>
                 </div>
-
-                {/* Quick Actions */}
-                <div className="flex justify-center gap-4 mt-8">
-                    <button
-                        onClick={() => navigate('/reminders', { state: { openAdd: true } })}
-                        className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-full font-bold shadow-lg shadow-orange-500/30 transition-all hover:scale-105"
-                    >
-                        <Bell size={18} />
-                        Add Reminder
-                    </button>
-                    <button
-                        onClick={() => navigate('/notes', { state: { openAdd: true } })}
-                        className="flex items-center gap-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 px-6 py-3 rounded-full font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all hover:scale-105"
-                    >
-                        <FileText size={18} />
-                        Add Note
-                    </button>
-                </div>
-            </motion.div>
-
-            {/* UPCOMING - Priority */}
-            <div className="mb-12">
-                <div className="flex items-center gap-3 mb-6">
-                    <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200">For Later Today</h2>
-                    <span className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 px-3 py-1 rounded-full text-sm font-bold">
-                        {todayReminders.upcoming.length} Upcoming
-                    </span>
-                </div>
-
-                {todayReminders.upcoming.length > 0 ? (
-                    <div className="grid gap-4">
-                        {todayReminders.upcoming.map(r => (
-                            <div
-                                key={r.uniqueId}
-                                onClick={() => navigate('/reminders', { state: { highlightId: r.uniqueId } })}
-                                className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border-l-4 border-orange-500 flex items-center justify-between cursor-pointer hover:shadow-md transition-all dark:border-l-orange-500"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className="bg-orange-50 dark:bg-orange-900/30 p-3 rounded-xl text-orange-600 dark:text-orange-400">
-                                        {getIconForType(r.type)}
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100">{r.title}</h3>
-                                        <p className="text-gray-500 dark:text-gray-400 text-sm flex items-center gap-1">
-                                            <Clock size={12} /> {r.displayTime}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-orange-600 dark:text-orange-400 font-bold bg-orange-50 dark:bg-orange-900/30 px-3 py-1 rounded-lg text-sm">
-                                        {r.status === 'snoozed' ? 'Snoozed' : 'Upcoming'}
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="text-center py-8 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 text-gray-400">
-                        <p>No upcoming reminders for today.</p>
-                    </div>
-                )}
-            </div>
-
-
-            {/* PAST / HISTORY - Read Only */}
-            <div className="mb-12 opacity-80">
-                <h2 className="text-xl font-bold text-gray-500 dark:text-gray-400 mb-6 flex items-center gap-2">
-                    <Activity size={20} /> Past / Completed
-                </h2>
-
-                <div className="grid gap-4">
-                    {todayReminders.past.map(r => (
-                        <div key={r.uniqueId} className={`p-4 rounded-xl flex items-center justify-between border ${r.status === 'taken' || r.status === 'done' ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-900' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-900'
-                            }`}>
-                            <div className="flex items-center gap-4">
-                                <div className={`p-2 rounded-lg ${r.status === 'taken' || r.status === 'done' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
-                                    }`}>
-                                    {r.status === 'taken' || r.status === 'done' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-                                </div>
-                                <div>
-                                    <h3 className={`font-bold ${r.status === 'taken' || r.status === 'done' ? 'text-green-900 dark:text-green-100' : 'text-red-900 dark:text-red-100'
-                                        }`}>{r.title}</h3>
-                                    <p className="text-xs opacity-70 flex items-center gap-1 dark:text-gray-300">
-                                        {r.displayTime} • {r.status.toUpperCase()}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                    {todayReminders.past.length === 0 && (
-                        <p className="text-gray-400 italic px-2">Nothing in the past yet.</p>
+                <div onClick={() => navigate('/settings')} className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 cursor-pointer border-2 border-white dark:border-gray-800 shadow-sm">
+                    {user?.photoURL ? (
+                        <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-xl">👤</div>
                     )}
                 </div>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8 mt-12">
-                <DashboardCard
-                    title="All Reminders"
-                    description="Complex schedules, Medication courses, & Smart windows."
-                    icon={Bell}
-                    color="orange"
-                    link="/reminders"
-                    linkText="Go to Reminders"
-                    delay={0.1}
-                />
-                <DashboardCard
-                    title="Easy Notes"
-                    description="Voice notes, Attachments, & Quick conversion to reminders."
-                    icon={FileText}
-                    color="teal"
-                    link="/notes"
-                    linkText="Open Notes"
-                    delay={0.2}
-                />
-                <DashboardCard
-                    title="Health Report"
-                    description="Track adherence scores & Edit past history."
-                    icon={Activity}
-                    color="green"
-                    link="/reports"
-                    linkText="View Report"
-                    delay={0.3}
-                />
+            {/* Main Stats Row */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {/* Up Next Card */}
+                <motion.div
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => navigate('/reminders')}
+                    className="col-span-2 md:col-span-2 bg-gradient-to-br from-orange-500 to-orange-400 p-6 rounded-3xl text-white shadow-lg shadow-orange-200 dark:shadow-none relative overflow-hidden"
+                >
+                    <div className="absolute top-0 right-0 p-8 opacity-10">
+                        <Clock size={120} />
+                    </div>
+
+                    <div className="relative z-10">
+                        <h2 className="text-orange-100 font-medium mb-1 flex items-center gap-2">
+                            <Bell size={16} /> Up Next
+                        </h2>
+                        {nextReminder ? (
+                            <div>
+                                <h3 className="text-3xl font-bold mb-1">{nextReminder.displayTime}</h3>
+                                <p className="text-xl font-medium opacity-90">{nextReminder.title}</p>
+                                <p className="text-sm opacity-75 mt-2 flex items-center gap-1">
+                                    {stats.upcoming - 1 > 0 ? `+ ${stats.upcoming - 1} more today` : 'Last one for today!'}
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="py-2">
+                                <h3 className="text-2xl font-bold">All caught up!</h3>
+                                <p className="opacity-80">No more reminders for today.</p>
+                            </div>
+                        )}
+                    </div>
+                </motion.div>
+
+                {/* Mini Stats Ring */}
+                <motion.div
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => navigate('/reports')}
+                    className="bg-white dark:bg-gray-800 p-4 rounded-3xl border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-center shadow-sm"
+                >
+                    <div className="w-20 h-20 relative flex items-center justify-center mb-2">
+                        <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                            <path className="text-gray-100 dark:text-gray-700" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" />
+                            <path
+                                className="text-green-500"
+                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                                strokeDasharray={`${stats.taken > 0 ? (stats.taken / (stats.taken + stats.missed + stats.upcoming)) * 100 : 0}, 100`}
+                            />
+                        </svg>
+                        <span className="absolute text-xl font-bold text-gray-800 dark:text-gray-100">{stats.taken}</span>
+                    </div>
+                    <p className="text-xs font-bold text-gray-400 uppercase">Taken Today</p>
+                </motion.div>
             </div>
+
+            {/* Quick Actions */}
+            <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
+                <button onClick={() => navigate('/reminders?add=true')} className="flex items-center gap-2 px-5 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-bold whitespace-nowrap shadow-sm">
+                    <Plus size={18} /> Add Med
+                </button>
+                <button onClick={() => navigate('/caregivers')} className="flex items-center gap-2 px-5 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-2xl font-bold whitespace-nowrap shadow-sm">
+                    <Users size={18} /> Share Profile
+                </button>
+            </div>
+
+            {/* Caregivers Widget (My Patients) */}
+            {user && (
+                <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                        <h3 className="font-bold text-lg text-gray-800 dark:text-gray-200">My Patients</h3>
+                        <span onClick={() => navigate('/caregivers')} className="text-orange-500 text-sm font-bold cursor-pointer">View All</span>
+                    </div>
+                    {caregivers.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-3">
+                            {caregivers.slice(0, 4).map(patient => (
+                                <motion.div
+                                    key={patient.id}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={() => navigate('/reports', { state: { viewingProfile: patient } })}
+                                    className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 flex items-center gap-3 shadow-sm cursor-pointer hover:border-orange-500/50 transition-colors"
+                                >
+                                    <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-600 dark:text-orange-400 font-bold">
+                                        {patient.relationship?.name?.[0] || 'U'}
+                                    </div>
+                                    <div className="overflow-hidden">
+                                        <p className="font-bold text-gray-800 dark:text-gray-100 truncate">{patient.relationship?.name || 'Unknown'}</p>
+                                        <p className="text-xs text-green-500 font-medium">View Report</p>
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-6 text-center border border-dashed border-gray-200 dark:border-gray-700">
+                            <Users className="mx-auto text-gray-300 mb-2" />
+                            <p className="text-sm text-gray-500">You aren't caring for anyone yet.</p>
+                            <button onClick={() => navigate('/caregivers')} className="mt-2 text-orange-500 font-bold text-sm">Add Patient</button>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Recent Notes */}
+            <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                    <h3 className="font-bold text-lg text-gray-800 dark:text-gray-200">Recent Notes</h3>
+                    <span onClick={() => navigate('/notes')} className="text-gray-400 text-sm font-bold cursor-pointer">See All</span>
+                </div>
+                {notes.length > 0 ? (
+                    <div className="space-y-3">
+                        {notes.map(note => (
+                            <motion.div
+                                key={note.id}
+                                whileTap={{ scale: 0.99 }}
+                                onClick={() => navigate('/notes')}
+                                className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm"
+                            >
+                                <h4 className="font-bold text-gray-800 dark:text-gray-200">{note.title}</h4>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1">{note.content}</p>
+                            </motion.div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-6 text-gray-400 text-sm">No notes yet.</div>
+                )}
+            </div>
+
         </div>
     );
 };
-
 
 export default HomePage;

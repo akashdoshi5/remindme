@@ -13,7 +13,7 @@ import { useReminders } from './hooks/useReminders';
 
 import PermissionBanner from './components/common/PermissionBanner';
 import AppVersionManager from './components/common/AppVersionManager';
-import { NotificationDebugPanel } from './components/common/NotificationDebugPanel';
+import ProfileSwitcher from './components/caregiver/ProfileSwitcher';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -21,6 +21,14 @@ import RemindersPage from './pages/RemindersPage';
 import NotesPage from './pages/NotesPage';
 import CaregiversPage from './pages/CaregiversPage';
 import ReportsPage from './pages/ReportsPage';
+import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
+
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
+import MobileNav from './components/layout/MobileNav';
+import MobileMenu from './components/layout/MobileMenu';
+import { UIProvider, useUI } from './context/UIContext';
 
 const NavLink = ({ to, icon: Icon, label }) => {
   const location = useLocation();
@@ -100,7 +108,6 @@ const Header = ({ searchQuery, setSearchQuery }) => {
             </button>
           )}
 
-
           {/* Management Links (Desktop Only) */}
           <div className="hidden lg:flex items-center gap-1 border-l border-gray-200 dark:border-gray-700 pl-4">
             <Link to="/reports" className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors" title="Reports">
@@ -110,6 +117,8 @@ const Header = ({ searchQuery, setSearchQuery }) => {
               <Users size={20} className={isActive('/caregivers') ? 'text-purple-600 fill-current' : ''} />
             </Link>
           </div>
+
+          <div className="h-8 w-[1px] bg-gray-200 dark:bg-gray-800 hidden md:block mx-2"></div>
 
           {/* Settings / Profile */}
           <button onClick={openSettings} className="w-10 h-10 md:w-10 md:h-10 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-800 transition-all shadow-sm overflow-hidden" title="Settings">
@@ -126,10 +135,6 @@ const Header = ({ searchQuery, setSearchQuery }) => {
     </header>
   );
 };
-
-import { AuthProvider, useAuth } from './context/AuthContext';
-import LoginPage from './pages/LoginPage';
-import SignupPage from './pages/SignupPage';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -152,7 +157,6 @@ const ProtectedRoute = ({ children }) => {
 };
 
 const AppContent = () => {
-  // ... inside AppContent
   const { user } = useAuth();
   const { requestPermission, checkPermissions, permission, sendNotification, scheduleReminders, clearDelivered } = useNotifications();
   const {
@@ -263,14 +267,13 @@ const AppContent = () => {
     return () => window.removeEventListener('storage-update', checkStatus);
   }, [activeAlarm]);
 
-  // ... existing code ...
-
   return (
     <div className="min-h-screen flex flex-col font-sans bg-gray-50/50 dark:bg-gray-950 transition-colors duration-300">
       <Header />
 
       {/* Permission Warning */}
       <PermissionBanner permission={permission} onCheckAgain={checkPermissions} />
+
       <AppVersionManager />
 
       <main className="flex-1 container py-6 md:py-10 pb-24 md:pb-10">
@@ -346,11 +349,6 @@ const AppContent = () => {
     </div>
   );
 };
-
-import { ThemeProvider } from './context/ThemeContext';
-import MobileNav from './components/layout/MobileNav';
-import MobileMenu from './components/layout/MobileMenu';
-import { UIProvider, useUI } from './context/UIContext';
 
 const App = () => {
   return (

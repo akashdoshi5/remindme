@@ -16,15 +16,23 @@ service cloud.firestore {
     // USERS COLLECTION
     // Strictly allow access only to the user themselves
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
       
-      // Subcollections (reminders, caregivers) inherit strict ownership
+      // Subcollections (reminders, caregivers) inherit strict ownership (relaxed for reminders read)
       match /reminders/{reminderId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isAuthenticated();
+        allow write: if isOwner(userId);
       }
       match /caregivers/{caregiverId} {
         allow read, write: if isOwner(userId);
       }
+    }
+
+    // COLLECTION GROUP QUERY: CAREGIVERS
+    // Allow a user to find all instances where THEY are listed as a caregiver
+    match /{path=**}/caregivers/{caregiverId} {
+      allow read: if isAuthenticated() && resource.data.email == request.auth.token.email;
     }
 
     // NOTES COLLECTION (Root Level for Sharing)

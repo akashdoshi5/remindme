@@ -95,18 +95,19 @@ const RemindersPage = () => {
             navigate(location.pathname, { replace: true, state: {} });
         }
 
-        if (location.state?.convertFromNote) {
-            // Guard: Only initialize if not already editing to prevet overwrites during re-renders
-            if (!editingReminder) {
-                const note = location.state.convertFromNote;
-                const draftReminder = dataService.convertNoteToReminder(note);
-                setEditingReminder(draftReminder);
-                setIsModalOpen(true);
-                // Clear state to prevent loop using Navigate to update React Router context
-                navigate(location.pathname, { replace: true, state: {} });
-            }
+        if (location.state?.add && location.state?.initialTitle) {
+            setEditingReminder({
+                title: location.state.initialTitle,
+                instructions: location.state.initialNote || '',
+                type: 'Other',
+                isNew: true
+            });
+            setIsModalOpen(true);
+            // Clear state
+            window.history.replaceState({}, document.title);
         }
     }, [location.state, reminders]);
+
 
     const handleDateChange = (days) => {
         const newDate = new Date(selectedDate);
@@ -295,142 +296,219 @@ const RemindersPage = () => {
 
             {/* List */}
             <div className="space-y-6 md:space-y-8 mt-4 md:mt-0">
-                {['Morning', 'Afternoon', 'Evening'].map(group => (
-                    groupedReminders[group].length > 0 && (
-                        <div key={group} className="animate-fade-in">
-                            <h3 className="text-base font-bold text-gray-400 mb-3 flex items-center gap-2 px-1 uppercase tracking-wider text-xs">
+                {['Morning', 'Afternoon', 'Evening'].map(group => {
+                    if (groupedReminders[group].length === 0) return null;
+
+                    // 1. Sort by time
+                    const sortedGroup = [...groupedReminders[group]].sort((a, b) => {
+                        const tA = a.displayTime ? parseInt(a.displayTime.split(':')[0]) * 60 + parseInt(a.displayTime.split(':')[1]) : 0;
+                        const tB = b.displayTime ? parseInt(b.displayTime.split(':')[0]) * 60 + parseInt(b.displayTime.split(':')[1]) : 0;
+                        return tA - tB;
+                    });
+
+                    // 2. Determine "Now" Separator Index
+                    let separatorIndex = -1;
+                    const isToday = new Date(selectedDate).setHours(0, 0, 0, 0) === new Date().setHours(0, 0, 0, 0);
+
+                    if (isToday) {
+                        const now = new Date();
+                        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+                        // Find the split point
+                        for (let i = 0; i < sortedGroup.length; i++) {
+                            const r = sortedGroup[i];
+                            if (!r.displayTime) continue;
+                            const [h, m] = r.displayTime.split(':').map(Number);
+                            const rMinutes = h * 60 + m;
+
+                            if (rMinutes > currentMinutes) {
+                                separatorIndex = i; // This is the first "Future" item
+                                break;
+                            }
+                        }
+                    }
+
+                    return (
+                        <div key={group} className="animate-fade-in relative">
+                            <h3 className="text-base font-bold text-gray-400 mb-3 flex items-center gap-2 px-1 uppercase tracking-wider text-xs sticky top-0 bg-gray-50 dark:bg-gray-950 z-20 py-2">
                                 {group === 'Morning' && <Sun className="text-orange-400" size={16} />}
                                 {group === 'Afternoon' && <Sun className="text-yellow-500" size={16} />}
                                 {group === 'Evening' && <Moon className="text-indigo-400" size={16} />}
                                 {group}
                             </h3>
-                            <div className="space-y-3">
+                            <div className="space-y-3 relative">
                                 <AnimatePresence>
-                                    {groupedReminders[group].map(reminder => (
-                                        <motion.div
-                                            layout
-                                            initial={{ opacity: 0, y: 10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            exit={{ opacity: 0, x: -100 }}
-                                            key={reminder.uniqueId || reminder.id}
-                                            id={`reminder-${reminder.uniqueId || reminder.id}`}
-                                            onClick={() => handleEdit(reminder)}
-                                            className={`card p-0 overflow-hidden flex flex-col md:flex-row shadow-sm hover:shadow-md transition-all groups border-l-4 cursor-pointer ${reminder.status === 'taken' || reminder.status === 'done' ? 'opacity-60 bg-gray-50 dark:bg-gray-800/50 border-gray-300 dark:border-gray-700 grayscale-[0.5]' :
-                                                reminder.status === 'snoozed' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-400' :
-                                                    reminder.isImportant ? 'border-red-500 bg-white dark:bg-gray-800' : 'border-orange-500 bg-white dark:bg-gray-800'
-                                                }`}
-                                        >
-                                            <div className="p-3 md:p-4 flex-1 flex flex-row items-center justify-between gap-3">
-                                                <div className="flex items-center gap-3 md:gap-4 flex-1">
-                                                    <div className="text-xl md:text-2xl shrink-0">
-                                                        {(() => {
-                                                            switch (reminder.type) {
-                                                                case 'Medication': return <Pill size={24} className="text-blue-500" />;
-                                                                case 'Water': return <Droplets size={24} className="text-blue-400" />;
-                                                                case 'Exercise': return <Dumbbell size={24} className="text-orange-500" />;
-                                                                case 'Appointments': return <Calendar size={24} className="text-purple-500" />;
-                                                                case 'Other': return <Star size={24} className="text-yellow-500" />;
-                                                                default: return <Bell className="text-gray-700 dark:text-gray-300" size={24} />;
-                                                            }
-                                                        })()}
+                                    {sortedGroup.map((reminder, idx) => {
+                                        // PAST VISUAL DIFFERENTIATION
+                                        // Default: if status is taken/done -> dimmed. 
+                                        // New Request: Differentiate "Passed Time" even if not taken.
+                                        const now = new Date();
+                                        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+                                        let isPastTime = false;
+                                        if (reminder.displayTime && isToday) {
+                                            const [h, m] = reminder.displayTime.split(':').map(Number);
+                                            if (h * 60 + m < currentMinutes) isPastTime = true;
+                                        }
+
+                                        return (
+                                            <React.Fragment key={reminder.uniqueId || reminder.id}>
+                                                {/* SEPARATOR: Render before the first future item (idx === separatorIndex) 
+                                                    OR if separatorIndex was never found (all past) but we are at the end? 
+                                                    No, user wants "Current Time" line. 
+                                                    Actually, strictly inserting it BEFORE the first future item handles most cases.
+                                                    What if all are past? Then separator should be after the last item?
+                                                    Let's stick to "Current Time" indicator mainly.
+                                                */}
+                                                {isToday && idx === separatorIndex && (
+                                                    <div className="flex items-center gap-4 py-4 opacity-80">
+                                                        <div className="h-[2px] flex-1 bg-red-400/30"></div>
+                                                        <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full border border-red-200 dark:border-red-800">
+                                                            Current Time
+                                                        </span>
+                                                        <div className="h-[2px] flex-1 bg-red-400/30"></div>
                                                     </div>
-                                                    <div className="min-w-0">
-                                                        <h3 className="font-bold text-base md:text-lg text-gray-900 dark:text-gray-100 truncate leading-tight">{reminder.title}</h3>
-                                                        {reminder.instructions && <p className="text-gray-500 dark:text-gray-400 text-xs md:text-sm truncate">{reminder.instructions}</p>}
-                                                        <div className="flex items-center gap-2 mt-1 text-xs font-bold text-gray-400 dark:text-gray-500">
-                                                            <Clock size={12} /> {reminder.displayTime}
+                                                )}
+
+                                                <motion.div
+                                                    layout
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    exit={{ opacity: 0, x: -100 }}
+                                                    id={`reminder-${reminder.uniqueId || reminder.id}`}
+                                                    onClick={() => handleEdit(reminder)}
+                                                    className={`card p-0 overflow-hidden flex flex-col md:flex-row shadow-sm hover:shadow-md transition-all groups border-l-4 cursor-pointer 
+                                                        ${(reminder.status === 'taken' || reminder.status === 'done')
+                                                            ? 'opacity-50 bg-gray-100 dark:bg-gray-800/40 border-gray-300 dark:border-gray-700 grayscale-[0.8]'
+                                                            : (isPastTime && reminder.status !== 'missed')
+                                                                // Past but not taken/missed yet? Maybe just slightly dimmed background?
+                                                                ? 'bg-gray-50/80 dark:bg-gray-800/80 border-orange-300'
+                                                                : reminder.status === 'snoozed'
+                                                                    ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-400'
+                                                                    : reminder.isImportant
+                                                                        ? 'border-red-500 bg-white dark:bg-gray-800 shadow-red-500/10'
+                                                                        : 'border-orange-500 bg-white dark:bg-gray-800'
+                                                        }`}
+                                                >
+                                                    <div className="p-3 md:p-4 flex-1 flex flex-row items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-3 md:gap-4 flex-1">
+                                                            <div className="text-xl md:text-2xl shrink-0">
+                                                                {(() => {
+                                                                    switch (reminder.type) {
+                                                                        case 'Medication': return <Pill size={24} className="text-blue-500" />;
+                                                                        case 'Water': return <Droplets size={24} className="text-blue-400" />;
+                                                                        case 'Exercise': return <Dumbbell size={24} className="text-orange-500" />;
+                                                                        case 'Appointments': return <Calendar size={24} className="text-purple-500" />;
+                                                                        case 'Other': return <Star size={24} className="text-yellow-500" />;
+                                                                        default: return <Bell className="text-gray-700 dark:text-gray-300" size={24} />;
+                                                                    }
+                                                                })()}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <h3 className={`font-bold text-base md:text-lg truncate leading-tight ${isPastTime && reminder.status !== 'taken' ? 'text-gray-600 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                                                                    {reminder.title}
+                                                                </h3>
+                                                                {reminder.instructions && <p className="text-gray-500 dark:text-gray-400 text-xs md:text-sm truncate">{reminder.instructions}</p>}
+                                                                <div className={`flex items-center gap-2 mt-1 text-xs font-bold ${isPastTime ? 'text-gray-400' : 'text-orange-500'}`}>
+                                                                    <Clock size={12} /> {reminder.displayTime}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex gap-2 shrink-0">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); initiateDelete(reminder); }}
+                                                                className="p-2 md:p-3 rounded-xl bg-gray-100 dark:bg-gray-700 text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                                            >
+                                                                <Trash2 size={18} />
+                                                            </button>
+
+                                                            {(() => {
+                                                                // Action Window Logic
+                                                                if (reminder.status === 'taken' || reminder.status === 'done') return null;
+
+                                                                let isActionable = true;
+                                                                let reason = '';
+
+                                                                if (reminder.displayTime) {
+                                                                    const [h, m] = reminder.displayTime.split(':').map(Number);
+                                                                    const reminderDate = new Date(selectedDate);
+                                                                    reminderDate.setHours(h, m, 0, 0);
+
+                                                                    const now = new Date();
+                                                                    const diffMs = now.getTime() - reminderDate.getTime();
+                                                                    const hoursDiff = diffMs / (1000 * 60 * 60);
+
+                                                                    if (hoursDiff < -2) {
+                                                                        isActionable = false;
+                                                                        reason = 'Too Early';
+                                                                    } else if (hoursDiff > 2) {
+                                                                        isActionable = false;
+                                                                        reason = 'Missed';
+                                                                    }
+                                                                }
+
+                                                                if (reminder.status === 'missed') {
+                                                                    isActionable = false;
+                                                                    reason = 'Missed';
+                                                                }
+
+                                                                return (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            if (!isActionable) return;
+                                                                            dataService.logReminderStatus(reminder.id, reminder.instanceKey, 'taken');
+                                                                            setTriggerReload(prev => prev + 1);
+                                                                        }}
+                                                                        disabled={!isActionable}
+                                                                        className={`p-2 md:px-4 md:py-2 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 ${isActionable
+                                                                            ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/20'
+                                                                            : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none'
+                                                                            }`}
+                                                                    >
+                                                                        {isActionable ? (
+                                                                            <>
+                                                                                <Check size={20} className="md:hidden" />
+                                                                                <span className="hidden md:inline font-bold">{reminder.type === 'Medication' ? 'Take' : 'Done'}</span>
+                                                                            </>
+                                                                        ) : (
+                                                                            <span className="text-xs font-bold uppercase">{reason}</span>
+                                                                        )}
+                                                                    </button>
+                                                                );
+                                                            })()}
+
+                                                            {(reminder.status === 'taken' || reminder.status === 'done') && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (confirm('Mark this reminder as NOT done?')) {
+                                                                            dataService.logReminderStatus(reminder.id, reminder.instanceKey, 'upcoming');
+                                                                            setTriggerReload(prev => prev + 1);
+                                                                        }
+                                                                    }}
+                                                                    className="p-2 text-green-600 bg-green-100 rounded-full hover:bg-green-200 transaction-colors"
+                                                                    title="Undo Completion"
+                                                                >
+                                                                    <RefreshCcw size={16} />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                </div>
+                                                </motion.div>
+                                            </React.Fragment>
+                                        );
+                                    })}
 
-                                                <div className="flex gap-2 shrink-0">
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); initiateDelete(reminder); }}
-                                                        className="p-2 md:p-3 rounded-xl bg-gray-100 dark:bg-gray-700 text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
-                                                    >
-                                                        <Trash2 size={18} />
-                                                    </button>
+                                    {/* Fallback if ALL items are past and none future found in range, render separator at end?
+                                        Maybe not needed. Usually "Now" is moving. 
+                                    */}
 
-                                                    {(() => {
-                                                        // Action Window Logic
-                                                        if (reminder.status === 'taken' || reminder.status === 'done') return null;
-
-                                                        let isActionable = true;
-                                                        let reason = '';
-
-                                                        if (reminder.displayTime) {
-                                                            const [h, m] = reminder.displayTime.split(':').map(Number);
-                                                            const reminderDate = new Date(selectedDate);
-                                                            reminderDate.setHours(h, m, 0, 0);
-
-                                                            const now = new Date();
-                                                            const diffMs = now.getTime() - reminderDate.getTime();
-                                                            const hoursDiff = diffMs / (1000 * 60 * 60);
-
-                                                            if (hoursDiff < -2) {
-                                                                isActionable = false;
-                                                                reason = 'Too Early';
-                                                            } else if (hoursDiff > 2) {
-                                                                isActionable = false;
-                                                                reason = 'Missed';
-                                                            }
-                                                        }
-
-                                                        if (reminder.status === 'missed') {
-                                                            isActionable = false;
-                                                            reason = 'Missed';
-                                                        }
-
-                                                        return (
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    if (!isActionable) return;
-                                                                    dataService.logReminderStatus(reminder.id, reminder.instanceKey, 'taken');
-                                                                    setTriggerReload(prev => prev + 1);
-                                                                }}
-                                                                disabled={!isActionable}
-                                                                className={`p-2 md:px-4 md:py-2 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 ${isActionable
-                                                                    ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/20'
-                                                                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none'
-                                                                    }`}
-                                                            >
-                                                                {isActionable ? (
-                                                                    <>
-                                                                        <Check size={20} className="md:hidden" />
-                                                                        <span className="hidden md:inline font-bold">{reminder.type === 'Medication' ? 'Take' : 'Done'}</span>
-                                                                    </>
-                                                                ) : (
-                                                                    <span className="text-xs font-bold uppercase">{reason}</span>
-                                                                )}
-                                                            </button>
-                                                        );
-                                                    })()}
-
-                                                    {(reminder.status === 'taken' || reminder.status === 'done') && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                if (confirm('Mark this reminder as NOT done?')) {
-                                                                    dataService.logReminderStatus(reminder.id, reminder.instanceKey, 'upcoming');
-                                                                    setTriggerReload(prev => prev + 1);
-                                                                }
-                                                            }}
-                                                            className="p-2 text-green-600 bg-green-100 rounded-full hover:bg-green-200 transaction-colors"
-                                                            title="Undo Completion"
-                                                        >
-                                                            <RefreshCcw size={16} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </motion.div>
-                                    ))}
                                 </AnimatePresence>
                             </div>
                         </div>
-                    )
-                ))}
+                    );
+                })}
 
                 {activeReminders.length === 0 && (
                     <div className="text-center py-20 text-gray-400 flex flex-col items-center">

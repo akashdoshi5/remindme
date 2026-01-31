@@ -390,6 +390,7 @@ const NotesPage = () => {
                 searchQuery={searchQuery}
             />
 
+            {/* Share Modal */}
             <ShareModal
                 isOpen={!!sharingNote}
                 onClose={() => setSharingNote(null)}
@@ -398,7 +399,7 @@ const NotesPage = () => {
 
             {/* Notes Grid */}
             <div className="mt-4 md:mt-0 space-y-8">
-                {(!searchQuery && activeTab === 'All Notes') ? (
+                {(!searchQuery) ? (
                     <>
                         {/* PINNED SECTION */}
                         {filteredNotes.some(n => n.isPinned) && (
@@ -406,18 +407,7 @@ const NotesPage = () => {
                                 <div className="flex items-center gap-2 px-1">
                                     <span className="text-[10px] font-black tracking-widest text-gray-400 dark:text-gray-500 uppercase">Pinned</span>
                                 </div>
-                                <Reorder.Group
-                                    axis="y"
-                                    values={filteredNotes.filter(n => n.isPinned)}
-                                    onReorder={(newPinnedOrder) => {
-                                        const unpinned = notes.filter(n => !n.isPinned);
-                                        const merged = [...newPinnedOrder, ...unpinned];
-                                        setNotes(merged);
-                                        dataService.reorderNotes(merged);
-                                    }}
-                                    as="div"
-                                    className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
-                                >
+                                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     <AnimatePresence>
                                         {filteredNotes.filter(n => n.isPinned).map((note) => (
                                             <NoteCard
@@ -438,11 +428,11 @@ const NotesPage = () => {
                                                 handlePlayAudio={handlePlayAudio}
                                                 searchQuery={searchQuery}
                                                 setPreviewData={setPreviewData}
-                                                isReorderable={true}
+                                                isReorderable={false}
                                             />
                                         ))}
                                     </AnimatePresence>
-                                </Reorder.Group>
+                                </div>
                             </div>
                         )}
 
@@ -453,18 +443,7 @@ const NotesPage = () => {
                                     <span className="text-[10px] font-black tracking-widest text-gray-400 dark:text-gray-500 uppercase">Others</span>
                                 </div>
                             )}
-                            <Reorder.Group
-                                axis="y"
-                                values={filteredNotes.filter(n => !n.isPinned)}
-                                onReorder={(newOthersOrder) => {
-                                    const pinned = notes.filter(n => n.isPinned);
-                                    const merged = [...pinned, ...newOthersOrder];
-                                    setNotes(merged);
-                                    dataService.reorderNotes(merged);
-                                }}
-                                as="div"
-                                className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
-                            >
+                            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 <AnimatePresence>
                                     {filteredNotes.filter(n => !n.isPinned).map((note) => (
                                         <NoteCard
@@ -485,14 +464,15 @@ const NotesPage = () => {
                                             handlePlayAudio={handlePlayAudio}
                                             searchQuery={searchQuery}
                                             setPreviewData={setPreviewData}
-                                            isReorderable={true}
+                                            isReorderable={false}
                                         />
                                     ))}
                                 </AnimatePresence>
-                            </Reorder.Group>
+                            </div>
                         </div>
                     </>
                 ) : (
+                    /* SEARCH RESULTS */
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                         <AnimatePresence>
                             {filteredNotes.map((note) => (
@@ -520,8 +500,10 @@ const NotesPage = () => {
                         </AnimatePresence>
                     </div>
                 )}
+            </div>
 
-                {filteredNotes.length === 0 && (
+            {
+                filteredNotes.length === 0 && (
                     <div className="col-span-full text-center py-20 text-gray-400 flex flex-col items-center">
                         <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
                             <FileText size={32} className="opacity-50" />
@@ -529,8 +511,9 @@ const NotesPage = () => {
                         <p className="font-medium">No notes found.</p>
                         <p className="text-sm opacity-60">Tap + to create one.</p>
                     </div>
-                )}
-            </div>
+                )
+            }
+
 
             <div className="fixed bottom-24 md:bottom-10 right-6 md:right-10 z-40 flex flex-col gap-3 items-center">
                 <button

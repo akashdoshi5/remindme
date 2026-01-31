@@ -4,6 +4,7 @@ import {
     doc,
     setDoc,
     getDoc,
+    collectionGroup,
     getDocs,
     updateDoc,
     deleteDoc,
@@ -296,13 +297,14 @@ export const firestoreService = {
             ...sanitizedData,
             ownerId: user.uid,
             ownerEmail: user.email,
-            createdAt: new Date().toISOString(),
-            sharedWith: [] // Array of emails
+            createdAt: note.createdAt || new Date().toISOString(),
+            sharedWith: note.sharedWith || [] // Respect keys if migrating/upserting
         };
 
-        // If ID provided (from offline draft or pre-generation), use it with setDoc (Upsert-ish)
+        // If ID provided (from offline draft or pre-generation), use it with setDoc
         if (note.id) {
-            await setDoc(doc(db, 'notes', String(note.id)), newNote);
+            // FIX: Use merge: true to avoid wiping fields like sharedWith if not provided or if this is a partial upsert
+            await setDoc(doc(db, 'notes', String(note.id)), newNote, { merge: true });
             return { ...newNote, id: note.id };
         } else {
             const ref = await addDoc(collection(db, 'notes'), newNote);
@@ -376,7 +378,14 @@ export const firestoreService = {
         if (!user) return;
         const id = String(Date.now());
         const ref = doc(db, 'users', user.uid, 'caregivers', id);
-        await setDoc(ref, { ...caregiver, id });
+
+        // Normalize email to lowercase
+        const payload = {
+            ...caregiver,
+            email: caregiver.email ? caregiver.email.toLowerCase() : '',
+            id
+        };
+        await setDoc(ref, payload);
     },
 
     deleteCaregiver: async (id) => {
@@ -391,5 +400,68 @@ export const firestoreService = {
         if (!user) return;
         const ref = doc(db, 'users', user.uid, 'caregivers', String(id));
         await updateDoc(ref, updates);
+    },
+
+    // --- PATIENT DISCOVERY (For Caregivers) ---
+
+    // Find who has listed ME (by email) as a caregiver
+    getPatientsForCaregiver: async (myEmail) => {
+        if (!myEmail) return [];
+        const emailToQuery = myEmail.toLowerCase();
+        try {
+            // "Who has added 'myEmail' to their 'caregivers' subcollection?"
+            const q = query(collectionGroup(db, 'caregivers'), where('email', '==', emailToQuery));
+            const snapshot = await getDocs(q);
+
+            // Map to Patient IDs (Parent of the caregiver doc is 'caregivers', Parent of that is the User/Patient)
+            const patients = [];
+
+            // We need to fetch the PATIENT'S details (the parent User doc), 
+            // otherwise we just show the Caregiver's own name (from the relationship doc).
+            const promises = snapshot.docs.map(async (d) => {
+                const patientUid = d.ref.parent.parent?.id;
+                if (patientUid) {
+                    try {
+                        const patientDocRef = doc(db, 'users', patientUid);
+                        const patientSnap = await getDoc(patientDocRef);
+                        const patientData = patientSnap.exists() ? patientSnap.data() : {};
+
+                        return {
+                            uid: patientUid,
+                            caregiverDocId: d.id,
+                            relationship: {
+                                ...d.data(), // Role, isEmergency, etc.
+                                // OVERRIDE name/email with the PATIENT'S info for display
+                                name: patientData.displayName || 'Unnamed Patient',
+                                email: patientData.email || 'No Email'
+                            }
+                        };
+                    } catch (e) {
+                        console.error("Error fetching patient details:", e);
+                        return null;
+                    }
+                }
+                return null;
+            });
+
+            const results = await Promise.all(promises);
+            // Filter out nulls
+            return results.filter(p => p !== null);
+        } catch (error) {
+            console.error("Error finding patients:", error);
+            throw error; // UI handles this
+        }
+    },
+
+    // Read-Only Access to Patient Data
+    getPatientRemindersRealtime: (patientUid, callback) => {
+        const q = collection(db, 'users', patientUid, 'reminders');
+        return onSnapshot(q, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            callback(data);
+        }, (error) => {
+            console.error("Access Denied to Patient Data:", error);
+            callback([]); // Return empty if permission denied
+        });
     }
 };

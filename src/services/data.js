@@ -37,7 +37,15 @@ const notifyListeners = () => {
 // Initialize from storage or default
 let store = loadStore();
 
+// CAREGIVER / PROFILE STATE
+let activeProfile = null; // null = mine, { uid, name, email } = patient
+let patientData = { reminders: [], notes: [], history: [] }; // Read-only cache for viewed patient
+let patientUnsubscribe = null;
+
+const getCurrentStore = () => activeProfile ? patientData : store;
+
 const save = () => {
+    if (activeProfile) return; // Do not save patient data to my local storage
     localStorage.setItem(getStorageKey(), JSON.stringify(store));
     notifyListeners();
 };
@@ -69,11 +77,14 @@ export const dataService = {
 
         // 2. Switch User
         currentUserId = uid;
+        activeProfile = null; // Reset profile view on login
+        if (patientUnsubscribe) {
+            patientUnsubscribe();
+            patientUnsubscribe = null;
+        }
         store = loadStore(); // Load whatever local data exists for this user
 
         // 3. Sync-Up Check
-        // We rely on Firestore SDK's offline persistence and 'useDataSync' to propagate changes.
-        // However, we still need to trigger an initial migration if local data exists for this user.
         if (uid && ((store.reminders && store.reminders.length > 0) || (store.notes && store.notes.length > 0))) {
             console.log("Authenticated User: Syncing local cache to Cloud...");
             firestoreService.migrateLocalData(store).catch(e => console.error("Sync-up failed", e));
@@ -82,8 +93,53 @@ export const dataService = {
         notifyListeners();
     },
 
+    // PROFILE MANAGEMENT (Caregiver Mode)
+    setActiveProfile: async (profile) => {
+        // If switching to self (null)
+        if (!profile) {
+            if (patientUnsubscribe) patientUnsubscribe();
+            activeProfile = null;
+            patientData = { reminders: [], notes: [], history: [] };
+            notifyListeners();
+            return;
+        }
+
+        // Switching to Patient
+        activeProfile = profile;
+        patientData = { reminders: [], notes: [], history: [] }; // Reset
+
+        // Subscribe to Patient Data
+        if (patientUnsubscribe) patientUnsubscribe();
+        patientUnsubscribe = firestoreService.getPatientRemindersRealtime(profile.uid, (reminders) => {
+            patientData.reminders = reminders;
+            notifyListeners();
+        });
+
+        notifyListeners();
+    },
+
+    getActiveProfile: () => activeProfile,
+    isReadOnly: () => !!activeProfile, // Exposed helper for UI
+
+    // Caregiver Actions
+    addCaregiver: async (email) => {
+        // Add a "Caregiver" (Viewer) to MY list
+        // We create a doc in my subcollection
+        await firestoreService.addCaregiver({ email, status: 'invited', createdAt: new Date().toISOString() });
+        // Refresh local list happens via sync logic usually, but let's assume realtime listener handles it
+    },
+
+    getPatientsForMe: async () => {
+        if (!auth.currentUser) return [];
+        return await firestoreService.getPatientsForCaregiver(auth.currentUser.email);
+    },
+
     // SYNC: Update local store from Cloud (acting as cache)
     syncFromCloud: (type, data) => {
+        if (activeProfile) return; // Don't sync cloud data into 'store' if we are viewing someone else (though cloud sync should usually target 'store')
+        // Actually sync listeners should update 'store' regardless of view?
+        // Yes, background sync should keep 'store' fresh.
+
         if (type === 'reminders') store.reminders = data;
         if (type === 'notes') store.notes = data;
         if (type === 'caregivers') store.caregivers = data;
@@ -100,10 +156,10 @@ export const dataService = {
     getLocalStore: () => store,
 
     // Reminders
-    getReminders: () => [...(store.reminders || [])],
+    getReminders: () => [...(getCurrentStore().reminders || [])],
 
     isReminderDone: (id, instanceKey) => {
-        const r = (store.reminders || []).find(i => String(i.id) === String(id));
+        const r = (getCurrentStore().reminders || []).find(i => String(i.id) === String(id));
         if (!r) return true; // If not found, assume complete to avoid errors
 
         const log = (r.logs || {})[instanceKey];
@@ -131,10 +187,15 @@ export const dataService = {
     },
 
     // NEW: Get expanded view for a specific day
-    getRemindersForDate: (dateString) => {
+    // NEW: Generic Expansion Logic (Pure Function)
+    expandRemindersForDate: (dateString, sourceReminders, settings = {}) => {
         // dateString is YYYY-MM-DD
-        const all = store.reminders || [];
+        const all = sourceReminders || [];
         const expanded = [];
+
+        // Defaults
+        const sleepStart = settings.sleepStart || '22:00';
+        const sleepEnd = settings.sleepEnd || '08:00';
 
         // Helper for reliable date comparison (local strings)
         const getHealthDiffDays = (startStr, currentStr) => {
@@ -266,7 +327,49 @@ export const dataService = {
             }
             // 2. Handle Simple/Legacy Reminders (including new Intervals)
             else {
-                // Determine if it should show today
+                if (r.frequency?.startsWith('Every')) {
+                    // Hourly / Interval Logic
+                    // Format: "Every X Hours"
+                    const intervalMatch = r.frequency.match(/Every (\d+) Hour/);
+                    if (intervalMatch) {
+                        const intervalHours = parseInt(intervalMatch[1]);
+
+                        // Parse Start/End times (Default 8am - 10pm if missing)
+                        const startHour = r.startTime ? parseInt(r.startTime.split(':')[0]) : 8;
+                        const endHour = r.endTime ? parseInt(r.endTime.split(':')[0]) : 22;
+
+                        // Create instances
+                        let currentH = startHour;
+                        while (currentH < endHour) {
+                            const timeStr = `${String(currentH).padStart(2, '0')}:00`;
+                            const instanceKey = `${dateString}_time_${timeStr}`;
+                            const log = (r.logs || {})[instanceKey];
+
+                            // Status Check
+                            let status = 'upcoming';
+                            const iDate = new Date(dateString);
+                            iDate.setHours(currentH, 0, 0, 0);
+
+                            if (log) status = log.status;
+                            else if (iDate < now) status = 'missed'; // Auto miss if past
+
+                            expanded.push({
+                                ...r,
+                                uniqueId: `${r.id}_${instanceKey}`,
+                                instanceKey,
+                                displayTime: timeStr,
+                                status,
+                                isInterval: true,
+                                targetDate: dateString
+                            });
+
+                            currentH += intervalHours;
+                        }
+                        return; // Done with this reminder
+                    }
+                }
+
+                // 2. Standard Frequencies (Daily, Weekly, etc)
                 let show = false;
                 if (r.frequency && r.frequency.startsWith('Every')) show = true; // Always show interval items (filtered by date start/end globally)
                 else if (r.frequency === 'Daily') show = true;
@@ -306,14 +409,6 @@ export const dataService = {
                         const intervalHours = match ? parseInt(match[1]) : NaN;
 
                         if (!isNaN(intervalHours)) {
-                            // Ensure store exists (it should, but safety first)
-                            const currentStore = typeof store !== 'undefined' ? store : { settings: {} };
-                            const settings = currentStore.settings || {};
-
-                            // Fallback defaults if settings are missing or invalid
-                            const sleepStart = (settings.sleepStart && settings.sleepStart.includes(':')) ? settings.sleepStart : '22:00';
-                            const sleepEnd = (settings.sleepEnd && settings.sleepEnd.includes(':')) ? settings.sleepEnd : '08:00';
-
                             let startH, startM;
                             const startDateStr = r.schedule?.startDate || r.date;
 
@@ -434,15 +529,6 @@ export const dataService = {
                 Object.entries(r.exceptions).forEach(([key, ex]) => {
                     if (ex.date === dateString) {
                         // This instance is moved TO today.
-                        // Check if we already added it (i.e. if it was moved from today to today)
-                        // The key is likely YYYY-MM-DD_Time.
-                        // If key starts with dateString, we handled it above unless we skipped it?
-                        // Actually, if key starts with dateString, we handled it above.
-                        // BUT, we only handled it if 'show' was true.
-                        // If 'show' was false (e.g. not typically scheduled today), we missed it?
-                        // Actually if show=false, we skip standard logic. But explicit exception might be here.
-
-                        // Let's just check uniqueness by InstanceKey.
                         const alreadyExists = expanded.some(item => item.instanceKey === key);
                         if (alreadyExists) return;
 
@@ -510,6 +596,13 @@ export const dataService = {
         });
     },
 
+    // NEW: Get expanded view for a specific day
+    getRemindersForDate: (dateString) => {
+        // Wrapper for internal store
+        const store = getCurrentStore();
+        return dataService.expandRemindersForDate(dateString, store.reminders, store.settings);
+    },
+
     getUpcomingReminders: (days = 7) => {
         const allUpcoming = [];
         const today = new Date();
@@ -542,6 +635,7 @@ export const dataService = {
 
 
     addReminder: async (reminder) => {
+        if (activeProfile) return; // Read Only
         if (auth.currentUser) {
             return await firestoreService.addReminder(reminder);
         }
@@ -553,6 +647,7 @@ export const dataService = {
     },
 
     updateReminder: async (id, updates, instanceKey = null) => {
+        if (activeProfile) return; // Read Only
         // CRITICAL FIX: Always update local store first for immediate UI/notification refresh
         if (!store.reminders) store.reminders = [];
 
@@ -700,6 +795,7 @@ export const dataService = {
     },
 
     completeReminder: (id, instanceKey = null) => {
+        if (activeProfile) return; // Read Only
         if (instanceKey) {
             dataService.logReminderStatus(id, instanceKey, 'taken');
         } else {
@@ -717,6 +813,7 @@ export const dataService = {
     },
 
     deleteReminder: async (id) => {
+        if (activeProfile) return; // Read Only
         if (auth.currentUser) {
             await firestoreService.deleteReminder(id);
             return;
@@ -727,6 +824,7 @@ export const dataService = {
     },
 
     snoozeReminder: async (id, instanceKey = null, minutes = 15) => {
+        if (activeProfile) return; // Read Only
         const now = new Date();
         now.setMinutes(now.getMinutes() + minutes);
 
@@ -853,7 +951,7 @@ export const dataService = {
     },
 
     // Caregivers
-    getCaregivers: () => [...(store.caregivers || [])],
+    getCaregivers: () => activeProfile ? [] : [...(store.caregivers || [])],
     addCaregiver: async (caregiver) => {
         if (auth.currentUser) {
             await firestoreService.addCaregiver(caregiver);

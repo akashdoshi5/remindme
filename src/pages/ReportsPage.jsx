@@ -1,18 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, Calendar as CalendarIcon, ChevronLeft, ChevronRight, TrendingUp, AlertCircle, CheckCircle, Clock, Edit2, X, PlayCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { dataService } from '../services/data';
+import { firestoreService } from '../services/firestoreService';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
+import ProfileSwitcher from '../components/caregiver/ProfileSwitcher';
 
 const ReportsPage = () => {
     const { t } = useLanguage();
+    const { user } = useAuth();
     const navigate = useNavigate();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState(new Date().getDate());
 
+    // Profile State (Local to Reports Page)
+    const [viewingProfile, setViewingProfile] = useState(null); // null = Me, Object = Patient
+    const [patientData, setPatientData] = useState({ reminders: [] });
+    const [isLoadingPatient, setIsLoadingPatient] = useState(false);
+
     // Stats State
     const [stats, setStats] = useState({ total: 0, taken: 0, missed: 0, score: 100 });
+    const [allTimeStats, setAllTimeStats] = useState({ score: 100, taken: 0, missed: 0 }); // NEW state
     const [monthData, setMonthData] = useState({}); // { day: 'perfect'|'missed'|'none' }
 
     // Day Details State
@@ -26,41 +36,36 @@ const ReportsPage = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
 
-    // Load Month Data & Stats
-    useEffect(() => {
-        calculateMonthStats();
-    }, [currentDate]);
+    // Local Reminders State (Stable reference to prevent infinite loops)
+    const [localReminders, setLocalReminders] = useState(() => dataService.getReminders());
 
-    // Load Day Details
+    // Listen for LOCAL Data Updates
     useEffect(() => {
-        if (selectedDate) {
-            loadDayEvents(selectedDate);
-        }
-    }, [selectedDate, currentDate]);
-
-    // Listen for Data Updates (Cloud Sync)
-    useEffect(() => {
-        const handleDataUpdate = () => {
-            calculateMonthStats();
-            if (selectedDate) loadDayEvents(selectedDate);
-        };
-
+        const handleDataUpdate = () => setLocalReminders(dataService.getReminders());
         window.addEventListener('storage-update', handleDataUpdate);
         return () => window.removeEventListener('storage-update', handleDataUpdate);
-    }, [currentDate, selectedDate]);
+    }, []);
 
-    const calculateMonthStats = () => {
+    // Derived State: Current Reminders List (My Data vs Patient Data)
+    const activeReminders = viewingProfile ? patientData.reminders : localReminders;
+    const isReadOnly = !!viewingProfile;
+
+    const calculateMonthStats = useCallback(() => {
+        // --- MONTHLY STATS (Existing Logic) ---
         const daysInMonth = new Date(year, month + 1, 0).getDate();
 
         let monthTakenPills = 0;
         let monthMissedPills = 0;
         let monthUpcomingPills = 0;
+
         const newMonthData = {};
 
-        // Iterate all days
         for (let d = 1; d <= daysInMonth; d++) {
+            // Helper to expand recurring reminders for THIS specific date
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-            const reminders = dataService.getRemindersForDate(dateStr);
+
+            // Use shared logic for expansion
+            const reminders = dataService.expandRemindersForDate(dateStr, activeReminders);
 
             let dayTaken = 0;
             let dayMissed = 0;
@@ -97,23 +102,18 @@ const ReportsPage = () => {
                     monthTakenPills++;
                     dayTaken++;
                 } else if (r.status === 'snoozed') {
-                    // Snoozed counts as Upcoming/Pending loosely, or Missed if time passed?
-                    // User didn't specify, but snoozed implies active. Let's count as Upcoming for score safety.
                     monthUpcomingPills++;
                     dayUpcoming++;
                 } else if (r.status === 'missed' || (isPast && r.status === 'upcoming')) {
                     monthMissedPills++;
                     dayMissed++;
                 } else {
-                    // Upcoming future
-                    monthUpcomingPills++;
+                    monthUpcomingPills++; // Future upcoming
                     dayUpcoming++;
                 }
             });
 
-            // Determine Day Color for Calendar
-            // Future days with events = gray/orange? User didn't specify, keeping 'none' for future visual simplicity or 'upcoming'?
-            // Logic:
+            // Set Day Status for Calendar
             const checkDate = new Date(year, month, d);
             checkDate.setHours(0, 0, 0, 0);
             const todayRef = new Date();
@@ -137,7 +137,6 @@ const ReportsPage = () => {
         }
 
         // Adherence Score: Taken / (Taken + Missed)
-        // Exclude Upcoming from the denominator so future pills don't lower the score.
         const pastTotal = monthTakenPills + monthMissedPills;
         const score = pastTotal > 0 ? Math.round((monthTakenPills / pastTotal) * 100) : 100;
 
@@ -145,27 +144,117 @@ const ReportsPage = () => {
             total: monthTakenPills + monthMissedPills + monthUpcomingPills,
             taken: monthTakenPills,
             missed: monthMissedPills,
-            upcoming: monthUpcomingPills, // Adding this new stat if we want to show it
+            upcoming: monthUpcomingPills,
             score: score
         });
         setMonthData(newMonthData);
-    };
+
+        // --- ALL TIME STATS CALCULATION ---
+        // 1. Finding Start Date: Earliest created date or fallback to 3 months ago for performance
+        // (Ideally we iterate from the very first reminder)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        let startDate = new Date();
+        startDate.setMonth(startDate.getMonth() - 3); // Default lookback 3 months
+
+        // Try to find earlier logic if possible, or just iterate last 90 days which is a good 'All Time' proxy for adherence
+        // Iterating 365 days is also fine js-wise.
+        // Let's do 1 year back max to be safe on performance.
+        startDate = new Date(today);
+        startDate.setFullYear(today.getFullYear() - 1);
+
+        let allTaken = 0;
+        let allMissed = 0;
+
+        // Iterate day by day from startDate to Today
+        for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
+            const dateStr = d.toISOString().split('T')[0];
+            const reminders = dataService.expandRemindersForDate(dateStr, activeReminders);
+
+            reminders.forEach(r => {
+                // Simplified Past Check (since we are iterating up to today, most represent past)
+                // If d < today, it is strictly past.
+                // If d === today, we check time.
+                let isPast = false;
+                const dObj = new Date(d);
+                dObj.setHours(0, 0, 0, 0);
+
+                if (dObj < today) {
+                    isPast = true;
+                } else if (dObj.getTime() === today.getTime()) {
+                    // Check time
+                    const eventTime = r.displayTime || '';
+                    const now = new Date();
+                    let eventTimeMinutes = 0;
+                    if (eventTime && eventTime.includes(':')) {
+                        const [h, m] = eventTime.split(':').map(Number);
+                        eventTimeMinutes = h * 60 + m;
+                    }
+                    const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
+                    if (eventTime && eventTimeMinutes < currentTimeMinutes) isPast = true;
+                }
+
+                if (r.status === 'taken') allTaken++;
+                else if (r.status === 'missed' || (isPast && r.status === 'upcoming')) allMissed++;
+            });
+        }
+
+        const allPastTotal = allTaken + allMissed;
+        const allScore = allPastTotal > 0 ? Math.round((allTaken / allPastTotal) * 100) : 100;
+
+        setAllTimeStats({
+            taken: allTaken,
+            missed: allMissed,
+            score: allScore
+        });
+
+    }, [year, month, activeReminders]);
+
+    // Load Patient Data when profile changes
+    useEffect(() => {
+        if (!viewingProfile) {
+            setPatientData({ reminders: [] });
+            return;
+        }
+
+        setIsLoadingPatient(true);
+        setIsLoadingPatient(true);
+
+        const unsubscribe = firestoreService.getPatientRemindersRealtime(viewingProfile.uid, (reminders) => {
+            setPatientData({ reminders });
+            setIsLoadingPatient(false);
+        });
+
+        return () => unsubscribe();
+    }, [viewingProfile]);
+
+    // Load Month Data & Stats (Re-run when data, profile, or date changes)
+    useEffect(() => {
+        calculateMonthStats();
+    }, [calculateMonthStats]);
+
+    // Load Day Details
+    useEffect(() => {
+        if (selectedDate) {
+            loadDayEvents(selectedDate);
+        }
+    }, [selectedDate, currentDate, activeReminders, viewingProfile]);
+
+
+
+
 
     const loadDayEvents = (day) => {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const events = dataService.getRemindersForDate(dateStr);
+        // USE GENERIC EXPANSION
+        const events = dataService.expandRemindersForDate(dateStr, activeReminders);
 
         // Get current time for comparison
         const now = new Date();
-        // Manually construct YYYY-MM-DD to ensure consistency regardless of locale
-        const currentYear = now.getFullYear();
-        const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
-        const currentDay = String(now.getDate()).padStart(2, '0');
-        const todayStr = `${currentYear}-${currentMonth}-${currentDay}`;
-
         const currentHour = now.getHours();
         const currentMinute = now.getMinutes();
-        const currentTimeMinutes = currentHour * 60 + currentMinute; // Convert to minutes for reliable comparison
+        const currentTimeMinutes = currentHour * 60 + currentMinute;
 
         const processedEvents = events.map(event => {
             const eventTime = event.displayTime || '';
@@ -187,10 +276,8 @@ const ReportsPage = () => {
             today.setHours(0, 0, 0, 0);
 
             if (eventDateObj < today) {
-                // Past date - definitely past
                 isPast = true;
             } else if (eventDateObj.getTime() === today.getTime() && eventTime && eventTimeMinutes < currentTimeMinutes) {
-                // Today but past time
                 isPast = true;
             }
 
@@ -207,11 +294,50 @@ const ReportsPage = () => {
     };
 
     const handleStatusUpdate = (status) => {
-        if (!selectedEvent) return;
+        if (!selectedEvent || isReadOnly) return; // Guard for read-only
 
         // For taken status, use the custom time if provided
         if (status === 'taken' && takenTime) {
-            // Create custom timestamp with the selected time
+            // STRICT 2-HOUR WINDOW ADHERENCE RULE
+            if (activeReminders && selectedEvent) {
+                // 1. Get Scheduled Time
+                // selectedEvent.displayTime is HH:MM
+                const schedStr = selectedEvent.displayTime;
+                if (schedStr && schedStr.includes(':')) {
+                    const [sH, sM] = schedStr.split(':').map(Number);
+                    const scheduledDate = new Date();
+                    scheduledDate.setHours(sH, sM, 0, 0);
+
+                    // 2. Get Actual Taken Time (from User Input)
+                    const [tH, tM] = takenTime.split(':').map(Number);
+                    const actualDate = new Date();
+                    actualDate.setHours(tH, tM, 0, 0);
+
+                    // 3. Calculate Difference in Minutes
+                    const diffMs = actualDate - scheduledDate;
+                    const diffMinutes = diffMs / (1000 * 60);
+
+                    // 4. Validate Window (+/- 120 Minutes)
+                    if (diffMinutes < -120) {
+                        alert("It is too early to take this medication (more than 2 hours before schedule). Please take it closer to the scheduled time.");
+                        return; // Block save
+                    }
+                    if (diffMinutes > 120) {
+                        // User is late.
+                        // "its too early and missed if not in 2 hrs window" -> This implies if late, it counts as MISSED.
+                        // We will force status to missed or alert them.
+                        const confirmLate = window.confirm("You are more than 2 hours late. Strictly speaking, this counts as a 'Missed' dose for adherence tracking.\n\nClick OK to record as MISSED, or Cancel to correct the time.");
+                        if (confirmLate) {
+                            handleStatusUpdate('missed'); // Recursively call with missed status
+                            return;
+                        } else {
+                            return; // Let them edit time
+                        }
+                    }
+                }
+            }
+
+            // Valid Time Window -> Proceed to Save
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`;
             const customTimestamp = new Date(`${dateStr}T${takenTime}:00`).toISOString();
             dataService.logReminderStatusWithTime(selectedEvent.id, selectedEvent.instanceKey, status, customTimestamp);
@@ -221,8 +347,10 @@ const ReportsPage = () => {
 
         setEditModalOpen(false);
         setTakenTime('');
-        loadDayEvents(selectedDate); // Refresh list
-        calculateMonthStats(); // Refresh stats
+        if (!viewingProfile) {
+            loadDayEvents(selectedDate); // Refresh list (only needed for self, effects handle others?)
+            calculateMonthStats(); // Refresh stats
+        }
     };
 
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -233,9 +361,52 @@ const ReportsPage = () => {
     return (
         <div className="max-w-5xl mx-auto pb-12 relative">
 
-            {/* Edit Status Modal */}
+            {/* HEADER: Title & Profile Switcher */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                        {viewingProfile ? `Report: ${viewingProfile.relationship?.name}` : t('reports')}
+                    </h1>
+                    <p className="text-gray-500 text-sm">
+                        {viewingProfile ? "Viewing shared health data (Read-Only)" : "Track your adherence and health trends"}
+                    </p>
+                </div>
+
+                {/* Local Profile Switcher */}
+                <div>
+                    <span className="text-xs uppercase font-bold text-gray-400 mr-2">Viewing:</span>
+                    <ProfileSwitcher
+                        value={viewingProfile}
+                        onChange={setViewingProfile}
+                        className="inline-block"
+                    />
+                </div>
+            </div>
+
+            {/* Read Only Banner (Local) */}
+            {isReadOnly && (
+                <div className="mb-6 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 p-3 rounded-xl flex items-center gap-3 text-indigo-700 dark:text-indigo-300 transform transition-all animate-fade-in">
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-800 flex items-center justify-center shrink-0">
+                        <Activity size={16} />
+                    </div>
+                    <div>
+                        <p className="text-sm font-bold">Contributor View</p>
+                        <p className="text-xs opacity-80">You are viewing {viewingProfile.relationship?.name}'s data. You cannot make changes.</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Loading State */}
+            {isLoadingPatient && (
+                <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500 mb-4"></div>
+                    <p className="font-bold text-gray-700 dark:text-gray-200">Syncing Patient Data...</p>
+                </div>
+            )}
+
+            {/* Edit Status Modal - Only show if NOT read only */}
             <AnimatePresence>
-                {editModalOpen && selectedEvent && (
+                {editModalOpen && selectedEvent && !isReadOnly && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}
@@ -292,30 +463,43 @@ const ReportsPage = () => {
                 <motion.div
                     initial={{ scale: 0.95, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="bg-white dark:bg-gray-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-center text-center relative overflow-hidden"
+                    className="bg-white dark:bg-gray-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-center text-center relative"
                 >
-                    <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-green-400 to-emerald-500"></div>
-                    <div className="w-24 h-24 rounded-full border-8 border-gray-50 dark:border-gray-700 flex items-center justify-center mb-4 relative">
-                        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36">
-                            <path
-                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                fill="none"
-                                stroke="currentColor"
-                                className="text-gray-200 dark:text-gray-700"
-                                strokeWidth="3"
-                            />
-                            <path
-                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                fill="none"
-                                stroke={stats.score > 80 ? "#10B981" : "#F59E0B"}
-                                strokeWidth="3"
-                                strokeDasharray={`${stats.score}, 100`}
-                            />
-                        </svg>
-                        <span className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats.score}%</span>
+                    <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-green-400 to-emerald-500 rounded-t-3xl"></div>
+
+                    <div className="flex items-center justify-around w-full gap-2">
+                        {/* Monthly Score */}
+                        <div className="flex flex-col items-center">
+                            <div className="w-20 h-20 rounded-full border-4 border-gray-50 dark:border-gray-700 flex items-center justify-center mb-2 relative">
+                                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36">
+                                    <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" className="text-gray-100 dark:text-gray-700" strokeWidth="3" />
+                                    <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={stats.score > 80 ? "#10B981" : "#F59E0B"} strokeWidth="3" strokeDasharray={`${stats.score}, 100`} />
+                                </svg>
+                                <span className="text-lg font-bold text-gray-800 dark:text-gray-100">{stats.score}%</span>
+                            </div>
+                            <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">This Month</h3>
+                        </div>
+
+                        {/* Divider */}
+                        <div className="h-12 w-[1px] bg-gray-100 dark:bg-gray-700"></div>
+
+                        {/* All Time Score */}
+                        <div className="flex flex-col items-center relative group cursor-help">
+                            <div className="w-20 h-20 rounded-full border-4 border-gray-50 dark:border-gray-700 flex items-center justify-center mb-2 relative">
+                                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36">
+                                    <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" className="text-gray-100 dark:text-gray-700" strokeWidth="3" />
+                                    <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={allTimeStats.score > 80 ? "#3B82F6" : "#6366F1"} strokeWidth="3" strokeDasharray={`${allTimeStats.score}, 100`} />
+                                </svg>
+                                <span className="text-lg font-bold text-gray-800 dark:text-gray-100">{allTimeStats.score}%</span>
+                            </div>
+                            <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                                All Time
+                                <div className="hidden group-hover:block absolute bottom-full mb-2 bg-gray-900 text-white text-xs p-2 rounded w-32 z-10 pointer-events-none">
+                                    Based on past 12 months activity
+                                </div>
+                            </h3>
+                        </div>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">Adherence Score</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Based on this month's data</p>
                 </motion.div>
 
                 <div className="md:col-span-2 grid grid-cols-3 gap-2">
@@ -447,38 +631,44 @@ const ReportsPage = () => {
                                         className={`flex items-center gap-4 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 relative group transition-colors 
                                             ${event.status === 'upcoming' && new Date(event.instanceKey.split('_')[0] + 'T' + event.displayTime) > new Date()
                                                 ? 'bg-gray-50 dark:bg-gray-700/50 opacity-60 cursor-not-allowed'
-                                                : 'bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer'}`}
+                                                : isReadOnly ? 'bg-gray-50 dark:bg-gray-700/50 opacity-90'
+                                                    : 'bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer'}`}
                                         onClick={() => {
-                                            // Handle Edit Permission Logic
-                                            const eventDateIdx = event.instanceKey.indexOf('_');
-                                            const eventDateStr = event.instanceKey.substring(0, eventDateIdx);
+                                            // Guard for read-only
+                                            if (isReadOnly) return;
 
-                                            // Construct full datetime of the event for comparison
-                                            // event.displayTime is HH:MM
-                                            // We need robust parsing
-                                            let eventDateTime = new Date(eventDateStr);
-                                            if (event.displayTime) {
-                                                const [h, m] = event.displayTime.split(':').map(Number);
-                                                eventDateTime.setHours(h, m, 0, 0);
-                                            } else {
-                                                eventDateTime.setHours(23, 59, 59, 999); // If no time, assume end of day? Or start? 
-                                                // Actually if no time, it's morning/all-day. Let's assume start.
-                                                eventDateTime.setHours(0, 0, 0, 0);
+                                            // STRICT DATE RESTRICTION: Only Today and Yesterday allowed
+                                            // Calculate diffDays based on Midnight comparisons
+                                            const eventDate = new Date(year, month, selectedDate);
+                                            eventDate.setHours(0, 0, 0, 0);
+                                            const today = new Date();
+                                            today.setHours(0, 0, 0, 0);
+
+                                            // Diff in days
+                                            const diffTime = today - eventDate;
+                                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                                            // Allow: Today (diff=0) and Yesterday (diff=1)
+                                            if (diffDays > 1) {
+                                                alert("You can only modify updates for today or yesterday. Older records are locked for accuracy.");
+                                                return;
                                             }
 
-                                            // STRICT RULE: Only allow editing if the event time has PASSED.
-                                            const now = new Date();
+                                            // Block Future
+                                            if (eventDate > today) return;
 
-                                            if (eventDateTime <= now) {
-                                                setSelectedEvent(event);
-                                                // Set default time in modal to current taken time or scheduled time
-                                                setTakenTime(event.takenAt ? new Date(event.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : event.displayTime);
-                                                setEditModalOpen(true);
-                                            } else {
-                                                // Ideally show a toast: "Cannot edit future events"
-                                                // For now, just do nothing or maybe shake? 
-                                                // We rely on the cursor visual cue (cursor-not-allowed) handled in className
-                                            }
+                                            // Construct safe time
+                                            let safeTime = event.displayTime;
+                                            if (!safeTime || !safeTime.includes(':')) safeTime = '09:00';
+
+                                            setSelectedEvent({
+                                                ...event,
+                                                uniqueId: event.uniqueId || idx,
+                                                dateStr: `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`
+                                            });
+                                            // Set default time in modal
+                                            setTakenTime(event.takenAt ? new Date(event.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : safeTime);
+                                            setEditModalOpen(true);
                                         }}
                                     >
                                         <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 
@@ -501,11 +691,13 @@ const ReportsPage = () => {
                                                             : event.displayTime
                                                         }
                                                     </span>
-                                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <div className="p-2 bg-white dark:bg-gray-700 rounded-full shadow-sm border border-gray-100 dark:border-gray-600 text-orange-500 dark:text-orange-400">
-                                                            <Edit2 size={14} />
+                                                    {!isReadOnly && (
+                                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <div className="p-2 bg-white dark:bg-gray-700 rounded-full shadow-sm border border-gray-100 dark:border-gray-600 text-orange-500 dark:text-orange-400">
+                                                                <Edit2 size={14} />
+                                                            </div>
                                                         </div>
-                                                    </div>
+                                                    )}
                                                 </div>
                                             </div>
                                             <p className={`text-sm font-medium 

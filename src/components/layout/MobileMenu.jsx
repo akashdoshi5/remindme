@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Activity, Users, Settings, X, LogOut, Globe, ChevronRight, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import ProfileSwitcher from '../caregiver/ProfileSwitcher';
 
 const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
     const { logout } = useAuth();
@@ -64,6 +65,8 @@ const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
                         )}
                     </div>
                 </div>
+
+
 
                 <div className="grid grid-cols-2 gap-4 mb-6">
                     <Link
