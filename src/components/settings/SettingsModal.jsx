@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { X, Moon, Sun, Save, Smartphone, LogOut, User, Trash2, Bell, RefreshCw } from 'lucide-react';
+import { X, Moon, Sun, Save, Smartphone, LogOut, User, Trash2, Bell, RefreshCw, Activity } from 'lucide-react';
 import { dataService } from '../../services/data';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { NotificationDebugPanel } from '../common/NotificationDebugPanel';
 
 const SettingsModal = ({ isOpen, onClose }) => {
     const { theme, setTheme } = useTheme();
     const { user, logout } = useAuth();
+    const [showDebug, setShowDebug] = useState(false);
 
     if (!isOpen) return null;
 
@@ -215,6 +217,13 @@ const SettingsModal = ({ isOpen, onClose }) => {
                             >
                                 <Smartphone size={16} /> Check Permissions
                             </button>
+
+                            <button
+                                onClick={() => setShowDebug(true)}
+                                className="w-full p-3 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium text-sm flex items-center justify-center gap-2 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-orange-600 transition-colors"
+                            >
+                                <Activity size={16} /> Advanced Debug
+                            </button>
                         </div>
                     </div>
 
@@ -253,6 +262,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
                     </button>
                 </div>
             </div>
+            <NotificationDebugPanel isOpen={showDebug} onClose={() => setShowDebug(false)} />
         </div>
     );
 };

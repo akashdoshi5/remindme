@@ -342,7 +342,7 @@ const AppContent = () => {
         }}
         onClose={() => setActiveAlarm(null)}
       />
-      <NotificationDebugPanel />
+
     </div>
   );
 };
