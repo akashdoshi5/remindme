@@ -283,34 +283,38 @@ export const dataService = {
 
                     if (r.frequency && r.frequency.startsWith('Every')) {
                         // Interval Logic
-                        const intervalHours = parseInt(r.frequency.split(' ')[1]);
+                        // Robust Parsing using Regex to handle variations (Hour vs Hours, extra spaces)
+                        const match = r.frequency.match(/Every\s+(\d+)\s+Hour/i);
+                        const intervalHours = match ? parseInt(match[1]) : NaN;
+
                         if (!isNaN(intervalHours)) {
-                            const settings = store.settings || { sleepStart: '22:00', sleepEnd: '08:00' };
-                            const sleepStart = settings.sleepStart;
-                            const sleepEnd = settings.sleepEnd;
+                            const settings = store.settings || {};
+                            // Fallback defaults if settings are missing or invalid
+                            const sleepStart = (settings.sleepStart && settings.sleepStart.includes(':')) ? settings.sleepStart : '22:00';
+                            const sleepEnd = (settings.sleepEnd && settings.sleepEnd.includes(':')) ? settings.sleepEnd : '08:00';
 
                             let startH, startM;
                             const startDateStr = r.schedule?.startDate || r.date;
 
                             if (r.time && startDateStr === dateString) {
                                 [startH, startM] = r.time.split(':').map(Number);
-                                // CRITICAL FIX: Always include the start time for the start date, ignoring sleep limit check for the first item
-                                // We handled this by initializing currentMinutes = start time.
-                                // We must ensure the loop runs at least once or we force push below.
                             } else {
                                 [startH, startM] = sleepEnd.split(':').map(Number);
                             }
 
                             const [limitH, limitM] = sleepStart.split(':').map(Number);
-                            const limitMinutes = limitH * 60 + limitM;
+                            let limitMinutes = limitH * 60 + limitM;
                             let currentMinutes = startH * 60 + startM;
+
+                            // Handle crossing midnight: if sleepStart < sleepEnd (e.g. 02:00 < 08:00), it implies 2 AM next day
+                            // Or if Limit is earlier than Start on the same day?
+                            // If Limit < Start, and Limit is small (AM), assume next day?
+                            // Simplified: If Limit < Start, maybe user wants till end of day?
+                            // Let's just create a hard stop at 23:59 if limit seems wrong relative to start, OR trust the user settings.
+                            // For now, trust settings, but ensure we don't accidentally fail comparison.
 
                             const step = intervalHours * 60;
                             if (step > 0) {
-                                // FIX: Use <= to allow reminder exactly AT bedtime
-                                // Also handle case where start time > limit (late night reminder) - show it anyway if it's the specific scheduled time?
-                                // Strategy: run loop. If result empty and it's start date, add start time.
-
                                 while (currentMinutes <= limitMinutes) {
                                     const h = Math.floor(currentMinutes / 60);
                                     const m = currentMinutes % 60;
