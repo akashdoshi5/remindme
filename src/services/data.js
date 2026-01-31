@@ -543,6 +543,32 @@ export const dataService = {
     },
 
     updateReminder: async (id, updates, instanceKey = null) => {
+        // CRITICAL FIX: Always update local store first for immediate UI/notification refresh
+        if (!store.reminders) store.reminders = [];
+
+        if (instanceKey) {
+            // Create Exception Logic (local)
+            store.reminders = store.reminders.map(r => {
+                if (String(r.id) === String(id)) {
+                    const exceptions = r.exceptions ? JSON.parse(JSON.stringify(r.exceptions)) : {};
+                    exceptions[instanceKey] = {
+                        ...(exceptions[instanceKey] || {}),
+                        ...updates,
+                        isException: true
+                    };
+                    return { ...r, exceptions };
+                }
+                return r;
+            });
+        } else {
+            // Normal update (local)
+            store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, ...updates } : r);
+        }
+
+        // CRITICAL: Fire storage-update IMMEDIATELY for notification re-scheduling
+        save();
+
+        // THEN update Firestore (async, will sync back later)
         if (auth.currentUser) {
             if (instanceKey) {
                 const key = `exceptions.${instanceKey}`;
@@ -553,33 +579,7 @@ export const dataService = {
             } else {
                 await firestoreService.updateReminder(id, updates);
             }
-            return;
         }
-
-        if (!store.reminders) return;
-
-        if (instanceKey) {
-            // Create Exception Logic
-            store.reminders = store.reminders.map(r => {
-                // Use string comparison for safety
-                if (String(r.id) === String(id)) {
-                    // Deep clone existing exceptions or create new
-                    const exceptions = r.exceptions ? JSON.parse(JSON.stringify(r.exceptions)) : {};
-
-                    exceptions[instanceKey] = {
-                        ...(exceptions[instanceKey] || {}),
-                        ...updates, // New time, status, etc.
-                        isException: true
-                    };
-                    return { ...r, exceptions };
-                }
-                return r;
-            });
-        } else {
-            // Normal update (series or single item)
-            store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, ...updates } : r);
-        }
-        save();
     },
 
     // NEW: Detailed Status Logging for Medication
