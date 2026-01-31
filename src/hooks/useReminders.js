@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { dataService } from '../services/data';
+import { Capacitor } from '@capacitor/core';
 import { useNotifications } from './useNotifications';
 
 export const useReminders = (setActiveAlarm) => {
@@ -72,15 +73,17 @@ export const useReminders = (setActiveAlarm) => {
                     setActiveAlarm(prev => (prev?.id === active.id ? prev : { ...active, instanceKey }));
 
                     // Trigger Web Notification (Debounced)
-                    // We check if we already notified for this instanceKey
-                    if (!notifiedRef.current.has(instanceKey)) {
-                        notifiedRef.current.add(instanceKey);
-
-                        // Clean up old keys periodically? For now, Set grows slowly per day.
-                        sendNotification(active.title, {
-                            body: active.instructions || 'Reminder',
-                            data: { uniqueId: active.uniqueId } // Tag for actions
-                        });
+                    // On NATIVE, the local-notification schedule handles this. 
+                    // Only trigger here for Web/PWA regular usage to ensure visual alert if simple schedule failed?
+                    // actually, duplicate is bad.
+                    if (!Capacitor.isNativePlatform()) {
+                        if (!notifiedRef.current.has(instanceKey)) {
+                            notifiedRef.current.add(instanceKey);
+                            sendNotification(active.title, {
+                                body: active.instructions || 'Reminder',
+                                data: { uniqueId: active.uniqueId }
+                            });
+                        }
                     }
                 }
             }

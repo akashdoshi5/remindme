@@ -25,7 +25,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     const [medFrequencies, setMedFrequencies] = useState(['breakfast']);
     const [medTimes, setMedTimes] = useState({ breakfast: '08:00', lunch: '13:00', dinner: '20:00' });
     const [startDate, setStartDate] = useState(new Date().toLocaleDateString('en-CA')); // Default to Today
-    const [durationDays, setDurationDays] = useState(null); // Null means infinite/ongoing by default for non-medication
+    const [durationDays, setDurationDays] = useState(30); // Default to 30 days (1 Month)
     const [files, setFiles] = useState([]);
 
     // Voice Hook
@@ -85,8 +85,8 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                 } else {
                     setStartDate(reminderToEdit.schedule?.startDate || reminderToEdit.date || new Date().toISOString().split('T')[0]);
                 }
-                setDurationDays(reminderToEdit.schedule?.durationDays || null);
             }
+            setDurationDays(reminderToEdit.schedule?.durationDays || 30);
         } else {
             // Reset for new
             setTitle('');
@@ -105,6 +105,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             setFiles([]);
             setEditScope('all');
             setStartDate(new Date().toISOString().split('T')[0]);
+            setDurationDays(30);
         }
     }, [reminderToEdit, isOpen]);
 
@@ -518,6 +519,8 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                                         <option value="Daily">Daily</option>
                                                         <option value="Weekly">Weekly</option>
                                                         <option value="Every 1 Hour">Hourly</option>
+                                                        <option value="Every 2 Hours">Every 2h</option>
+                                                        <option value="Every 3 Hours">Every 3h</option>
                                                         <option value="Every 4 Hours">Every 4h</option>
                                                         <option value="Custom">Custom</option>
                                                     </select>
@@ -528,16 +531,15 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ends?</label>
                                                     <select
                                                         className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                                                        value={durationDays || ''}
-                                                        onChange={(e) => setDurationDays(e.target.value ? parseInt(e.target.value) : null)}
+                                                        value={durationDays || 30}
+                                                        onChange={(e) => setDurationDays(parseInt(e.target.value))}
                                                         disabled={frequency === 'Once'}
                                                     >
-                                                        <option value="">Never</option>
-                                                        <option value="3">3 Days</option>
-                                                        <option value="5">5 Days</option>
-                                                        <option value="7">1 Week</option>
-                                                        <option value="14">2 Weeks</option>
-                                                        <option value="30">30 Days</option>
+                                                        <option value="30">30 Days (1 Month)</option>
+                                                        <option value="60">60 Days (2 Months)</option>
+                                                        <option value="90">90 Days (3 Months)</option>
+                                                        <option value="180">180 Days (6 Months)</option>
+                                                        <option value="365">1 Year</option>
                                                     </select>
                                                 </div>
                                             </div>
