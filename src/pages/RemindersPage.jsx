@@ -132,6 +132,31 @@ const RemindersPage = () => {
         }
     };
 
+    const handleDeleteClick = (reminder) => {
+        // Determine if this is a "Soft Delete" scenario
+        let isPastRecurring = false;
+        if (reminder.schedule?.startDate || reminder.date) {
+            const start = new Date(reminder.schedule?.startDate || reminder.date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const todayStr = today.toLocaleDateString('en-CA');
+            // Compare YYYY-MM-DD
+            // Start < Today
+            // Re-use logic from data.js roughly or just date comparison
+            // (Simple string compare works for ISO YYYY-MM-DD)
+            if ((reminder.schedule?.startDate || reminder.date) < todayStr) {
+                isPastRecurring = true;
+            }
+        }
+
+        setDeleteConfig({
+            id: reminder.id,
+            title: reminder.title,
+            isPastRecurring // Pass this flag to the modal rendering
+        });
+        setIsDeleteModalOpen(true);
+    };
+
     const handleEdit = (reminder) => {
         setEditingReminder(reminder);
         setIsModalOpen(true);
@@ -282,8 +307,16 @@ const RemindersPage = () => {
                         <div className="space-y-3">
                             {deleteConfig?.isRecurring ? (
                                 <>
+                                    {deleteConfig.isPastRecurring && (
+                                        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-xs text-yellow-800 dark:text-yellow-200 text-left">
+                                            <strong>Note:</strong> Since this reminder started in the past, deleting the "Series" will only stop future reminders. <br />
+                                            <span className="opacity-80 mt-1 block">Past history (before today) will be preserved for your records.</span>
+                                        </div>
+                                    )}
                                     <button onClick={() => confirmDelete('instance')} className="w-full py-3 px-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">Delete This Event Only</button>
-                                    <button onClick={() => confirmDelete('series')} className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold shadow-lg shadow-red-500/20">Delete Entire Series</button>
+                                    <button onClick={() => confirmDelete('series')} className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold shadow-lg shadow-red-500/20">
+                                        {deleteConfig.isPastRecurring ? 'Stop Future Reminders' : 'Delete Entire Series'}
+                                    </button>
                                 </>
                             ) : (
                                 <button onClick={() => confirmDelete('series')} className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold shadow-lg shadow-red-500/20">Delete</button>

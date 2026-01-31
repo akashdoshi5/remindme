@@ -117,71 +117,112 @@ const HomePage = () => {
                 </div>
             </div>
 
-            {/* Main Stats Row */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {/* Up Next Card */}
+            {/* Main Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Next Up Card - Takes 2 cols on desktop */}
                 <motion.div
-                    whileTap={{ scale: 0.98 }}
+                    whileTap={{ scale: 0.99 }}
                     onClick={() => navigate('/reminders')}
-                    className="col-span-2 md:col-span-2 bg-gradient-to-br from-orange-500 to-orange-400 p-6 rounded-3xl text-white shadow-lg shadow-orange-200 dark:shadow-none relative overflow-hidden"
+                    className="col-span-1 md:col-span-2 bg-gradient-to-br from-orange-500 to-orange-400 p-6 rounded-3xl text-white shadow-lg shadow-orange-500/20 relative overflow-hidden flex flex-col justify-between min-h-[160px]"
                 >
-                    <div className="absolute top-0 right-0 p-8 opacity-10">
-                        <Clock size={120} />
+                    <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
+                        <Clock size={100} />
                     </div>
 
                     <div className="relative z-10">
-                        <h2 className="text-orange-100 font-medium mb-1 flex items-center gap-2">
-                            <Bell size={16} /> Up Next
+                        <h2 className="text-orange-100 text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+                            <Activity size={14} /> Up Next
                         </h2>
                         {nextReminder ? (
                             <div>
-                                <h3 className="text-3xl font-bold mb-1">{nextReminder.displayTime}</h3>
-                                <p className="text-xl font-medium opacity-90">{nextReminder.title}</p>
-                                <p className="text-sm opacity-75 mt-2 flex items-center gap-1">
-                                    {stats.upcoming - 1 > 0 ? `+ ${stats.upcoming - 1} more today` : 'Last one for today!'}
-                                </p>
+                                <h3 className="text-4xl font-bold mb-1 tracking-tight">{nextReminder.displayTime}</h3>
+                                <p className="text-lg font-medium opacity-90 truncate pr-8">{nextReminder.title}</p>
                             </div>
                         ) : (
-                            <div className="py-2">
+                            <div className="flex flex-col items-start gap-1">
                                 <h3 className="text-2xl font-bold">All caught up!</h3>
-                                <p className="opacity-80">No more reminders for today.</p>
+                                <p className="opacity-80 text-sm">Relax, you're doing great.</p>
                             </div>
                         )}
                     </div>
                 </motion.div>
 
-                {/* Mini Stats Ring */}
+                {/* Progress Ring Card */}
                 <motion.div
                     whileTap={{ scale: 0.98 }}
                     onClick={() => navigate('/reports')}
-                    className="bg-white dark:bg-gray-800 p-4 rounded-3xl border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-center shadow-sm"
+                    className="bg-white dark:bg-gray-800 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-center shadow-sm relative overflow-hidden"
                 >
+                    <div className="absolute top-2 right-2 text-gray-300 dark:text-gray-600">
+                        <Activity size={20} />
+                    </div>
                     <div className="w-20 h-20 relative flex items-center justify-center mb-2">
                         <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                            <path className="text-gray-100 dark:text-gray-700" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" />
+                            <path className="text-gray-100 dark:text-gray-700" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="4" />
                             <path
-                                className="text-green-500"
+                                className="text-green-500 transition-all duration-1000 ease-out"
                                 d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                                 fill="none"
                                 stroke="currentColor"
-                                strokeWidth="3"
+                                strokeWidth="4"
                                 strokeDasharray={`${stats.taken > 0 ? (stats.taken / (stats.taken + stats.missed + stats.upcoming)) * 100 : 0}, 100`}
                             />
                         </svg>
-                        <span className="absolute text-xl font-bold text-gray-800 dark:text-gray-100">{stats.taken}</span>
+                        <div className="absolute flex flex-col items-center">
+                            <span className="text-2xl font-bold text-gray-800 dark:text-gray-100 leading-none">{stats.taken}</span>
+                        </div>
                     </div>
-                    <p className="text-xs font-bold text-gray-400 uppercase">Taken Today</p>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Taken</p>
                 </motion.div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-                <button onClick={() => navigate('/reminders?add=true')} className="flex items-center gap-2 px-5 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-bold whitespace-nowrap shadow-sm">
-                    <Plus size={18} /> Add Med
+            {/* Quick Actions (Compact) */}
+            <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => navigate('/reminders?add=true')} className="flex items-center justify-center gap-2 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm text-gray-700 dark:text-gray-200 font-bold text-sm">
+                    <Plus size={18} className="text-orange-500" /> Add Reminder
                 </button>
-                <button onClick={() => navigate('/caregivers')} className="flex items-center gap-2 px-5 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-2xl font-bold whitespace-nowrap shadow-sm">
-                    <Users size={18} /> Share Profile
+                <button onClick={() => navigate('/caregivers')} className="flex items-center justify-center gap-2 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm text-gray-700 dark:text-gray-200 font-bold text-sm">
+                    <Users size={18} className="text-blue-500" /> Caregivers
                 </button>
+            </div>
+
+            {/* Recent Notes Snippet */}
+            <div className="space-y-3">
+                <div className="flex justify-between items-end px-1">
+                    <h3 className="font-bold text-lg text-gray-800 dark:text-gray-200 mb-0">Quick Notes</h3>
+                    <span onClick={() => navigate('/notes')} className="text-orange-500 text-xs font-bold cursor-pointer bg-orange-50 dark:bg-orange-900/20 px-2 py-1 rounded-full">View All</span>
+                </div>
+
+                {notes.length > 0 ? (
+                    <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-2 px-2">
+                        {notes.map(note => (
+                            <motion.div
+                                key={note.id}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => navigate('/notes', { state: { focusId: note.id } })}
+                                className="min-w-[160px] w-[160px] p-4 bg-yellow-50 dark:bg-gray-800 border border-yellow-200 dark:border-gray-700 rounded-2xl shadow-sm flex flex-col gap-2 h-32"
+                            >
+                                <span className="text-[10px] text-gray-400 font-bold uppercase">{new Date(note.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                                <h4 className="font-bold text-gray-800 dark:text-gray-200 line-clamp-2 leading-tight">{note.title}</h4>
+                                <div className="mt-auto flex justify-end opacity-50">
+                                    <FileText size={16} className="text-gray-500" />
+                                </div>
+                            </motion.div>
+                        ))}
+                        <motion.div
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => navigate('/notes?add=true')}
+                            className="min-w-[60px] flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 cursor-pointer text-gray-400"
+                        >
+                            <Plus size={24} />
+                        </motion.div>
+                    </div>
+                ) : (
+                    <div onClick={() => navigate('/notes?add=true')} className="p-6 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-3xl flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                        <FileText size={24} className="mb-2 opacity-50" />
+                        <span className="text-sm font-bold">Write a note</span>
+                    </div>
+                )}
             </div>
 
             {/* Caregivers Widget (My Patients) */}

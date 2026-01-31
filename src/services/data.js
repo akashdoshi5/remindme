@@ -814,13 +814,52 @@ export const dataService = {
 
     deleteReminder: async (id) => {
         if (activeProfile) return; // Read Only
-        if (auth.currentUser) {
-            await firestoreService.deleteReminder(id);
-            return;
+
+        // 1. Find the reminder to check dates
+        const reminder = store.reminders?.find(r => String(r.id) === String(id));
+
+        // Helper: Check if start date is in the past
+        const isStartedInPast = () => {
+            if (!reminder) return false;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const startDateStr = reminder.schedule?.startDate || reminder.date;
+            if (!startDateStr) return false; // Default to delete if no start date
+
+            const startDate = new Date(startDateStr);
+            // startDate is usually YYYY-MM-DD, parsing it might be UTC or Local depending on browser.
+            // 'en-CA' format YYYY-MM-DD usually parses as UTC in some contexts or local.
+            // Safest is string comparison if format matches?
+            // Let's use string comparison for YYYY-MM-DD
+            const todayStr = today.toLocaleDateString('en-CA');
+            return startDateStr < todayStr;
+        };
+
+        if (reminder && isStartedInPast()) {
+            // SOFT DELETE (End Date = Yesterday)
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toLocaleDateString('en-CA');
+
+            const updates = { endDate: yesterdayStr, status: 'ended' };
+
+            if (auth.currentUser) {
+                await firestoreService.updateReminder(id, updates);
+            } else {
+                store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, ...updates } : r);
+                save();
+            }
+        } else {
+            // HARD DELETE (Future or Today or Not Found)
+            if (auth.currentUser) {
+                await firestoreService.deleteReminder(id);
+                return;
+            }
+            if (!store.reminders) return;
+            store.reminders = store.reminders.filter(r => String(r.id) !== String(id));
+            save();
         }
-        if (!store.reminders) return;
-        store.reminders = store.reminders.filter(r => String(r.id) !== String(id));
-        save();
     },
 
     snoozeReminder: async (id, instanceKey = null, minutes = 15) => {

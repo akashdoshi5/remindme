@@ -49,6 +49,19 @@ const HelpGuide = ({ isOpen, onClose }) => {
                             </div>
                         </div>
 
+                        {/* Section 4: Search Notes */}
+                        <div className="flex gap-4">
+                            <div className="flex-shrink-0 w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-2xl flex items-center justify-center text-orange-600 dark:text-orange-400">
+                                <Search size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Find Notes Fast</h3>
+                                <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
+                                    Use the search bar on the Home or Notes page to instantly find notes by title, content, or tags.
+                                </p>
+                            </div>
+                        </div>
+
                         {/* Section 2: Edit Lock */}
                         <div className="flex gap-4">
                             <div className="flex-shrink-0 w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-2xl flex items-center justify-center text-purple-600 dark:text-purple-400">
