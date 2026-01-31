@@ -97,9 +97,18 @@ export const useNotifications = () => {
     }, []);
 
     const scheduleReminders = useCallback(async (reminders) => {
+        console.log('📅 scheduleReminders called with', reminders.length, 'reminders');
+        console.table(reminders.map(r => ({
+            Title: r.title,
+            Date: r.targetDate || r.date,
+            Time: r.displayTime || r.time,
+            Status: r.status
+        })));
+
         try {
             if (Capacitor.isNativePlatform()) {
                 const pending = await LocalNotifications.getPending();
+                console.log('🗑️ Cancelling', pending.notifications.length, 'old notifications');
                 if (pending.notifications.length > 0) {
                     await LocalNotifications.cancel(pending);
                 }
