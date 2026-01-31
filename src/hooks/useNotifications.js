@@ -164,8 +164,9 @@ export const useNotifications = () => {
                 }).filter(n => n !== null && !isNaN(n.id));
 
                 if (notificationsToSchedule.length > 0) {
+                    console.log('🔔 Scheduling', notificationsToSchedule.length, 'Android notifications');
                     await LocalNotifications.schedule({ notifications: notificationsToSchedule });
-                    console.log(`Scheduled ${notificationsToSchedule.length} notifications (V5 Native)`);
+                    console.log(`✅ Scheduled ${notificationsToSchedule.length} notifications successfully`);
                 }
             } else {
                 // WEB NOTIFICATION LOGIC
