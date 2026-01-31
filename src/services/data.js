@@ -327,12 +327,18 @@ export const dataService = {
                             let limitMinutes = limitH * 60 + limitM;
                             let currentMinutes = startH * 60 + startM;
 
-                            // Handle crossing midnight: if sleepStart < sleepEnd (e.g. 02:00 < 08:00), it implies 2 AM next day
-                            // Or if Limit is earlier than Start on the same day?
-                            // If Limit < Start, and Limit is small (AM), assume next day?
-                            // Simplified: If Limit < Start, maybe user wants till end of day?
-                            // Let's just create a hard stop at 23:59 if limit seems wrong relative to start, OR trust the user settings.
-                            // For now, trust settings, but ensure we don't accidentally fail comparison.
+                            // Handle crossing midnight: if sleepStart < sleepEnd/current (e.g. 02:00 < 22:00)
+                            // If limit is earlier than start, assume it means the next day (crossing midnight)
+                            // This handles "Start 10 PM, Sleep 2 AM" AND "Start 3 PM, Sleep 10 AM (night shift?)"
+                            if (limitMinutes < currentMinutes) {
+                                limitMinutes += 24 * 60;
+                            }
+
+                            // Safety cap: Don't generate more than 24 hours of intervals to prevent infinite loops or huge lists
+                            // If the user sets "Every 1 Hour" and window is > 24h (rare but possible with logic above), cap it.
+                            if (limitMinutes - currentMinutes > 24 * 60) {
+                                limitMinutes = currentMinutes + 24 * 60;
+                            }
 
                             const step = intervalHours * 60;
                             if (step > 0) {
