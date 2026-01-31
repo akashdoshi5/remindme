@@ -301,12 +301,15 @@ export const dataService = {
 
                     if (r.frequency && r.frequency.startsWith('Every')) {
                         // Interval Logic
-                        // Robust Parsing using Regex to handle variations (Hour vs Hours, extra spaces)
-                        const match = r.frequency.match(/Every\s+(\d+)\s+Hour/i);
+                        // Robust Parsing: Handle "Every 2 Hours", "Every 2h", "Every 2h "
+                        const match = r.frequency.match(/Every\s+(\d+)\s*(h|hour|hours)?/i);
                         const intervalHours = match ? parseInt(match[1]) : NaN;
 
                         if (!isNaN(intervalHours)) {
-                            const settings = store.settings || {};
+                            // Ensure store exists (it should, but safety first)
+                            const currentStore = typeof store !== 'undefined' ? store : { settings: {} };
+                            const settings = currentStore.settings || {};
+
                             // Fallback defaults if settings are missing or invalid
                             const sleepStart = (settings.sleepStart && settings.sleepStart.includes(':')) ? settings.sleepStart : '22:00';
                             const sleepEnd = (settings.sleepEnd && settings.sleepEnd.includes(':')) ? settings.sleepEnd : '08:00';
