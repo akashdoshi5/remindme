@@ -46,6 +46,7 @@ export const useNotifications = () => {
                             body: options.body || '',
                             id: new Date().getTime() % 2147483647,
                             schedule: { at: new Date(Date.now() + 100) },
+                            sound: 'default', // CRITICAL: Explicit sound
                             channelId: 'reminders_v10',
                             smallIcon: 'ic_notification_bell', // Explicitly set icon
                             actionTypeId: 'REMINDER_ACTIONS_V10',
@@ -154,6 +155,7 @@ export const useNotifications = () => {
                             at: date,
                             allowWhileIdle: true
                         },
+                        sound: 'default', // CRITICAL: Explicit sound parameter
                         channelId: 'reminders_v10',
                         smallIcon: 'ic_notification_bell',
                         actionTypeId: 'REMINDER_ACTIONS_V10',

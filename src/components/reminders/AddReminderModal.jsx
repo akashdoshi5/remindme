@@ -279,7 +279,9 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                 alert("Please select a time.");
                 setIsSaving(false);
                 return;
+
             }
+            // CRITICAL FIX: Always set time for both 'this' and 'all' scopes
             data.time = time;
         }
 
