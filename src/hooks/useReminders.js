@@ -11,9 +11,11 @@ export const useReminders = (setActiveAlarm) => {
     // 1. Initial Load & Sync
     useEffect(() => {
         const loadReminders = () => {
+            console.log('🔄 loadReminders triggered (initial load or storage-update event)');
             const todayStr = new Date().toLocaleDateString('en-CA');
             // FIX: Schedule next 7 days of reminders to ensure background reliability
             const allFuture = dataService.getUpcomingReminders(7);
+            console.log('📋 Found', allFuture.length, 'upcoming reminders to schedule');
             // const all = dataService.getRemindersForDate(todayStr); 
             setReminders(allFuture);
             scheduleReminders(allFuture);

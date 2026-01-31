@@ -16,8 +16,10 @@ export const useDataSync = () => {
 
         // 2. Setup Listeners
         const unsubReminders = firestoreService.getRemindersRealtime((data) => {
+            console.log('☁️ Firestore sync: Received', data.length, 'reminders from cloud');
             dataService.syncFromCloud('reminders', data);
             window.dispatchEvent(new Event('storage-update'));
+            console.log('✅ Dispatched storage-update event to trigger notification scheduling');
         });
 
         // Combined Notes Listener
