@@ -175,7 +175,24 @@ export const useNotifications = () => {
                     /* console.log('📅', r.title, '- Using r.date for Once reminder:', date.toString()); */
                 }
 
-                const safeId = parseInt(r.id) % 2147483647;
+                // CRITICAL FIX: Generate unique numeric ID for each instance
+                // Prevents overwriting recurring reminders (which share the same base r.id)
+                let safeId;
+                if (r.extra?.uniqueId || r.uniqueId) {
+                    const uidStr = r.extra?.uniqueId || r.uniqueId;
+                    let hash = 0;
+                    for (let i = 0; i < uidStr.length; i++) {
+                        const char = uidStr.charCodeAt(i);
+                        hash = ((hash << 5) - hash) + char;
+                        hash = hash & hash; // Convert to 32bit integer
+                    }
+                    safeId = Math.abs(hash); // Ensure positive ID
+                } else {
+                    // Fallback to time-based unique ID if uniqueId is missing
+                    safeId = (parseInt(r.id) + date.getTime()) & 0x7FFFFFFF;
+                }
+
+                // const safeId = parseInt(r.id) % 2147483647; // OLD BROKEN logic
                 const bodyText = r.instructions ? r.instructions : (r.type === 'Medication' ? 'Time for your meds!' : 'Reminder');
 
                 // EXTRA SAFETY: Don't schedule past events (tolerance 5 min)
