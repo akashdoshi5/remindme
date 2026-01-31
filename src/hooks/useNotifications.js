@@ -114,7 +114,10 @@ export const useNotifications = () => {
                 }
 
                 const notificationsToSchedule = reminders.map(r => {
-                    if (!r.displayTime) return null;
+                    if (!r.displayTime) {
+                        console.log('❌ Filtered (no displayTime):', r.title);
+                        return null;
+                    }
                     const [h, m] = r.displayTime.split(':').map(Number);
 
                     let date;
@@ -123,9 +126,11 @@ export const useNotifications = () => {
                         // new Date('2026-01-31') is interpreted as UTC, causing timezone shifts
                         const [year, month, day] = r.targetDate.split('-').map(Number);
                         date = new Date(year, month - 1, day, h, m, 0, 0);
+                        console.log('🎯', r.title, '- targetDate:', r.targetDate, '→ parsed:', date.toString());
                     } else {
                         date = new Date();
                         date.setHours(h, m, 0, 0);
+                        console.log('📍', r.title, '- no targetDate, using today with time:', date.toString());
                     }
 
                     const now = new Date();
@@ -135,8 +140,10 @@ export const useNotifications = () => {
                     // If targetDate came from getUpcomingReminders, it is correct.
                     if (!r.targetDate && date <= now) {
                         if (r.frequency === 'Daily' || (r.schedule && r.schedule.type === 'recurring')) {
+                            console.log('🔁', r.title, '- Recurring/Daily, time passed, moving to tomorrow');
                             date.setDate(date.getDate() + 1);
                         } else {
+                            console.log('❌ Filtered (no targetDate, time passed, not recurring):', r.title, 'date:', date.toString(), 'now:', now.toString());
                             // Single time passed
                             return null;
                         }
@@ -149,8 +156,12 @@ export const useNotifications = () => {
                     if (r.date && r.frequency === 'Once' && !r.targetDate) {
                         const [year, month, day] = r.date.split('-').map(Number);
                         const targetDate = new Date(year, month - 1, day, h, m, 0, 0);
-                        if (targetDate <= now) return null;
+                        if (targetDate <= now) {
+                            console.log('❌ Filtered (Once frequency, r.date in past):', r.title);
+                            return null;
+                        }
                         date = targetDate;
+                        console.log('📅', r.title, '- Using r.date for Once reminder:', date.toString());
                     }
 
                     const safeId = parseInt(r.id) % 2147483647;
@@ -158,7 +169,10 @@ export const useNotifications = () => {
 
                     // EXTRA SAFETY: Don't schedule past events (tolerance 5 min)
                     // This ensures if the loop runs slightly after the minute, we still schedule it for OS execution if needed
-                    if (date.getTime() < now.getTime() - 300000) return null;
+                    if (date.getTime() < now.getTime() - 300000) {
+                        console.log('❌ Filtered (> 5min in past):', r.title, 'date:', date.toString());
+                        return null;
+                    }
 
                     return {
                         title: r.title,
