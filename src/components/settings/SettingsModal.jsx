@@ -158,10 +158,21 @@ const SettingsModal = ({ isOpen, onClose }) => {
                         <h3 className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Troubleshooting</h3>
                         <div className="space-y-3">
                             {/* Test Notification */}
+                            {/* Debug / Test Tools */}
                             <button
                                 onClick={async () => {
-                                    alert("Scheduling test notification for 5 seconds from now. Please close the app immediately to test background delivery.");
+                                    alert("Scheduling test notification for 5 seconds from now. App must be in background!");
                                     const { LocalNotifications } = await import('@capacitor/local-notifications');
+
+                                    // Check Perms first
+                                    const perm = await LocalNotifications.checkPermissions();
+                                    if (perm.display !== 'granted') {
+                                        const req = await LocalNotifications.requestPermissions();
+                                        if (req.display !== 'granted') {
+                                            alert("Permission denied!");
+                                            return;
+                                        }
+                                    }
 
                                     // FORCE Channel Creation V10
                                     await LocalNotifications.createChannel({
@@ -177,12 +188,12 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                         notifications: [{
                                             title: 'Test Reminder',
                                             body: 'If you see this, notifications are working!',
-                                            id: 999999,
+                                            id: Math.floor(Date.now() / 1000),
                                             schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
                                             smallIcon: 'ic_notification_bell',
                                             channelId: 'reminders_v10',
                                             actionTypeId: 'REMINDER_ACTIONS_V10',
-                                            extra: { uniqueId: 'test' }
+                                            extra: { uniqueId: 'test_manual' }
                                         }]
                                     });
                                 }}
@@ -191,29 +202,18 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                 <Bell size={16} /> Test Notification (5s)
                             </button>
 
-                            {/* Fix Background Issues */}
                             <button
                                 onClick={async () => {
-                                    alert("1. Go to App Info > Battery > Unrestricted.\n2. Go to App Info > Alarms & Reminders > Allow.\n3. Turn on Autostart (Xiaomi/Oppo).");
-                                }}
-                                className="w-full p-3 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium text-sm flex items-center justify-center gap-2"
-                            >
-                                <Smartphone size={16} /> Fix Background Issues
-                            </button>
-
-                            {/* Recovery */}
-                            <button
-                                onClick={async () => {
-                                    if (window.confirm("Start scanning for lost files?")) {
-                                        const { recoveryService } = await import('../../services/recoveryService');
-                                        const result = await recoveryService.scanAndRecover(user ? user.uid : 'guest');
-                                        alert(result.message);
-                                        if (result.recoveredCount > 0) window.location.reload();
+                                    const { LocalNotifications } = await import('@capacitor/local-notifications');
+                                    const status = await LocalNotifications.checkPermissions();
+                                    alert(`Notification Permissions: ${status.display}`);
+                                    if (status.display !== 'granted') {
+                                        await LocalNotifications.requestPermissions();
                                     }
                                 }}
-                                className="w-full p-3 rounded-xl bg-amber-50 dark:bg-amber-900/10 text-amber-600 dark:text-amber-400 font-medium text-sm flex items-center justify-center gap-2"
+                                className="w-full p-3 rounded-xl bg-purple-50 dark:bg-purple-900/10 text-purple-600 dark:text-purple-400 font-medium text-sm flex items-center justify-center gap-2"
                             >
-                                <RefreshCw size={16} /> Scan & Recover Lost Files
+                                <Smartphone size={16} /> Check Permissions
                             </button>
                         </div>
                     </div>

@@ -29,19 +29,24 @@ const PermissionBanner = () => {
 
     const handleEnable = async () => {
         try {
-            if (Capacitor.isNativePlatform()) {
-                // Try open settings
-                await LocalNotifications.openSettings();
-            } else {
-                // Web: Request permission
-                const result = await requestPermission();
-                if (result === 'denied') {
-                    alert('Notifications are blocked. Please enable them in your browser settings.');
+            // ALWAYS request permissions first, don't just jump to settings
+            const result = await requestPermission();
+
+            if (result !== 'granted') {
+                // If still denied, THEN guide to settings
+                if (Capacitor.isNativePlatform()) {
+                    alert('Permission blocked. Opening Settings...');
+                    await LocalNotifications.openSettings();
+                } else {
+                    alert('Notifications are blocked by your browser. Please enable them in the address bar settings.');
                 }
+            } else {
+                // Granted! Hide
+                setIsVisible(false);
             }
         } catch (e) {
-            console.error("Error opening settings", e);
-            alert('Please open Settings > Apps > RemindMe and enable notifications manually.');
+            console.error("Error requesting permissions", e);
+            alert('Please enable notifications in System Settings.');
         }
     };
 

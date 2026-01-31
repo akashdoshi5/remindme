@@ -575,68 +575,79 @@ export const dataService = {
             store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, ...updates } : r);
         }
 
+        // Normal update (local)
+        store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, ...updates } : r);
+    }
+
         // CRITICAL: Fire storage-update IMMEDIATELY for notification re-scheduling
         save();
 
-        // THEN update Firestore (async, will sync back later)
-        if (auth.currentUser) {
-            if (instanceKey) {
-                const key = `exceptions.${instanceKey}`;
-                const payload = {
-                    [key]: { ...updates, isException: true }
-                };
-                await firestoreService.updateReminder(id, payload);
-            } else {
-                await firestoreService.updateReminder(id, updates);
-            }
-        }
-    },
+        // Also Trigger Schedule refresh manually to be safe
+        window.dispatchEvent(new Event('data-updated'));
 
-    // NEW: Detailed Status Logging for Medication
-    logReminderStatus: async (id, instanceKey, status) => {
-        if (auth.currentUser) {
-            const key = `logs.${instanceKey}`;
-            const payload = {
-                [key]: {
-                    status: status,
-                    takenAt: status === 'taken' ? new Date().toISOString() : null
-                }
-            };
+    // THEN update Firestore (async, will sync back later)
+    if(auth.currentUser) {
+        if (instanceKey) {
+            const key = `exceptions.${instanceKey}`;
+            // Deep merge is safer for exceptions
+            const payload = {};
+            Object.keys(updates).forEach(k => {
+                payload[`exceptions.${instanceKey}.${k}`] = updates[k];
+            });
+            payload[`exceptions.${instanceKey}.isException`] = true;
+
             await firestoreService.updateReminder(id, payload);
+        } else {
+    await firestoreService.updateReminder(id, updates);
+}
         }
-
-        if (!store.reminders) return;
-
-        store.reminders = store.reminders.map(r => {
-            if (String(r.id) === String(id)) {
-                const newLogs = { ...(r.logs || {}) };
-                newLogs[instanceKey] = {
-                    status: status,
-                    takenAt: status === 'taken' ? new Date().toISOString() : null,
-                };
-                return { ...r, logs: newLogs };
-            }
-            return r;
-        });
-
-        // Also add to global history if 'taken'
-        if (status === 'taken') {
-            const r = store.reminders.find(item => String(item.id) === String(id));
-            if (r) {
-                if (!store.history) store.history = [];
-                store.history.push({
-                    id: Date.now(),
-                    reminderId: id,
-                    title: r.title,
-                    type: r.category || r.type,
-                    status: 'taken',
-                    date: new Date().toISOString().split('T')[0],
-                    timestamp: new Date().toISOString()
-                });
-            }
-        }
-        await save();
     },
+
+// NEW: Detailed Status Logging for Medication
+logReminderStatus: async (id, instanceKey, status) => {
+    if (auth.currentUser) {
+        const key = `logs.${instanceKey}`;
+        const payload = {
+            [key]: {
+                status: status,
+                takenAt: status === 'taken' ? new Date().toISOString() : null
+            }
+        };
+        await firestoreService.updateReminder(id, payload);
+    }
+
+    if (!store.reminders) return;
+
+    store.reminders = store.reminders.map(r => {
+        if (String(r.id) === String(id)) {
+            const newLogs = { ...(r.logs || {}) };
+            newLogs[instanceKey] = {
+                status: status,
+                takenAt: status === 'taken' ? new Date().toISOString() : null,
+            };
+            return { ...r, logs: newLogs };
+        }
+        return r;
+    });
+
+    // Also add to global history if 'taken'
+    if (status === 'taken') {
+        const r = store.reminders.find(item => String(item.id) === String(id));
+        if (r) {
+            if (!store.history) store.history = [];
+            store.history.push({
+                id: Date.now(),
+                reminderId: id,
+                title: r.title,
+                type: r.category || r.type,
+                status: 'taken',
+                date: new Date().toISOString().split('T')[0],
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+    await save();
+},
 
     // NEW: Status logging with custom timestamp
     logReminderStatusWithTime: async (id, instanceKey, status, customTimestamp) => {
@@ -690,283 +701,283 @@ export const dataService = {
         save();
     },
 
-    completeReminder: (id, instanceKey = null) => {
-        if (instanceKey) {
-            dataService.logReminderStatus(id, instanceKey, 'taken');
-        } else {
-            // Legacy/Simple Logic
-            if (auth.currentUser) {
-                const updates = { status: 'done', completedDate: new Date().toLocaleDateString() };
-                firestoreService.updateReminder(id, updates);
-                return;
-            }
-            // Local
-            if (!store.reminders) return;
-            store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, status: 'done', completedDate: new Date().toLocaleDateString() } : r);
-            save();
-        }
-    },
-
-    deleteReminder: async (id) => {
-        if (auth.currentUser) {
-            await firestoreService.deleteReminder(id);
-            return;
-        }
-        if (!store.reminders) return;
-        store.reminders = store.reminders.filter(r => String(r.id) !== String(id));
-        save();
-    },
-
-    snoozeReminder: async (id, instanceKey = null, minutes = 15) => {
-        const now = new Date();
-        now.setMinutes(now.getMinutes() + minutes);
-
-        // FIX: Use full ISO string for snooze target to support cross-day snoozes and timezone safety
-        const newTimeISO = now.toISOString();
-        const legacyTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-
-        // We prefer ISO, but existing code might expect something? 
-        // We'll update the callers to handle ISO (as we did in getRemindersForDate)
-        const newTime = newTimeISO;
-
-
-        if (auth.currentUser) {
+        completeReminder: (id, instanceKey = null) => {
             if (instanceKey) {
-                const key = `logs.${instanceKey}`;
-                const payload = {
-                    [key]: {
-                        status: 'snoozed',
-                        snoozedUntil: newTime,
-                        timestamp: now.toISOString()
-                    }
-                };
-                await firestoreService.updateReminder(id, payload);
+                dataService.logReminderStatus(id, instanceKey, 'taken');
             } else {
-                await firestoreService.updateReminder(id, { time: newTime, status: 'upcoming' });
-            }
-            return;
-        }
-
-        if (instanceKey) {
-            store.reminders = store.reminders.map(r => {
-                if (String(r.id) === String(id)) {
-                    const newLogs = { ...(r.logs || {}) };
-                    newLogs[instanceKey] = {
-                        status: 'snoozed',
-                        snoozedUntil: newTime,
-                        timestamp: now.toISOString()
-                    };
-                    return { ...r, logs: newLogs };
+                // Legacy/Simple Logic
+                if (auth.currentUser) {
+                    const updates = { status: 'done', completedDate: new Date().toLocaleDateString() };
+                    firestoreService.updateReminder(id, updates);
+                    return;
                 }
-                return r;
-            });
-            save();
-            return;
-        }
-
-        if (!store.reminders) return;
-        store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, time: newTime, status: 'upcoming' } : r);
-        save();
-        return store.reminders.find(r => String(r.id) === String(id));
-    },
-
-
-    // History & Reports
-    getHistory: () => [...(store.history || [])],
-
-    // Notes
-    getNotes: () => {
-        const unique = new Map();
-        (store.notes || []).forEach(n => {
-            if (!unique.has(n.id)) unique.set(n.id, n);
-        });
-        return Array.from(unique.values());
-    },
-    addNote: async (note) => {
-        if (auth.currentUser) {
-            return await firestoreService.addNote(note);
-        }
-        const newNote = { ...note, id: Date.now() };
-        if (!store.notes) store.notes = [];
-        store.notes.unshift(newNote);
-        save();
-        return newNote;
-    },
-    updateNote: async (id, updates) => {
-        if (auth.currentUser) {
-            // sanitize updates to remove ownerId, sharedWith, createdAt, etc.
-            // eslint-disable-next-line no-unused-vars
-            const { ownerId, sharedWith, createdAt, ownerEmail, ...cleanUpdates } = updates;
-            await firestoreService.updateNote(id, cleanUpdates);
-            return;
-        }
-        if (!store.notes) return;
-        store.notes = store.notes.map(n => n.id === id ? { ...n, ...updates } : n);
-        save();
-    },
-    deleteNote: async (id) => {
-        if (auth.currentUser) {
-            await firestoreService.deleteNote(id);
-            return;
-        }
-        if (!store.notes) return;
-        store.notes = store.notes.filter(n => n.id !== id);
-        save();
-    },
-
-    reorderNotes: async (newNotes) => {
-        // Optimistic local update
-        store.notes = newNotes;
-        save();
-
-        if (auth.currentUser) {
-            // For Firestore, maintaining exact array order might be tricky without an 'order' field.
-            // We'll update the 'order' field for all notes.
-            // Batch update is best here.
-            await firestoreService.reorderNotes(newNotes.map(n => n.id));
-        }
-    },
-
-    shareNote: async (id, email) => {
-        if (auth.currentUser) {
-            await firestoreService.shareNote(id, email);
-            return true;
-        }
-        return false; // Not supported offline
-    },
-
-    unshareNote: async (id, email) => {
-        if (auth.currentUser) {
-            await firestoreService.unshareNote(id, email);
-            return true;
-        }
-        return false;
-    },
-
-    // Caregivers
-    getCaregivers: () => [...(store.caregivers || [])],
-    addCaregiver: async (caregiver) => {
-        if (auth.currentUser) {
-            await firestoreService.addCaregiver(caregiver);
-            return;
-        }
-        const newCaregiver = { ...caregiver, id: Date.now(), status: 'Pending' };
-        if (!store.caregivers) store.caregivers = [];
-        store.caregivers.push(newCaregiver);
-        save();
-        return newCaregiver;
-    },
-    updateCaregiver: (id, updates) => {
-        // Not implemented in firestoreService yet? 
-        // Just mocking it for now or local only? 
-        // Caregiver updates usually minimal.
-        if (!store.caregivers) return;
-        store.caregivers = store.caregivers.map(c => c.id === id ? { ...c, ...updates } : c);
-        save();
-    },
-    deleteCaregiver: async (id) => {
-        if (auth.currentUser) {
-            await firestoreService.deleteCaregiver(id);
-            return;
-        }
-        if (!store.caregivers) return;
-        store.caregivers = store.caregivers.filter(c => c.id !== id);
-        save();
-    },
-
-    // Search
-    search: (query) => {
-        const lowerQ = query.toLowerCase();
-
-        // Simple synonym mapping
-        const synonyms = {
-            'doctor': ['dr', 'dr.'],
-            'dr': ['doctor', 'dr.'],
-            'meds': ['medication', 'pill'],
-            'medication': ['meds', 'pill'],
-            'appointment': ['visit'],
-            'visit': ['appointment']
-        };
-
-        // Expand query terms
-        const terms = [lowerQ];
-        Object.keys(synonyms).forEach(key => {
-            if (lowerQ.includes(key)) {
-                synonyms[key].forEach(syn => terms.push(lowerQ.replaceAll(key, syn)));
+                // Local
+                if (!store.reminders) return;
+                store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, status: 'done', completedDate: new Date().toLocaleDateString() } : r);
+                save();
             }
-        });
+        },
 
-        const checkMatch = (text) => {
-            if (!text) return false;
-            const lowerText = text.toLowerCase();
-            return terms.some(term => lowerText.includes(term));
-        };
+            deleteReminder: async (id) => {
+                if (auth.currentUser) {
+                    await firestoreService.deleteReminder(id);
+                    return;
+                }
+                if (!store.reminders) return;
+                store.reminders = store.reminders.filter(r => String(r.id) !== String(id));
+                save();
+            },
 
-        const reminders = (store.reminders || []).filter(r =>
-            checkMatch(r.title) ||
-            checkMatch(r.instructions) ||
-            checkMatch(r.type)
-        );
+                snoozeReminder: async (id, instanceKey = null, minutes = 15) => {
+                    const now = new Date();
+                    now.setMinutes(now.getMinutes() + minutes);
 
-        const notes = (store.notes || []).filter(n =>
-            checkMatch(n.title) ||
-            checkMatch(n.content) ||
-            checkMatch(n.type) ||
-            (n.tags && n.tags.some(tag => checkMatch(tag))) ||
-            (n.files && n.files.some(f => checkMatch(f.name) || checkMatch(f.extractedText)))
-        );
+                    // FIX: Use full ISO string for snooze target to support cross-day snoozes and timezone safety
+                    const newTimeISO = now.toISOString();
+                    const legacyTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
 
-        return { reminders, notes };
-    },
+                    // We prefer ISO, but existing code might expect something? 
+                    // We'll update the callers to handle ISO (as we did in getRemindersForDate)
+                    const newTime = newTimeISO;
 
-    // Settings
-    getSettings: () => ({ ...(store.settings || { sleepStart: '22:00', sleepEnd: '08:00' }) }),
-    updateSettings: async (newSettings) => {
-        store.settings = { ...(store.settings || {}), ...newSettings };
-        save();
 
-        if (auth.currentUser) {
-            await firestoreService.updateSettings(store.settings);
-        }
-    },
+                    if (auth.currentUser) {
+                        if (instanceKey) {
+                            const key = `logs.${instanceKey}`;
+                            const payload = {
+                                [key]: {
+                                    status: 'snoozed',
+                                    snoozedUntil: newTime,
+                                    timestamp: now.toISOString()
+                                }
+                            };
+                            await firestoreService.updateReminder(id, payload);
+                        } else {
+                            await firestoreService.updateReminder(id, { time: newTime, status: 'upcoming' });
+                        }
+                        return;
+                    }
 
-    deleteAllData: async () => {
-        if (auth.currentUser) {
-            await firestoreService.deleteAllUserData();
-        }
-        localStorage.removeItem(getStorageKey());
-        store = JSON.parse(JSON.stringify(defaultData));
-        // Force reload to clear state effectively
-        window.location.reload();
-    },
+                    if (instanceKey) {
+                        store.reminders = store.reminders.map(r => {
+                            if (String(r.id) === String(id)) {
+                                const newLogs = { ...(r.logs || {}) };
+                                newLogs[instanceKey] = {
+                                    status: 'snoozed',
+                                    snoozedUntil: newTime,
+                                    timestamp: now.toISOString()
+                                };
+                                return { ...r, logs: newLogs };
+                            }
+                            return r;
+                        });
+                        save();
+                        return;
+                    }
 
-    _reset: () => {
-        store = JSON.parse(JSON.stringify(defaultData));
-    },
+                    if (!store.reminders) return;
+                    store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, time: newTime, status: 'upcoming' } : r);
+                    save();
+                    return store.reminders.find(r => String(r.id) === String(id));
+                },
 
-    // CONVERSION HELPERS
-    convertNoteToReminder: (note) => {
-        const now = new Date();
-        const h = String(now.getHours()).padStart(2, '0');
-        const m = String(now.getMinutes()).padStart(2, '0');
-        return {
-            title: note.title,
-            instructions: note.content,
-            type: 'Other',
-            id: null,
-            isShared: false,
-            status: 'upcoming',
-            time: `${h}:${m}`,
-            date: now.toISOString().split('T')[0]
-        };
-    },
 
-    convertReminderToNote: (reminder) => {
-        return {
-            title: reminder.title,
-            content: `Frequency: ${reminder.frequency || 'Once'}\nInstructions: ${reminder.instructions || 'None'}`,
-            type: 'text',
-            tags: [reminder.type || 'Other']
-        };
-    }
+                    // History & Reports
+                    getHistory: () => [...(store.history || [])],
+
+                        // Notes
+                        getNotes: () => {
+                            const unique = new Map();
+                            (store.notes || []).forEach(n => {
+                                if (!unique.has(n.id)) unique.set(n.id, n);
+                            });
+                            return Array.from(unique.values());
+                        },
+                            addNote: async (note) => {
+                                if (auth.currentUser) {
+                                    return await firestoreService.addNote(note);
+                                }
+                                const newNote = { ...note, id: Date.now() };
+                                if (!store.notes) store.notes = [];
+                                store.notes.unshift(newNote);
+                                save();
+                                return newNote;
+                            },
+                                updateNote: async (id, updates) => {
+                                    if (auth.currentUser) {
+                                        // sanitize updates to remove ownerId, sharedWith, createdAt, etc.
+                                        // eslint-disable-next-line no-unused-vars
+                                        const { ownerId, sharedWith, createdAt, ownerEmail, ...cleanUpdates } = updates;
+                                        await firestoreService.updateNote(id, cleanUpdates);
+                                        return;
+                                    }
+                                    if (!store.notes) return;
+                                    store.notes = store.notes.map(n => n.id === id ? { ...n, ...updates } : n);
+                                    save();
+                                },
+                                    deleteNote: async (id) => {
+                                        if (auth.currentUser) {
+                                            await firestoreService.deleteNote(id);
+                                            return;
+                                        }
+                                        if (!store.notes) return;
+                                        store.notes = store.notes.filter(n => n.id !== id);
+                                        save();
+                                    },
+
+                                        reorderNotes: async (newNotes) => {
+                                            // Optimistic local update
+                                            store.notes = newNotes;
+                                            save();
+
+                                            if (auth.currentUser) {
+                                                // For Firestore, maintaining exact array order might be tricky without an 'order' field.
+                                                // We'll update the 'order' field for all notes.
+                                                // Batch update is best here.
+                                                await firestoreService.reorderNotes(newNotes.map(n => n.id));
+                                            }
+                                        },
+
+                                            shareNote: async (id, email) => {
+                                                if (auth.currentUser) {
+                                                    await firestoreService.shareNote(id, email);
+                                                    return true;
+                                                }
+                                                return false; // Not supported offline
+                                            },
+
+                                                unshareNote: async (id, email) => {
+                                                    if (auth.currentUser) {
+                                                        await firestoreService.unshareNote(id, email);
+                                                        return true;
+                                                    }
+                                                    return false;
+                                                },
+
+                                                    // Caregivers
+                                                    getCaregivers: () => [...(store.caregivers || [])],
+                                                        addCaregiver: async (caregiver) => {
+                                                            if (auth.currentUser) {
+                                                                await firestoreService.addCaregiver(caregiver);
+                                                                return;
+                                                            }
+                                                            const newCaregiver = { ...caregiver, id: Date.now(), status: 'Pending' };
+                                                            if (!store.caregivers) store.caregivers = [];
+                                                            store.caregivers.push(newCaregiver);
+                                                            save();
+                                                            return newCaregiver;
+                                                        },
+                                                            updateCaregiver: (id, updates) => {
+                                                                // Not implemented in firestoreService yet? 
+                                                                // Just mocking it for now or local only? 
+                                                                // Caregiver updates usually minimal.
+                                                                if (!store.caregivers) return;
+                                                                store.caregivers = store.caregivers.map(c => c.id === id ? { ...c, ...updates } : c);
+                                                                save();
+                                                            },
+                                                                deleteCaregiver: async (id) => {
+                                                                    if (auth.currentUser) {
+                                                                        await firestoreService.deleteCaregiver(id);
+                                                                        return;
+                                                                    }
+                                                                    if (!store.caregivers) return;
+                                                                    store.caregivers = store.caregivers.filter(c => c.id !== id);
+                                                                    save();
+                                                                },
+
+                                                                    // Search
+                                                                    search: (query) => {
+                                                                        const lowerQ = query.toLowerCase();
+
+                                                                        // Simple synonym mapping
+                                                                        const synonyms = {
+                                                                            'doctor': ['dr', 'dr.'],
+                                                                            'dr': ['doctor', 'dr.'],
+                                                                            'meds': ['medication', 'pill'],
+                                                                            'medication': ['meds', 'pill'],
+                                                                            'appointment': ['visit'],
+                                                                            'visit': ['appointment']
+                                                                        };
+
+                                                                        // Expand query terms
+                                                                        const terms = [lowerQ];
+                                                                        Object.keys(synonyms).forEach(key => {
+                                                                            if (lowerQ.includes(key)) {
+                                                                                synonyms[key].forEach(syn => terms.push(lowerQ.replaceAll(key, syn)));
+                                                                            }
+                                                                        });
+
+                                                                        const checkMatch = (text) => {
+                                                                            if (!text) return false;
+                                                                            const lowerText = text.toLowerCase();
+                                                                            return terms.some(term => lowerText.includes(term));
+                                                                        };
+
+                                                                        const reminders = (store.reminders || []).filter(r =>
+                                                                            checkMatch(r.title) ||
+                                                                            checkMatch(r.instructions) ||
+                                                                            checkMatch(r.type)
+                                                                        );
+
+                                                                        const notes = (store.notes || []).filter(n =>
+                                                                            checkMatch(n.title) ||
+                                                                            checkMatch(n.content) ||
+                                                                            checkMatch(n.type) ||
+                                                                            (n.tags && n.tags.some(tag => checkMatch(tag))) ||
+                                                                            (n.files && n.files.some(f => checkMatch(f.name) || checkMatch(f.extractedText)))
+                                                                        );
+
+                                                                        return { reminders, notes };
+                                                                    },
+
+                                                                        // Settings
+                                                                        getSettings: () => ({ ...(store.settings || { sleepStart: '22:00', sleepEnd: '08:00' }) }),
+                                                                            updateSettings: async (newSettings) => {
+                                                                                store.settings = { ...(store.settings || {}), ...newSettings };
+                                                                                save();
+
+                                                                                if (auth.currentUser) {
+                                                                                    await firestoreService.updateSettings(store.settings);
+                                                                                }
+                                                                            },
+
+                                                                                deleteAllData: async () => {
+                                                                                    if (auth.currentUser) {
+                                                                                        await firestoreService.deleteAllUserData();
+                                                                                    }
+                                                                                    localStorage.removeItem(getStorageKey());
+                                                                                    store = JSON.parse(JSON.stringify(defaultData));
+                                                                                    // Force reload to clear state effectively
+                                                                                    window.location.reload();
+                                                                                },
+
+                                                                                    _reset: () => {
+                                                                                        store = JSON.parse(JSON.stringify(defaultData));
+                                                                                    },
+
+                                                                                        // CONVERSION HELPERS
+                                                                                        convertNoteToReminder: (note) => {
+                                                                                            const now = new Date();
+                                                                                            const h = String(now.getHours()).padStart(2, '0');
+                                                                                            const m = String(now.getMinutes()).padStart(2, '0');
+                                                                                            return {
+                                                                                                title: note.title,
+                                                                                                instructions: note.content,
+                                                                                                type: 'Other',
+                                                                                                id: null,
+                                                                                                isShared: false,
+                                                                                                status: 'upcoming',
+                                                                                                time: `${h}:${m}`,
+                                                                                                date: now.toISOString().split('T')[0]
+                                                                                            };
+                                                                                        },
+
+                                                                                            convertReminderToNote: (reminder) => {
+                                                                                                return {
+                                                                                                    title: reminder.title,
+                                                                                                    content: `Frequency: ${reminder.frequency || 'Once'}\nInstructions: ${reminder.instructions || 'None'}`,
+                                                                                                    type: 'text',
+                                                                                                    tags: [reminder.type || 'Other']
+                                                                                                };
+                                                                                            }
 };
