@@ -8,9 +8,9 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
 
     // Standard State
     const [title, setTitle] = useState('');
-    const [type, setType] = useState('Medication');
+    const [type, setType] = useState('Other');
     const [time, setTime] = useState('');
-    const [frequency, setFrequency] = useState('Daily');
+    const [frequency, setFrequency] = useState('Once');
     const [instructions, setInstructions] = useState('');
     const [isImportant, setIsImportant] = useState(false);
     const [editScope, setEditScope] = useState('all'); // 'this' or 'all'
@@ -90,11 +90,11 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
         } else {
             // Reset for new
             setTitle('');
-            setType('Medication');
+            setType('Other');
             const now = new Date();
             const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
             setTime(timeStr);
-            setFrequency('Daily');
+            setFrequency('Once');
             setInstructions('');
             setIsImportant(false);
             setCustomDays([]);
@@ -535,6 +535,11 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                                         onChange={(e) => setDurationDays(parseInt(e.target.value))}
                                                         disabled={frequency === 'Once'}
                                                     >
+                                                        <option value="1">1 Day</option>
+                                                        <option value="3">3 Days</option>
+                                                        <option value="5">5 Days</option>
+                                                        <option value="7">1 Week</option>
+                                                        <option value="14">2 Weeks</option>
                                                         <option value="30">30 Days (1 Month)</option>
                                                         <option value="60">60 Days (2 Months)</option>
                                                         <option value="90">90 Days (3 Months)</option>
