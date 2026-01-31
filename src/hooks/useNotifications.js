@@ -124,10 +124,22 @@ export const useNotifications = () => {
 
                 let date;
                 if (r.targetDate) {
-                    // CRITICAL FIX: Parse date components to avoid UTC timezone issues
-                    const [year, month, day] = r.targetDate.split('-').map(Number);
-                    date = new Date(year, month - 1, day, h, m, 0, 0);
-                    /* console.log('🎯', r.title, '- targetDate:', r.targetDate, '→ parsed:', date.toString()); */
+                    // CRITICAL FIX: Parse using regex to handle YYYY-MM-DD or YYYY/MM/DD
+                    const parts = r.targetDate.split(/[-/]/).map(Number);
+                    // Ensure we have 3 parts [Year, Month, Day]
+                    if (parts.length === 3) {
+                        const [year, month, day] = parts;
+                        date = new Date(year, month - 1, day, h, m, 0, 0);
+                        /* console.log('🎯', r.title, '- targetDate:', r.targetDate, '→ parsed:', date.toString()); */
+                    } else {
+                        // Fallback if parsing failed
+                        console.error('Invalid targetDate format:', r.targetDate);
+                        date = new Date(); // unsafe default but prevents crash
+                        date.setHours(h, m, 0, 0);
+                        filteredCount++;
+                        if (!firstFilterReason) firstFilterReason = `Invalid Date Format (${r.targetDate})`;
+                        return null; // Skip invalid dates
+                    }
                 } else {
                     date = new Date();
                     date.setHours(h, m, 0, 0);

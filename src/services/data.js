@@ -518,7 +518,12 @@ export const dataService = {
         for (let i = 0; i < days; i++) {
             const date = new Date(today);
             date.setDate(today.getDate() + i);
-            const dateStr = date.toLocaleDateString('en-CA');
+
+            // FIX: Manual formatting to guarantee YYYY-MM-DD (avoid Locale/WebView inconsistencies)
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
 
             const reminders = dataService.getRemindersForDate(dateStr);
             console.log(`  Day ${i} (${dateStr}): Found ${reminders.length} total reminders`);
