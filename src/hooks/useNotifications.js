@@ -106,6 +106,95 @@ export const useNotifications = () => {
         })));
 
         try {
+            // STEP 1: Process reminders into notification objects (SHARED LOGIC)
+            // This allows debugging the filtering logic on Web Console
+
+            const notificationsToSchedule = reminders.map(r => {
+                if (!r.displayTime) {
+                    console.log('❌ Filtered (no displayTime):', r.title);
+                    return null;
+                }
+                const [h, m] = r.displayTime.split(':').map(Number);
+
+                let date;
+                if (r.targetDate) {
+                    // CRITICAL FIX: Parse date components to avoid UTC timezone issues
+                    const [year, month, day] = r.targetDate.split('-').map(Number);
+                    date = new Date(year, month - 1, day, h, m, 0, 0);
+                    console.log('🎯', r.title, '- targetDate:', r.targetDate, '→ parsed:', date.toString());
+                } else {
+                    date = new Date();
+                    date.setHours(h, m, 0, 0);
+                    console.log('📍', r.title, '- no targetDate, using today with time:', date.toString());
+                }
+
+                const now = new Date();
+
+                // Logic for Daily/Recurring: If passed today, schedule for tomorrow
+                // ONLY if we don't have an explicit target date (which implies confidence)
+                if (!r.targetDate && date <= now) {
+                    if (r.frequency === 'Daily' || (r.schedule && r.schedule.type === 'recurring')) {
+                        console.log('🔁', r.title, '- Recurring/Daily, time passed, moving to tomorrow');
+                        date.setDate(date.getDate() + 1);
+                    } else {
+                        console.log('❌ Filtered (no targetDate, time passed, not recurring):', r.title, 'date:', date.toString(), 'now:', now.toString());
+                        return null;
+                    }
+                }
+
+                if (r.date && r.frequency === 'Once' && !r.targetDate) {
+                    const [year, month, day] = r.date.split('-').map(Number);
+                    const targetDate = new Date(year, month - 1, day, h, m, 0, 0);
+                    if (targetDate <= now) {
+                        console.log('❌ Filtered (Once frequency, r.date in past):', r.title);
+                        return null;
+                    }
+                    date = targetDate;
+                    console.log('📅', r.title, '- Using r.date for Once reminder:', date.toString());
+                }
+
+                const safeId = parseInt(r.id) % 2147483647;
+                const bodyText = r.instructions ? r.instructions : (r.type === 'Medication' ? 'Time for your meds!' : 'Reminder');
+
+                // EXTRA SAFETY: Don't schedule past events (tolerance 5 min)
+                if (date.getTime() < now.getTime() - 300000) {
+                    console.log('❌ Filtered (> 5min in past):', r.title, 'date:', date.toString());
+                    return null;
+                }
+
+                return {
+                    title: r.title,
+                    body: bodyText,
+                    id: safeId,
+                    schedule: {
+                        at: date.getTime(), // CRITICAL: Timestamp for serialization
+                        allowWhileIdle: true
+                    },
+                    sound: 'default',
+                    channelId: 'reminders_v10',
+                    smallIcon: 'ic_notification_bell',
+                    actionTypeId: 'REMINDER_ACTIONS_V10',
+                    extra: { uniqueId: r.uniqueId }
+                };
+            });
+
+            console.log('🔍 Shared Logic Filter Check:');
+            console.log('   Total Input:', reminders.length);
+            console.log('   Mapped (Pre-Null-Filter):', notificationsToSchedule.length);
+
+            const filtered = notificationsToSchedule.filter(n => n !== null && !isNaN(n.id));
+            console.log('✅ Final Valid Notifications:', filtered.length);
+
+            if (filtered.length > 0) {
+                console.table(filtered.map(n => ({
+                    Title: n.title,
+                    Time: new Date(n.schedule.at).toLocaleString(),
+                    ID: n.id,
+                    Timestamp: n.schedule.at
+                })));
+            }
+
+            // STEP 2: Platform Execution
             if (Capacitor.isNativePlatform()) {
                 const pending = await LocalNotifications.getPending();
                 console.log('🗑️ Cancelling', pending.notifications.length, 'old notifications');
@@ -113,130 +202,20 @@ export const useNotifications = () => {
                     await LocalNotifications.cancel(pending);
                 }
 
-                const notificationsToSchedule = reminders.map(r => {
-                    if (!r.displayTime) {
-                        console.log('❌ Filtered (no displayTime):', r.title);
-                        return null;
-                    }
-                    const [h, m] = r.displayTime.split(':').map(Number);
-
-                    let date;
-                    if (r.targetDate) {
-                        // CRITICAL FIX: Parse date components to avoid UTC timezone issues
-                        // new Date('2026-01-31') is interpreted as UTC, causing timezone shifts
-                        const [year, month, day] = r.targetDate.split('-').map(Number);
-                        date = new Date(year, month - 1, day, h, m, 0, 0);
-                        console.log('🎯', r.title, '- targetDate:', r.targetDate, '→ parsed:', date.toString());
-                    } else {
-                        date = new Date();
-                        date.setHours(h, m, 0, 0);
-                        console.log('📍', r.title, '- no targetDate, using today with time:', date.toString());
-                    }
-
-                    const now = new Date();
-
-                    // Logic for Daily/Recurring: If passed today, schedule for tomorrow
-                    // ONLY if we don't have an explicit target date (which implies confidence)
-                    // If targetDate came from getUpcomingReminders, it is correct.
-                    if (!r.targetDate && date <= now) {
-                        if (r.frequency === 'Daily' || (r.schedule && r.schedule.type === 'recurring')) {
-                            console.log('🔁', r.title, '- Recurring/Daily, time passed, moving to tomorrow');
-                            date.setDate(date.getDate() + 1);
-                        } else {
-                            console.log('❌ Filtered (no targetDate, time passed, not recurring):', r.title, 'date:', date.toString(), 'now:', now.toString());
-                            // Single time passed
-                            return null;
-                        }
-                    }
-
-                    // Extra safety: If specific date is set and it's not today/future, handle logic?
-                    // But for simplified view, the `reminders` passed here are usually "Active" ones. 
-                    // However, `scheduleReminders` takes a list. 
-                    // If `r.date` exists (One Time) and it's different from Today, we should respect that date.
-                    if (r.date && r.frequency === 'Once' && !r.targetDate) {
-                        const [year, month, day] = r.date.split('-').map(Number);
-                        const targetDate = new Date(year, month - 1, day, h, m, 0, 0);
-                        if (targetDate <= now) {
-                            console.log('❌ Filtered (Once frequency, r.date in past):', r.title);
-                            return null;
-                        }
-                        date = targetDate;
-                        console.log('📅', r.title, '- Using r.date for Once reminder:', date.toString());
-                    }
-
-                    const safeId = parseInt(r.id) % 2147483647;
-                    const bodyText = r.instructions ? r.instructions : (r.type === 'Medication' ? 'Time for your meds!' : 'Reminder');
-
-                    // EXTRA SAFETY: Don't schedule past events (tolerance 5 min)
-                    // This ensures if the loop runs slightly after the minute, we still schedule it for OS execution if needed
-                    if (date.getTime() < now.getTime() - 300000) {
-                        console.log('❌ Filtered (> 5min in past):', r.title, 'date:', date.toString());
-                        return null;
-                    }
-
-                    return {
-                        title: r.title,
-                        body: bodyText,
-                        id: safeId,
-                        schedule: {
-                            at: date.getTime(), // CRITICAL: Use timestamp to avoid timezone bugs
-                            allowWhileIdle: true
-                        },
-                        sound: 'default', // CRITICAL: Explicit sound parameter
-                        channelId: 'reminders_v10',
-                        smallIcon: 'ic_notification_bell',
-                        actionTypeId: 'REMINDER_ACTIONS_V10',
-                        extra: { uniqueId: r.uniqueId }
-                    };
-                });
-
-                console.log('🔍 Before final filter:', notificationsToSchedule.length, 'items (including nulls)');
-                console.log('   Null count:', notificationsToSchedule.filter(n => n === null).length);
-                console.log('   Non-null count:', notificationsToSchedule.filter(n => n !== null).length);
-
-                const filtered = notificationsToSchedule.filter(n => n !== null && !isNaN(n.id));
-                console.log('✅ After final filter:', filtered.length, 'valid notifications');
-
-                if (filtered.length !== notificationsToSchedule.filter(n => n !== null).length) {
-                    console.error('⚠️ Some notifications filtered out due to NaN IDs!');
-                    notificationsToSchedule.forEach((n, i) => {
-                        if (n !== null && isNaN(n.id)) {
-                            console.error('   Invalid ID at index', i, ':', n.id, 'for', n.title);
-                        }
-                    });
-                }
-
-
                 if (filtered.length > 0) {
                     console.log('🔔 Scheduling', filtered.length, 'Android notifications');
-                    console.table(filtered.map(n => ({
-                        Title: n.title,
-                        Time: new Date(n.schedule.at).toLocaleString(),
-                        ID: n.id,
-                        Sound: n.sound
-                    })));
-
                     await LocalNotifications.schedule({
                         notifications: filtered
                     });
                     console.log('✅ Scheduled successfully!');
 
-                    // Verify they were scheduled
-                    const pending = await LocalNotifications.getPending();
-                    console.log(`✅ Verified: ${pending.notifications.length} notifications in pending queue`);
+                    // Verify
+                    const p = await LocalNotifications.getPending();
+                    console.log('📡 Verified Pending Count:', p.notifications.length);
                 } else {
                     console.warn('⚠️ No notifications to schedule after filtering');
                 }
             } else {
-                // WEB NOTIFICATION LOGIC
-                // Clear existing timeouts ideally, but strict "schedule" API doesn't exist for Web Notification.
-                // We must rely on `setTimeout` or similar logic in a service worker or runtime loop.
-                // Since this hook is called by `useReminders` which has a polling loop (`useEffect` interval),
-                // we arguably don't need to "schedule" future web notifications here if `useReminders` triggers them?
-                // WRONG. `useReminders` triggers `setActiveAlarm` (Modal).
-                // `scheduleReminders` is usually for reducing poll dependency or native OS handling.
-                // If we want web notifications to pop up *alongside* the modal, checking in `useReminders` loop is better.
-                // But let's see if we can perform a simple "timeout" based schedule for the current session?
                 // Actually `useReminders.js` (hook) handles the trigger for immediate alarms.
                 // This `scheduleReminders` function is triggered ONCE when data changes to offload scheduling to OS.
                 // For Web, we can't really "offload" effectively without SW.
