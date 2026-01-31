@@ -513,6 +513,7 @@ export const dataService = {
     getUpcomingReminders: (days = 7) => {
         const allUpcoming = [];
         const today = new Date();
+        console.log('📆 getUpcomingReminders(): Starting from', today.toLocaleDateString('en-CA'), 'for next', days, 'days');
 
         for (let i = 0; i < days; i++) {
             const date = new Date(today);
@@ -520,12 +521,16 @@ export const dataService = {
             const dateStr = date.toLocaleDateString('en-CA');
 
             const reminders = dataService.getRemindersForDate(dateStr);
+            console.log(`  Day ${i} (${dateStr}): Found ${reminders.length} total reminders`);
+
             // Filter only valid upcoming ones (not taken, not missed/past - unless snoozed active)
             const active = reminders.filter(r =>
                 r.status === 'upcoming' || r.status === 'snoozed'
             );
+            console.log(`  Day ${i} (${dateStr}): ${active.length} active (upcoming/snoozed) reminders`);
             allUpcoming.push(...active);
         }
+        console.log('📆 getUpcomingReminders(): Returning', allUpcoming.length, 'total reminders');
         return allUpcoming;
     },
 
