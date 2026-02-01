@@ -115,7 +115,15 @@ const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
                                                 </div>
                                                 <div className="flex-1">
                                                     <h4 className="font-bold text-gray-800 dark:text-gray-200 group-hover:text-orange-700 dark:group-hover:text-orange-400">{r.title}</h4>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{r.instructions || r.frequency}</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                                                        {(() => {
+                                                            const q = query.toLowerCase();
+                                                            const matchFile = r.files?.find(f => f.name.toLowerCase().includes(q) || (f.extractedText && f.extractedText.toLowerCase().includes(q)));
+                                                            if (matchFile) return `📎 ${matchFile.name} ${matchFile.extractedText ? '- ' + matchFile.extractedText.substring(0, 30) + '...' : ''}`;
+                                                            if (r.instructions && r.instructions.toLowerCase().includes(q)) return r.instructions;
+                                                            return r.frequency;
+                                                        })()}
+                                                    </p>
                                                 </div>
                                                 <div className="text-xs font-medium bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-600 dark:text-gray-300 flex items-center gap-1">
                                                     <Clock size={12} /> {r.time}

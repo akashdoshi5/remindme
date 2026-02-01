@@ -273,7 +273,7 @@ const HomePage = () => {
                             <motion.div
                                 key={note.id}
                                 whileTap={{ scale: 0.99 }}
-                                onClick={() => navigate('/notes')}
+                                onClick={() => navigate('/notes', { state: { focusId: note.id } })}
                                 className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm"
                             >
                                 <h4 className="font-bold text-gray-800 dark:text-gray-200">{note.title}</h4>

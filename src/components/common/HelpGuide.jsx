@@ -32,54 +32,49 @@ const HelpGuide = ({ isOpen, onClose }) => {
                     </div>
 
                     <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
-                        {/* Section 1: 2-Hour Rule */}
-                        <div className="flex gap-4">
-                            <div className="flex-shrink-0 w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center text-blue-600 dark:text-blue-400">
-                                <Clock size={24} />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">The 2-Hour Rule</h3>
-                                <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-                                    Consistency is key. You can only mark a reminder as <span className="font-bold text-green-600">Taken</span> within <strong>2 hours</strong> of its scheduled time.
-                                </p>
-                                <ul className="mt-2 text-xs text-gray-500 space-y-1 list-disc list-inside">
-                                    <li>Too Early? You must wait.</li>
-                                    <li>Too Late? It counts as <strong>Missed</strong>.</li>
-                                </ul>
-                            </div>
-                        </div>
-
-                        {/* Section 4: Search Notes */}
+                        {/* Section 1: Find Fast (Search) */}
                         <div className="flex gap-4">
                             <div className="flex-shrink-0 w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-2xl flex items-center justify-center text-orange-600 dark:text-orange-400">
                                 <Search size={24} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Find Notes Fast</h3>
+                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Find Notes & Reminders Fast</h3>
                                 <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-                                    Use the search bar on the Home or Notes page to instantly find notes by title, content, or tags.
+                                    Instantly find what you need by title, content, or <strong>attachments</strong>. See previews and open files directly from the search results.
                                 </p>
                             </div>
                         </div>
 
-                        {/* Section 2: Edit Lock */}
+                        {/* Section 2: Smart History & 2-Hour Rule */}
                         <div className="flex gap-4">
-                            <div className="flex-shrink-0 w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-2xl flex items-center justify-center text-purple-600 dark:text-purple-400">
-                                <ShieldCheck size={24} />
+                            <div className="flex-shrink-0 w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center text-blue-600 dark:text-blue-400">
+                                <Clock size={24} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Smart History</h3>
+                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Smart History & Rules</h3>
                                 <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-                                    You can only update reports for <strong>Today</strong> or <strong>Yesterday</strong>. <br />
-                                    Also, deleting a schedule stops future events but keeps your <strong>past history</strong> safe.
+                                    You can mark reminders as <strong>Taken</strong> within 2 hours. Use <span className="font-bold text-purple-600">Reports</span> to edit data for Today and Yesterday. Deleting a schedule stops future events but keeps your history safe.
                                 </p>
                             </div>
                         </div>
 
-                        {/* Section 3: Caregivers */}
+                        {/* Section 3: Shared Notes */}
+                        <div className="flex gap-4">
+                            <div className="flex-shrink-0 w-12 h-12 bg-teal-100 dark:bg-teal-900/30 rounded-2xl flex items-center justify-center text-teal-600 dark:text-teal-400">
+                                <Users size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Share Notes</h3>
+                                <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
+                                    Easily share important notes and lists with your caregivers or family members directly from the app.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Section 4: Caregivers */}
                         <div className="flex gap-4">
                             <div className="flex-shrink-0 w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center text-green-600 dark:text-green-400">
-                                <Users size={24} />
+                                <ShieldCheck size={24} />
                             </div>
                             <div>
                                 <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Caregivers & Privacy</h3>

@@ -98,15 +98,13 @@ const Header = ({ searchQuery, setSearchQuery }) => {
           </div>
 
           {/* Search Icon (Mobile - Enhanced Visibility) */}
-          {location.pathname !== '/' && (
-            <button
-              onClick={openSearch}
-              className="md:hidden w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-all active:scale-95"
-              aria-label="Search"
-            >
-              <Search size={20} />
-            </button>
-          )}
+          <button
+            onClick={openSearch}
+            className="md:hidden w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-all active:scale-95"
+            aria-label="Search"
+          >
+            <Search size={20} />
+          </button>
 
           {/* Management Links (Desktop Only) */}
           <div className="hidden lg:flex items-center gap-1 border-l border-gray-200 dark:border-gray-700 pl-4">
@@ -267,6 +265,46 @@ const AppContent = () => {
     return () => window.removeEventListener('storage-update', checkStatus);
   }, [activeAlarm]);
 
+
+
+
+
+
+  useEffect(() => {
+    let listenerHandle;
+
+    const initPlugin = async () => {
+      try {
+        // Dynamic import is safer for mixed env 
+        const { App: CapacitorApp } = await import('@capacitor/app');
+
+        listenerHandle = await CapacitorApp.addListener('backButton', () => {
+          // Priority 1: Modals
+          if (isSearchOpen) { closeSearch(); return; }
+          if (isSettingsOpen) { closeSettings(); return; }
+          if (isMobileMenuOpen) { closeMobileMenu(); return; }
+
+          // Priority 2: Navigation
+          if (location.pathname !== '/') {
+            // Using window.location.hash or pathname? Router uses pathname.
+            navigate('/');
+          } else {
+            CapacitorApp.exitApp();
+          }
+        });
+      } catch (e) {
+        // Web mode
+      }
+    };
+
+    initPlugin();
+
+    return () => {
+      if (listenerHandle) listenerHandle.remove();
+    };
+  }, [location.pathname, isSearchOpen, isSettingsOpen, isMobileMenuOpen, closeSearch, closeSettings, closeMobileMenu]); // Re-bind on changes to ensure closure has latest state
+
+
   return (
     <div className="min-h-screen flex flex-col font-sans bg-gray-50/50 dark:bg-gray-950 transition-colors duration-300">
       <Header />
@@ -346,7 +384,7 @@ const AppContent = () => {
         onClose={() => setActiveAlarm(null)}
       />
 
-    </div>
+    </div >
   );
 };
 

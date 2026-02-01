@@ -65,7 +65,9 @@ const NotesPage = () => {
             window.history.replaceState({}, document.title);
         }
 
-        if (location.state?.openAdd) {
+        // Check for state OR query params
+        const params = new URLSearchParams(location.search);
+        if (location.state?.openAdd || params.get('add') === 'true') {
             handleAddNew('text');
             window.history.replaceState({}, document.title);
         }

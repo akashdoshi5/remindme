@@ -303,7 +303,26 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
         setIsSaving(true);
 
         try {
-            await onSave(data, editScope === 'this' ? reminderToEdit.instanceKey : null);
+            // FIX: Always save files to the SERIES (Main Reminder Object)
+            // If we are editing "This Instance", we need to perform TWO updates:
+            // 1. Update the parent/series with the new file list (if files exist or changed).
+            // 2. Update the specific instance with time/status changes.
+            if (reminderToEdit && editScope === 'this') {
+                // 1. Update Series Files
+                // Note: We use the parent ID.
+                await onSave({ files: finalFiles }, null); // Null instanceKey = Series Update
+
+                // 2. Update Instance (Time, Instructions, etc) - EXCLUDING files to avoid duplication/confusion
+                // (Though files on instance wouldn't hurt, user wants series visibility).
+                const instanceData = { ...data };
+                delete instanceData.files; // Don't save files to the exception object
+                await onSave(instanceData, reminderToEdit.instanceKey);
+            } else {
+                // Standard Update (Series or New)
+                // Just save everything to the main object
+                await onSave(data, null);
+            }
+
             onClose();
         } catch (error) {
             console.error("Save failed", error);
@@ -635,14 +654,8 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                         </div>
 
                         <div className="flex items-center gap-2 bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl border border-orange-100 dark:border-orange-800/50">
-                            <input
-                                type="checkbox"
-                                id="important"
-                                className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500 accent-orange-600"
-                                checked={isImportant}
-                                onChange={(e) => setIsImportant(e.target.checked)}
-                            />
-                            <label htmlFor="important" className="text-gray-900 dark:text-gray-100 font-medium cursor-pointer">Mark as Important</label>
+                            {/* Important Tag Removed as per user request */}
+                            <span className="text-sm text-gray-500 dark:text-gray-400">Attachments will be visible on all future reminders in this series.</span>
                         </div>
                     </div>
 

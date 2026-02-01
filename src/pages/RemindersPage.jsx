@@ -4,7 +4,7 @@ import AddReminderModal from '../components/reminders/AddReminderModal';
 import { dataService } from '../services/data';
 import { useLanguage } from '../context/LanguageContext';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Plus, Search, Calendar, Clock, Bell, Share2, MoreVertical, CheckCircle, XCircle, Filter, ChevronLeft, ChevronRight, Mic, AlertTriangle, Edit2, Trash2, Check, ArrowRightLeft, Sun, Moon, Settings, RefreshCcw, Droplets, Dumbbell, Star, Pill } from 'lucide-react';
+import { Plus, Search, Calendar, Clock, Bell, Share2, MoreVertical, CheckCircle, XCircle, Filter, ChevronLeft, ChevronRight, Mic, AlertTriangle, Edit2, Trash2, Check, ArrowRightLeft, Sun, Moon, Settings, RefreshCcw, Droplets, Dumbbell, Star, Pill, FileText } from 'lucide-react';
 
 const RemindersPage = () => {
     const { t } = useLanguage();
@@ -37,7 +37,9 @@ const RemindersPage = () => {
         };
         window.addEventListener('storage-update', handleStorageUpdate);
 
-        if (location.state?.openAdd) {
+        // Check for state OR query params
+        const params = new URLSearchParams(location.search);
+        if (location.state?.openAdd || params.get('add') === 'true') {
             setEditingReminder(null);
             setIsModalOpen(true);
             // Clear state so it doesn't reopen on refresh, but keep other state if needed
@@ -45,7 +47,7 @@ const RemindersPage = () => {
         }
 
         return () => window.removeEventListener('storage-update', handleStorageUpdate);
-    }, [selectedDate, triggerReload, location.state]);
+    }, [selectedDate, triggerReload, location.state, location.search]);
 
     // Handle Deep Linking
     useEffect(() => {
@@ -189,31 +191,44 @@ const RemindersPage = () => {
         setDeleteConfig(null);
     };
 
-    const displayedReminders = reminders.filter(r => {
-        if (!r) return false;
-        if (statusFilter !== 'all' && r.status !== statusFilter) return false;
-        if (filter !== 'All' && r.type !== filter) return false;
-        return true;
-    });
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showSearch, setShowSearch] = useState(false);
+
+    // ... (Existing Effects)
+
+    const displayedReminders = searchQuery
+        ? dataService.searchReminders(searchQuery)
+        : reminders.filter(r => {
+            if (!r) return false;
+            // Standard Filters only apply if NOT searching (or should search also filter? Note says "previewed as happening in notes", usually global search)
+            if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+            if (filter !== 'All' && r.type !== filter) return false;
+            return true;
+        });
 
     const activeReminders = displayedReminders;
 
-    const groupedReminders = { Morning: [], Afternoon: [], Evening: [] };
-    displayedReminders.forEach(r => {
-        if (!r.displayTime) {
-            groupedReminders.Morning.push(r); // Defaults to morning if no time
-            return;
-        }
-        const hour = parseInt(r.displayTime.split(':')[0]);
-        if (hour < 12) groupedReminders.Morning.push(r);
-        else if (hour < 17) groupedReminders.Afternoon.push(r);
-        else groupedReminders.Evening.push(r);
-    });
+    // ... (Grouping Logic needs to handle search results which might not have displayTime or be on selectedDate)
+    const groupedReminders = { Morning: [], Afternoon: [], Evening: [], Results: [] };
+
+    if (searchQuery) {
+        // Flatten results for search view
+        groupedReminders.Results = displayedReminders;
+    } else {
+        displayedReminders.forEach(r => {
+            if (!r.displayTime) {
+                groupedReminders.Morning.push(r);
+                return;
+            }
+            const hour = parseInt(r.displayTime.split(':')[0]);
+            if (hour < 12) groupedReminders.Morning.push(r);
+            else if (hour < 17) groupedReminders.Afternoon.push(r);
+            else groupedReminders.Evening.push(r);
+        });
+    }
 
     // Dynamic Categories
     const allTypes = new Set(dataService.getReminders().map(r => r.type || 'Other'));
-    // Always include standard ones if they exist, or just rely on data.
-    // Ensure 'Medication' is always there if user wants to add it? No, filter should show what exists.
     const categories = [
         { name: 'All', count: null },
         ...Array.from(allTypes).filter(t => t).map(type => ({
@@ -222,32 +237,75 @@ const RemindersPage = () => {
         }))
     ];
 
+    // Auto-scroll to Current Time
+    const scrollRef = useRef(null);
+    const [hasScrolled, setHasScrolled] = useState(false);
+
+    useEffect(() => {
+        setHasScrolled(false); // Reset when date changes
+    }, [selectedDate]);
+
+    useEffect(() => {
+        if (scrollRef.current && !hasScrolled) {
+            // Small timeout to ensure layout is stable
+            setTimeout(() => {
+                scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+            setHasScrolled(true);
+        }
+    }, [displayedReminders, selectedDate, hasScrolled]);
+
+
     return (
         <div className="max-w-5xl mx-auto pb-24 md:pb-10 relative min-h-screen">
 
 
             {/* Header & Filters */}
-            <div className="sticky top-20 z-50 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-sm -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-800 md:static md:bg-transparent md:p-0 md:border-none md:mb-6 transition-all">
+            {/* Header & Filters */}
+            <div className="sticky top-16 md:top-20 z-40 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-md -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-800 md:px-0 md:mx-0 md:rounded-b-2xl md:mb-6 transition-all shadow-sm">
                 <div className="flex flex-col gap-3">
-                    {/* Date Nav */}
-                    <div className="flex items-center justify-between bg-white dark:bg-gray-900 p-2 md:p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 relative z-50">
-                        <button onClick={(e) => { e.stopPropagation(); handleDateChange(-1); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400"><ChevronLeft size={20} /></button>
-                        <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-2 font-bold text-base md:text-lg text-gray-900 dark:text-gray-100">
-                                <Calendar size={18} className="text-orange-500" />
-                                {new Date(selectedDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                            </div>
-                            {new Date(selectedDate).setHours(0, 0, 0, 0) !== new Date().setHours(0, 0, 0, 0) && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setSelectedDate(new Date()); }}
-                                    className="px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-[10px] md:text-xs font-bold rounded-lg uppercase tracking-wide"
-                                >
-                                    Today
-                                </button>
-                            )}
+
+                    {/* Search Bar or Date Nav */}
+                    {showSearch ? (
+                        <div className="flex items-center gap-2 bg-white dark:bg-gray-900 p-2 md:p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 relative z-50 animate-fade-in">
+                            <Search size={20} className="text-gray-400 ml-2" />
+                            <input
+                                type="text"
+                                autoFocus
+                                placeholder="Search reminders, instructions, attached text..."
+                                className="flex-1 bg-transparent border-none outline-none text-gray-900 dark:text-white placeholder:text-gray-400 h-full"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                            <button onClick={() => { setShowSearch(false); setSearchQuery(''); }} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full text-gray-500">
+                                <XCircle size={18} />
+                            </button>
                         </div>
-                        <button onClick={(e) => { e.stopPropagation(); handleDateChange(1); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400"><ChevronRight size={20} /></button>
-                    </div>
+                    ) : (
+                        <div className="flex items-center justify-between bg-white dark:bg-gray-900 p-2 md:p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 relative z-50">
+                            <button onClick={(e) => { e.stopPropagation(); handleDateChange(-1); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400"><ChevronLeft size={20} /></button>
+                            <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 font-bold text-base md:text-lg text-gray-900 dark:text-gray-100">
+                                    <Calendar size={18} className="text-orange-500" />
+                                    {new Date(selectedDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                                </div>
+                                {new Date(selectedDate).setHours(0, 0, 0, 0) !== new Date().setHours(0, 0, 0, 0) && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setSelectedDate(new Date()); }}
+                                        className="px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-[10px] md:text-xs font-bold rounded-lg uppercase tracking-wide"
+                                    >
+                                        Today
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button onClick={() => setShowSearch(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400">
+                                    <Search size={20} />
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); handleDateChange(1); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400"><ChevronRight size={20} /></button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Filter Chips */}
                     <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1 items-center">
@@ -329,11 +387,16 @@ const RemindersPage = () => {
 
             {/* List */}
             <div className="space-y-6 md:space-y-8 mt-4 md:mt-0">
-                {['Morning', 'Afternoon', 'Evening'].map(group => {
+                {(searchQuery ? ['Results'] : ['Morning', 'Afternoon', 'Evening']).map(group => {
                     if (groupedReminders[group].length === 0) return null;
 
-                    // 1. Sort by time
+                    // 1. Sort by time (unless search results, keep relevance or data order? Let's sort by time/date still)
                     const sortedGroup = [...groupedReminders[group]].sort((a, b) => {
+                        // If search results, maybe sort by date then time?
+                        // For now keep time sort logic if available, else date.
+                        if (searchQuery) {
+                            if (a.date !== b.date) return (a.date > b.date ? 1 : -1);
+                        }
                         const tA = a.displayTime ? parseInt(a.displayTime.split(':')[0]) * 60 + parseInt(a.displayTime.split(':')[1]) : 0;
                         const tB = b.displayTime ? parseInt(b.displayTime.split(':')[0]) * 60 + parseInt(b.displayTime.split(':')[1]) : 0;
                         return tA - tB;
@@ -367,6 +430,7 @@ const RemindersPage = () => {
                                 {group === 'Morning' && <Sun className="text-orange-400" size={16} />}
                                 {group === 'Afternoon' && <Sun className="text-yellow-500" size={16} />}
                                 {group === 'Evening' && <Moon className="text-indigo-400" size={16} />}
+                                {group === 'Results' && <Search className="text-blue-500" size={16} />}
                                 {group}
                             </h3>
                             <div className="space-y-3 relative">
@@ -393,7 +457,7 @@ const RemindersPage = () => {
                                                     Let's stick to "Current Time" indicator mainly.
                                                 */}
                                                 {isToday && idx === separatorIndex && (
-                                                    <div className="flex items-center gap-4 py-4 opacity-80">
+                                                    <div ref={scrollRef} className="flex items-center gap-4 py-4 opacity-80 scroll-mt-32">
                                                         <div className="h-[2px] flex-1 bg-red-400/30"></div>
                                                         <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full border border-red-200 dark:border-red-800">
                                                             Current Time
@@ -417,9 +481,7 @@ const RemindersPage = () => {
                                                                 ? 'bg-gray-50/80 dark:bg-gray-800/80 border-orange-300'
                                                                 : reminder.status === 'snoozed'
                                                                     ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-400'
-                                                                    : reminder.isImportant
-                                                                        ? 'border-red-500 bg-white dark:bg-gray-800 shadow-red-500/10'
-                                                                        : 'border-orange-500 bg-white dark:bg-gray-800'
+                                                                    : 'border-orange-500 bg-white dark:bg-gray-800'
                                                         }`}
                                                 >
                                                     <div className="p-3 md:p-4 flex-1 flex flex-row items-center justify-between gap-3">
@@ -436,11 +498,24 @@ const RemindersPage = () => {
                                                                     }
                                                                 })()}
                                                             </div>
-                                                            <div className="min-w-0">
+                                                            <div className="min-w-0 flex-1">
                                                                 <h3 className={`font-bold text-base md:text-lg truncate leading-tight ${isPastTime && reminder.status !== 'taken' ? 'text-gray-600 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>
                                                                     {reminder.title}
                                                                 </h3>
                                                                 {reminder.instructions && <p className="text-gray-500 dark:text-gray-400 text-xs md:text-sm truncate">{reminder.instructions}</p>}
+
+                                                                {/* Attachments Display */}
+                                                                {reminder.files && reminder.files.length > 0 && (
+                                                                    <div className="flex gap-2 mt-1.5 overflow-x-auto scrollbar-none">
+                                                                        {reminder.files.map((file, fIdx) => (
+                                                                            <span key={fIdx} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+                                                                                <FileText size={10} />
+                                                                                <span className="truncate max-w-[80px]">{file.name}</span>
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
                                                                 <div className={`flex items-center gap-2 mt-1 text-xs font-bold ${isPastTime ? 'text-gray-400' : 'text-orange-500'}`}>
                                                                     <Clock size={12} /> {reminder.displayTime}
                                                                 </div>
@@ -570,8 +645,8 @@ const RemindersPage = () => {
                         <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
                             <Bell size={32} className="opacity-50" />
                         </div>
-                        <p className="font-medium">No reminders for this time.</p>
-                        <p className="text-sm opacity-60">Tap + to add one.</p>
+                        <p className="font-medium">{searchQuery ? 'No matching results found.' : 'No reminders for this time.'}</p>
+                        <p className="text-sm opacity-60">{searchQuery ? 'Try a different keyword.' : 'Tap + to add one.'}</p>
                     </div>
                 )}
             </div>

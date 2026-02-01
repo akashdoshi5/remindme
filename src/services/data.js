@@ -786,6 +786,28 @@ export const dataService = {
         save();
     },
 
+
+    // Search Functionality
+    searchReminders: (query) => {
+        if (!query) return [];
+        const lowerQuery = query.toLowerCase();
+        const all = dataService.getReminders();
+
+        return all.filter(r => {
+            const inTitle = r.title && r.title.toLowerCase().includes(lowerQuery);
+            const inInstructions = r.instructions && r.instructions.toLowerCase().includes(lowerQuery);
+
+            // Search in files
+            const inFiles = r.files && r.files.some(f =>
+                (f.name && f.name.toLowerCase().includes(lowerQuery)) ||
+                (f.extractedText && f.extractedText.toLowerCase().includes(lowerQuery))
+            );
+
+            return inTitle || inInstructions || inFiles;
+        });
+    },
+
+    // Legacy/Local completion logic wrapper ...
     completeReminder: (id, instanceKey = null) => {
         if (activeProfile) return; // Read Only
         if (instanceKey) {
@@ -1032,7 +1054,8 @@ export const dataService = {
         const reminders = (store.reminders || []).filter(r =>
             checkMatch(r.title) ||
             checkMatch(r.instructions) ||
-            checkMatch(r.type)
+            checkMatch(r.type) ||
+            (r.files && r.files.some(f => checkMatch(f.name) || checkMatch(f.extractedText)))
         );
 
         const notes = (store.notes || []).filter(n =>
