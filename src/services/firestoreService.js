@@ -297,9 +297,16 @@ export const firestoreService = {
             ...sanitizedData,
             ownerId: user.uid,
             ownerEmail: user.email,
-            createdAt: note.createdAt || new Date().toISOString(),
-            sharedWith: note.sharedWith || [] // Respect keys if migrating/upserting
+            createdAt: note.createdAt || new Date().toISOString()
         };
+
+        // FIX: Only set sharedWith if explicitly provided to prevent overwriting with atomic updates or stale data
+        if (note.sharedWith !== undefined) {
+            newNote.sharedWith = note.sharedWith;
+        } else if (!note.id) {
+            // New note default
+            newNote.sharedWith = [];
+        }
 
         // If ID provided (from offline draft or pre-generation), use it with setDoc
         if (note.id) {

@@ -508,7 +508,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                 audioData: finalAudioData,
                 id: localId, // Always present now
                 ownerId: noteToEdit?.ownerId, // Preserve owner
-                sharedWith: noteToEdit?.sharedWith, // Preserve shared
+                sharedWith: isNew ? [] : noteToEdit?.sharedWith, // Initialize for new, preserve/ignore for existing
                 forceCreate: isNew // Flag for parent to know this is a first-time save
             };
 
