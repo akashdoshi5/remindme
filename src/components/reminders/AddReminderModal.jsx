@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Clock, Calendar, Bell, Mic, MicOff, Pill, Upload, FileText, Trash2, Sun, Moon, Coffee } from 'lucide-react';
+import { X, Clock, Calendar, Bell, Mic, MicOff, Pill, Upload, FileText, Trash2, Sun, Moon, Coffee, Eye } from 'lucide-react';
 import { useVoice } from '../../hooks/useVoice';
 import { fileStorage } from '../../services/fileStorage';
 
@@ -27,6 +27,28 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     const [startDate, setStartDate] = useState(new Date().toLocaleDateString('en-CA')); // Default to Today
     const [durationDays, setDurationDays] = useState(30); // Default to 30 days (1 Month)
     const [files, setFiles] = useState([]);
+    // Delete Confirmation State
+    const [deleteConfig, setDeleteConfig] = useState(null); // { id, title, isRecurring, instanceKey }
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFileChange({ target: { files: e.dataTransfer.files } });
+        }
+    };
 
     // Voice Hook
     const { isListening, transcript, startListening, stopListening, resetTranscript, isSupported } = useVoice();
@@ -615,7 +637,31 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                 {files.map((file, idx) => (
                                     <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded">
                                         <span className="text-xs truncate max-w-[150px] dark:text-gray-300">{file.name}</span>
-                                        <button type="button" onClick={() => setFiles(files.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-400"><Trash2 size={14} /></button>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    // Handle Preview
+                                                    if (file.url) {
+                                                        // Existing storage URL
+                                                        window.open(file.url, '_blank');
+                                                    } else if (file instanceof File) {
+                                                        // New local file
+                                                        const url = URL.createObjectURL(file);
+                                                        window.open(url, '_blank');
+                                                    } else if (file.data) {
+                                                        // Base64 or Blob data if stored that way
+                                                        const win = window.open();
+                                                        win.document.write('<iframe src="' + file.data + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                                                    }
+                                                }}
+                                                className="text-orange-500 hover:text-orange-600 dark:text-orange-400"
+                                                title="Preview File"
+                                            >
+                                                <Eye size={14} />
+                                            </button>
+                                            <button type="button" onClick={() => setFiles(files.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-400"><Trash2 size={14} /></button>
+                                        </div>
                                     </div>
                                 ))}
 
@@ -625,9 +671,17 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                     </div>
                                 )}
 
-                                <label className={`flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl cursor-pointer hover:border-orange-400 dark:hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors text-gray-500 dark:text-gray-400 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                                <label
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleDrop}
+                                    className={`flex items-center justify-center gap-2 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${isDragging
+                                        ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 scale-[1.02]'
+                                        : `border-gray-300 dark:border-gray-700 hover:border-orange-400 dark:hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-gray-500 dark:text-gray-400 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`
+                                        }`}
+                                >
                                     <Upload size={18} />
-                                    <span className="text-sm">Attach File (Rx, Photo)</span>
+                                    <span className="text-sm">{isDragging ? 'Drop Files Here' : 'Attach File (Rx, Photo) or Drag & Drop'}</span>
                                     <input type="file" multiple className="hidden" onChange={handleFileChange} disabled={isUploading} />
                                 </label>
                             </div>

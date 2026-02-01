@@ -4,7 +4,9 @@ import AddReminderModal from '../components/reminders/AddReminderModal';
 import { dataService } from '../services/data';
 import { useLanguage } from '../context/LanguageContext';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Plus, Search, Calendar, Clock, Bell, Share2, MoreVertical, CheckCircle, XCircle, Filter, ChevronLeft, ChevronRight, Mic, AlertTriangle, Edit2, Trash2, Check, ArrowRightLeft, Sun, Moon, Settings, RefreshCcw, Droplets, Dumbbell, Star, Pill, FileText } from 'lucide-react';
+import { Plus, Search, Calendar, Clock, Bell, Share2, MoreVertical, CheckCircle, XCircle, Filter, ChevronLeft, ChevronRight, Mic, AlertTriangle, Edit2, Trash2, Check, ArrowRightLeft, Sun, Moon, Settings, RefreshCcw, Droplets, Dumbbell, Star, Pill, FileText, Paperclip, Upload } from 'lucide-react';
+
+import TextPreviewModal from '../components/common/TextPreviewModal';
 
 const RemindersPage = () => {
     const { t } = useLanguage();
@@ -14,6 +16,7 @@ const RemindersPage = () => {
     const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'upcoming', 'done', 'missed'
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingReminder, setEditingReminder] = useState(null);
+    const [previewData, setPreviewData] = useState(null);
 
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [reminders, setReminders] = useState([]);
@@ -508,10 +511,34 @@ const RemindersPage = () => {
                                                                 {reminder.files && reminder.files.length > 0 && (
                                                                     <div className="flex gap-2 mt-1.5 overflow-x-auto scrollbar-none">
                                                                         {reminder.files.map((file, fIdx) => (
-                                                                            <span key={fIdx} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
-                                                                                <FileText size={10} />
+                                                                            <button
+                                                                                key={fIdx}
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    // Open file preview
+                                                                                    if (file.type?.startsWith('image/') || file.url?.match(/\.(jpeg|jpg|gif|png)$/i)) {
+                                                                                        // Open Image In New Tab (Temporary Simple Preview for Images)
+                                                                                        // Or we can use a lightbox. For now, let's just open url if exists, or show preview.
+                                                                                        if (file.url) window.open(file.url, '_blank');
+                                                                                        else if (file.data) {
+                                                                                            // Base64 image
+                                                                                            const win = window.open();
+                                                                                            win.document.write('<iframe src="' + file.data + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                                                                                        }
+                                                                                    } else {
+                                                                                        // Text/PDF Preview via Modal
+                                                                                        setPreviewData({
+                                                                                            title: file.name,
+                                                                                            text: file.extractedText || "No text content available.",
+                                                                                            type: 'text'
+                                                                                        });
+                                                                                    }
+                                                                                }}
+                                                                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                                                                            >
+                                                                                <Paperclip size={10} className="text-gray-500" />
                                                                                 <span className="truncate max-w-[80px]">{file.name}</span>
-                                                                            </span>
+                                                                            </button>
                                                                         ))}
                                                                     </div>
                                                                 )}
@@ -659,6 +686,15 @@ const RemindersPage = () => {
                     <Plus size={32} />
                 </button>
             </div>
+            {/* Text Preview Modal */}
+            <TextPreviewModal
+                isOpen={!!previewData}
+                onClose={() => setPreviewData(null)}
+                title={previewData?.title || 'Preview'}
+                text={previewData?.text || ''}
+                searchQuery={searchQuery}
+            />
+
         </div>
     );
 };

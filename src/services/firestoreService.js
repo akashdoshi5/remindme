@@ -280,6 +280,15 @@ export const firestoreService = {
         });
     },
 
+    getNote: async (id) => {
+        const docRef = doc(db, 'notes', String(id));
+        const snapshot = await getDoc(docRef);
+        if (snapshot.exists()) {
+            return { id: snapshot.id, ...snapshot.data() };
+        }
+        return null;
+    },
+
     addNote: async (note) => {
         const user = auth.currentUser;
         if (!user) return;

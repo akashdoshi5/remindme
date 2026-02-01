@@ -56,7 +56,7 @@ const ShareModal = ({ isOpen, onClose, note }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4 animate-fade-in">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[150] p-4 animate-fade-in">
             <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
                 <div className="bg-orange-50 dark:bg-gray-700/50 px-6 py-4 flex justify-between items-center border-b border-orange-100 dark:border-gray-700">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">

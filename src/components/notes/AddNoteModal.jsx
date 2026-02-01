@@ -1,54 +1,50 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mic, MicOff, Image as ImageIcon, Trash2, FileText, Paperclip, Loader2, CheckSquare, Tag, Play, Square, Pause, Maximize2, Minimize2, GripVertical } from 'lucide-react';
+import { X, Mic, MicOff, Image as ImageIcon, Trash2, FileText, Paperclip, Loader2, CheckSquare, Tag, Play, Square, Pause, Maximize2, Minimize2, GripVertical, Share2, Pin } from 'lucide-react';
 import { Reorder, useDragControls } from 'framer-motion';
 import { useVoice } from '../../hooks/useVoice';
 import { fileStorage } from '../../services/fileStorage';
 import { ocrService } from '../../services/ocrService';
 import { dataService } from '../../services/data';
+import { useAuth } from '../../context/AuthContext';
 
-const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text', autoStartListening = false, searchQuery = '' }) => {
+const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, initialType = 'text', autoStartListening = false, searchQuery = '' }) => {
     // if (!isOpen) return null; // Removed to allow conditional rendering from parent to handle lifecycle
+    const { user } = useAuth();
 
-    useEffect(() => {
-        const handleEsc = (e) => {
-            if (e.key === 'Escape') {
-                if (performSaveRef.current) {
-                    performSaveRef.current(true);
-                } else {
-                    onClose();
-                }
-            }
-        };
+    // ... existing effect ...
 
-        // Handle Hardware Back Button
-        const handlePopState = (e) => {
-            e.preventDefault();
-            onClose();
-        };
-
-        if (isOpen) {
-            window.addEventListener('keydown', handleEsc);
-            // Push history state when modal opens
-            window.history.pushState({ modal: 'note' }, '', window.location.pathname);
-            window.addEventListener('popstate', handlePopState);
-        }
-
-        return () => {
-            window.removeEventListener('keydown', handleEsc);
-            window.removeEventListener('popstate', handlePopState);
-        };
-    }, [isOpen, onClose]);
-
-    const [noteType, setNoteType] = useState('text'); // 'text' or 'shopping'
+    const [noteType, setNoteType] = useState(initialType); // 'text' or 'shopping'
     const [items, setItems] = useState([{ text: '', done: false, id: crypto.randomUUID() }]);
     const [content, setContent] = useState('');
     const [title, setTitle] = useState(''); // Explicit Title State
     const [tags, setTags] = useState('');
     const [showTagInput, setShowTagInput] = useState(false);
+    const [isPinned, setIsPinned] = useState(false); // New Pinned State
 
     // Files
     const [files, setFiles] = useState([]);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+
+    // ... (Init effects skipped) ...
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFileUpload({ target: { files: e.dataTransfer.files } });
+        }
+    };
 
     // Audio State
     const { isListening, transcript, startListening, stopListening, isSupported, resetTranscript } = useVoice({ continuous: true });
@@ -173,6 +169,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
             setNoteType(noteToEdit.type === 'shopping' ? 'shopping' : 'text');
             setItems((noteToEdit.items && noteToEdit.items.length > 0) ? noteToEdit.items.map(i => ({ ...i, id: i.id || crypto.randomUUID() })) : [{ text: '', done: false, id: crypto.randomUUID() }]);
             setAudioData(noteToEdit.audioData || null);
+            setIsPinned(!!noteToEdit.isPinned);
         } else {
             setTitle('');
             setContent('');
@@ -182,6 +179,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
             setNoteType(initialType === 'shopping' ? 'shopping' : 'text');
             setItems([{ text: '', done: false, id: crypto.randomUUID() }]);
             setAudioData(null);
+            setIsPinned(false);
         }
     }, [noteToEdit, isOpen, initialType]);
 
@@ -542,7 +540,8 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                 id: localId, // Always present now
                 ownerId: noteToEdit?.ownerId, // Preserve owner
                 sharedWith: isNew ? [] : noteToEdit?.sharedWith, // Initialize for new, preserve/ignore for existing
-                forceCreate: isNew // Flag for parent to know this is a first-time save
+                forceCreate: isNew, // Flag for parent to know this is a first-time save
+                isPinned: isPinned
             };
 
             // Simple check to avoid saving unchanged data recursively
@@ -594,7 +593,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
         }, 1500);
 
         return () => clearTimeout(timer);
-    }, [content, items, tags, files, audioData, noteType, title, recordingStatus]);
+    }, [content, items, tags, files, audioData, noteType, title, recordingStatus, isPinned]);
 
     // IMMEDIATE Save on File Upload Completion
     // This addresses the user requirement: "when attachment is attached, note should explicitly save"
@@ -672,13 +671,66 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                         {saveStatus === 'saved' && <span className="text-xs text-green-500 font-medium shrink-0">Saved</span>}
                         {saveStatus === 'error' && <span className="text-xs text-red-500 font-medium shrink-0">Error saving</span>}
                     </div>
-                    <button onClick={() => performSave(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-500 shrink-0">
-                        <X size={20} />
-                    </button>
+
+                    <div className="flex items-center gap-1">
+                        {/* Pin Button */}
+                        <button
+                            onClick={() => setIsPinned(!isPinned)}
+                            className={`p-2 rounded-full transition-colors ${isPinned ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                            title={isPinned ? "Unpin Note" : "Pin Note"}
+                        >
+                            <Pin size={20} className={isPinned ? "fill-current" : ""} />
+                        </button>
+
+                        {/* Share Button (Only if saved) */}
+                        {noteToEdit && onShare && (
+                            <button
+                                onClick={() => onShare(noteToEdit)}
+                                className="p-2 text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-full transition-colors"
+                                title="Share Note"
+                            >
+                                <Share2 size={20} />
+                            </button>
+                        )}
+
+                        {/* Delete Button (Only if editing existing) */}
+                        {noteToEdit && onDelete && (
+                            <button
+                                onClick={() => {
+                                    if (window.confirm("Are you sure you want to delete this note?")) {
+                                        onDelete(noteToEdit.id);
+                                    }
+                                }}
+                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
+                                title="Delete Note"
+                            >
+                                <Trash2 size={20} />
+                            </button>
+                        )}
+
+                        <button onClick={() => performSave(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-500 shrink-0 ml-2">
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* 2. Main Content Area */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 custom-scrollbar relative">
+                <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`flex-1 overflow-y-auto overflow-x-hidden p-6 custom-scrollbar relative transition-colors ${isDragging ? 'bg-orange-50 dark:bg-orange-900/20 shadow-inner' : ''}`}
+                >
+
+                    {/* Drag Overlay */}
+                    {isDragging && (
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-orange-100/50 dark:bg-orange-900/40 backdrop-blur-sm pointer-events-none">
+                            <div className="text-orange-600 dark:text-orange-400 font-bold text-xl flex flex-col items-center gap-2 animate-bounce">
+                                <Paperclip size={48} />
+                                Drop Files to Attach
+                            </div>
+                        </div>
+                    )}
 
                     {/* Audio Preview */}
                     {audioData && (

@@ -186,45 +186,6 @@ const HomePage = () => {
                 </button>
             </div>
 
-            {/* Recent Notes Snippet */}
-            <div className="space-y-3">
-                <div className="flex justify-between items-end px-1">
-                    <h3 className="font-bold text-lg text-gray-800 dark:text-gray-200 mb-0">Quick Notes</h3>
-                    <span onClick={() => navigate('/notes')} className="text-orange-500 text-xs font-bold cursor-pointer bg-orange-50 dark:bg-orange-900/20 px-2 py-1 rounded-full">View All</span>
-                </div>
-
-                {notes.length > 0 ? (
-                    <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-2 px-2">
-                        {notes.map(note => (
-                            <motion.div
-                                key={note.id}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => navigate('/notes', { state: { focusId: note.id } })}
-                                className="min-w-[160px] w-[160px] p-4 bg-yellow-50 dark:bg-gray-800 border border-yellow-200 dark:border-gray-700 rounded-2xl shadow-sm flex flex-col gap-2 h-32"
-                            >
-                                <span className="text-[10px] text-gray-400 font-bold uppercase">{new Date(note.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-                                <h4 className="font-bold text-gray-800 dark:text-gray-200 line-clamp-2 leading-tight">{note.title}</h4>
-                                <div className="mt-auto flex justify-end opacity-50">
-                                    <FileText size={16} className="text-gray-500" />
-                                </div>
-                            </motion.div>
-                        ))}
-                        <motion.div
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => navigate('/notes?add=true')}
-                            className="min-w-[60px] flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 cursor-pointer text-gray-400"
-                        >
-                            <Plus size={24} />
-                        </motion.div>
-                    </div>
-                ) : (
-                    <div onClick={() => navigate('/notes?add=true')} className="p-6 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-3xl flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                        <FileText size={24} className="mb-2 opacity-50" />
-                        <span className="text-sm font-bold">Write a note</span>
-                    </div>
-                )}
-            </div>
-
             {/* Caregivers Widget (My Patients) */}
             {user && (
                 <div className="space-y-4">
@@ -267,23 +228,33 @@ const HomePage = () => {
                     <h3 className="font-bold text-lg text-gray-800 dark:text-gray-200">Recent Notes</h3>
                     <span onClick={() => navigate('/notes')} className="text-gray-400 text-sm font-bold cursor-pointer">See All</span>
                 </div>
-                {notes.length > 0 ? (
-                    <div className="space-y-3">
-                        {notes.map(note => (
-                            <motion.div
-                                key={note.id}
-                                whileTap={{ scale: 0.99 }}
-                                onClick={() => navigate('/notes', { state: { focusId: note.id } })}
-                                className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm"
-                            >
-                                <h4 className="font-bold text-gray-800 dark:text-gray-200">{note.title}</h4>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1">{note.content}</p>
-                            </motion.div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="text-center py-6 text-gray-400 text-sm">No notes yet.</div>
-                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                    {/* 1. Add New Note Card - First Option */}
+                    <motion.div
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => navigate('/notes?add=true')}
+                        className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-2xl border border-orange-200 dark:border-orange-800 cursor-pointer flex flex-col items-center justify-center gap-2 min-h-[120px] shadow-sm text-orange-600 dark:text-orange-400"
+                    >
+                        <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center">
+                            <Plus size={24} className="text-orange-500" />
+                        </div>
+                        <span className="font-bold text-sm">Write Note</span>
+                    </motion.div>
+
+                    {/* Recent Notes List */}
+                    {notes.map(note => (
+                        <motion.div
+                            key={note.id}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => navigate('/notes', { state: { focusId: note.id } })}
+                            className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col gap-2 min-h-[120px]"
+                        >
+                            <h4 className="font-bold text-gray-900 dark:text-gray-100 line-clamp-2 leading-tight">{note.title || (note.content ? note.content.substring(0, 20) + "..." : "Untitled Note")}</h4>
+                            <p className="text-xs text-gray-400 mt-auto">{new Date(note.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+                        </motion.div>
+                    ))}
+                </div>
             </div>
 
         </div>

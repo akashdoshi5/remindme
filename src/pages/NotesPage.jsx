@@ -149,6 +149,35 @@ const NotesPage = () => {
         return savedParams;
     };
 
+    const handleDelete = async (id) => {
+        if (id) {
+            await dataService.deleteNote(id);
+            setTriggerReload(prev => prev + 1);
+        }
+        setIsModalOpen(false);
+    };
+
+    // ... (rest of render)
+
+    {
+        isModalOpen && (
+            <AddNoteModal
+                isOpen={isModalOpen}
+                onClose={() => {
+                    setIsModalOpen(false);
+                    setAutoStartVoice(false);
+                }}
+                onSave={handleSave}
+                onDelete={handleDelete}
+                onShare={(note) => setSharingNote(note)}
+                noteToEdit={editingNote}
+                initialType={newNoteType}
+                autoStartListening={autoStartVoice}
+                searchQuery={searchQuery}
+            />
+        )
+    }
+
     // Auto-update sharingNote if it changes (e.g. user unshared)
     useEffect(() => {
         if (sharingNote) {
@@ -379,6 +408,8 @@ const NotesPage = () => {
                         setAutoStartVoice(false);
                     }}
                     onSave={handleSave}
+                    onDelete={handleDelete}
+                    onShare={(note) => setSharingNote(note)}
                     noteToEdit={editingNote}
                     initialType={newNoteType}
                     autoStartListening={autoStartVoice}

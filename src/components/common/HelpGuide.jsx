@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Calendar, Bell, Shield, Clock, Search, BookOpen, ShieldCheck, Users } from 'lucide-react';
+import { X, Calendar, Bell, Shield, Clock, Search, BookOpen, ShieldCheck, Users, Pill } from 'lucide-react';
 
 const HelpGuide = ({ isOpen, onClose }) => {
     if (!isOpen) return null;
@@ -41,6 +41,19 @@ const HelpGuide = ({ isOpen, onClose }) => {
                                 <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Find Notes & Reminders Fast</h3>
                                 <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
                                     Instantly find what you need by title, content, or <strong>attachments</strong>. See previews and open files directly from the search results.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Section 2: Medication Courses (Complex Reminders) */}
+                        <div className="flex gap-4">
+                            <div className="flex-shrink-0 w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-2xl flex items-center justify-center text-purple-600 dark:text-purple-400">
+                                <Pill size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Complex Medication Schedules</h3>
+                                <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
+                                    Need to track a course of antibiotics or multiple daily doses? Toggle <strong>'Complex Schedule'</strong> to set specific times for Breakfast, Lunch, and Dinner, or define custom intervals (e.g., every 4 hours) for a set number of days.
                                 </p>
                             </div>
                         </div>
