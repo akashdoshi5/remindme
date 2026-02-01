@@ -651,8 +651,10 @@ export const dataService = {
 
     updateReminder: async (id, updates, instanceKey = null) => {
         if (activeProfile) return; // Read Only
-        // CRITICAL FIX: Always update local store first for immediate UI/notification refresh
         if (!store.reminders) store.reminders = [];
+
+        const reminder = store.reminders.find(r => String(r.id) === String(id));
+        if (!reminder) return;
 
         if (instanceKey) {
             // Create Exception Logic (local)
@@ -668,9 +670,76 @@ export const dataService = {
                 }
                 return r;
             });
+
+            // Update Firestore for exception
+            if (auth.currentUser) {
+                const payload = {};
+                Object.keys(updates).forEach(k => {
+                    payload[`exceptions.${instanceKey}.${k}`] = updates[k];
+                });
+                payload[`exceptions.${instanceKey}.isException`] = true;
+                await firestoreService.updateReminder(id, payload);
+            }
         } else {
-            // Normal update (local)
-            store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, ...updates } : r);
+            // SERIES UPDATE
+            // Check if we need to split history to preserve old data
+            const todayStr = new Date().toLocaleDateString('en-CA');
+            const yesterdayObj = new Date();
+            yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+            const yesterdayStr = yesterdayObj.toLocaleDateString('en-CA');
+
+            const startDate = reminder.schedule?.startDate || reminder.date;
+            const isRecurring = reminder.schedule?.type === 'recurring' || (reminder.frequency && reminder.frequency !== 'Once');
+
+            if (isRecurring && startDate && startDate < yesterdayStr) {
+                console.log("History Preservation: Soft splitting series.");
+                // 1. END OLD SERIES locally
+                store.reminders = store.reminders.map(r => {
+                    if (String(r.id) === String(id)) {
+                        return {
+                            ...r,
+                            schedule: { ...r.schedule, endDate: yesterdayStr },
+                            status: 'ended'
+                        };
+                    }
+                    return r;
+                });
+
+                // 2. ADD NEW SERIES locally
+                const newId = String(Date.now());
+                const newReminder = {
+                    ...reminder,
+                    ...updates,
+                    id: newId,
+                    schedule: {
+                        ...(reminder.schedule || {}),
+                        ...updates.schedule,
+                        startDate: todayStr, // Start new series today
+                        endDate: updates.schedule?.endDate || null
+                    }
+                };
+                delete newReminder.exceptions; // Reset exceptions for new series
+                delete newReminder.logs; // Reset logs for new series
+                store.reminders.push(newReminder);
+
+                // 3. Update Firestore
+                if (auth.currentUser) {
+                    // Update old series endDate
+                    await firestoreService.updateReminder(id, {
+                        schedule: { ...reminder.schedule, endDate: yesterdayStr },
+                        status: 'ended'
+                    });
+                    // Create new series
+                    await firestoreService.addReminder(newReminder);
+                }
+            } else {
+                // NORMAL UPDATE (local)
+                store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, ...updates } : r);
+                // NORMAL UPDATE (Firestore)
+                if (auth.currentUser) {
+                    await firestoreService.updateReminder(id, updates);
+                }
+            }
         }
 
         // CRITICAL: Fire storage-update IMMEDIATELY for notification re-scheduling
@@ -678,23 +747,6 @@ export const dataService = {
 
         // Also Trigger Schedule refresh manually to be safe
         window.dispatchEvent(new Event('data-updated'));
-
-        // THEN update Firestore (async, will sync back later)
-        if (auth.currentUser) {
-            if (instanceKey) {
-                const key = `exceptions.${instanceKey}`;
-                // Deep merge is safer for exceptions
-                const payload = {};
-                Object.keys(updates).forEach(k => {
-                    payload[`exceptions.${instanceKey}.${k}`] = updates[k];
-                });
-                payload[`exceptions.${instanceKey}.isException`] = true;
-
-                await firestoreService.updateReminder(id, payload);
-            } else {
-                await firestoreService.updateReminder(id, updates);
-            }
-        }
     },
 
     // NEW: Detailed Status Logging for Medication
@@ -965,7 +1017,7 @@ export const dataService = {
     updateNote: async (id, updates) => {
         if (auth.currentUser) {
             // eslint-disable-next-line no-unused-vars
-            const { ownerId, sharedWith, createdAt, ownerEmail, ...cleanUpdates } = updates;
+            const { ownerId, createdAt, ownerEmail, ...cleanUpdates } = updates;
 
             // Remove undefined values to prevent Firestore crash ("Unsupported field value: undefined")
             Object.keys(cleanUpdates).forEach(key => cleanUpdates[key] === undefined && delete cleanUpdates[key]);

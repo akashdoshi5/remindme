@@ -334,7 +334,7 @@ export const firestoreService = {
 
         // Extra safety: Remove restricted keys if present
         // eslint-disable-next-line no-unused-vars
-        const { ownerId, sharedWith, ownerEmail, ...safeUpdates } = updates;
+        const { ownerId, ownerEmail, ...safeUpdates } = updates;
 
         // Remove undefined keys (Firestore rejection fix)
         Object.keys(safeUpdates).forEach(key => safeUpdates[key] === undefined && delete safeUpdates[key]);

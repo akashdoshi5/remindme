@@ -712,10 +712,10 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                         {noteToEdit && onShare && (
                             <button
                                 onClick={() => onShare(noteToEdit)}
-                                className="p-2 text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-full transition-colors"
+                                className={`p-2 rounded-full transition-colors ${noteToEdit?.sharedWith?.length > 0 ? 'text-green-600 bg-green-50 dark:bg-green-900/20' : 'text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'}`}
                                 title="Share Note"
                             >
-                                <Share2 size={20} />
+                                <Share2 size={20} className={noteToEdit?.sharedWith?.length > 0 ? "fill-current" : ""} />
                             </button>
                         )}
 

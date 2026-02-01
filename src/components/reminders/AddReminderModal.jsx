@@ -476,7 +476,8 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Date</label>
                                     <input
                                         type="date"
-                                        className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                        readOnly={editScope === 'this'}
+                                        className={`w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white transition-all ${editScope === 'this' ? 'opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900' : 'focus:ring-2 focus:ring-orange-500'}`}
                                         value={startDate}
                                         onChange={(e) => setStartDate(e.target.value)}
                                     />

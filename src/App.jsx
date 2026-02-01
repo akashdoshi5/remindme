@@ -313,7 +313,8 @@ const AppContent = () => {
           }
 
           // Priority 4: Navigation Logic
-          if (currentPath !== '/' && currentPath !== '/login') {
+          const normalizedPath = currentPath.replace(/\/$/, '') || '/';
+          if (normalizedPath !== '/' && normalizedPath !== '/login' && normalizedPath !== '/signup') {
             navigate('/');
           } else {
             CapacitorApp.exitApp();
