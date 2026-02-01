@@ -472,7 +472,38 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
         }
 
         try {
-            // Derive Title
+            // Check for Blank Note
+            const isBlank = !title.trim() &&
+                (!noteType === 'text' || !content.trim()) &&
+                (!noteType === 'shopping' || items.filter(i => i.text.trim()).length === 0) &&
+                files.length === 0 &&
+                !finalAudioData;
+
+            // Shared Context Check
+            const isShared = (noteToEdit && (noteToEdit.sharedWith?.length > 0 || (noteToEdit.ownerId && noteToEdit.ownerId !== user?.uid)));
+
+            // LOGIC: If Blank AND Not Shared -> Delete/Discard
+            if (isBlank && !isShared) {
+                console.warn("Auto-Delete: Note is blank and unshared.");
+
+                if (!isNew && localId) {
+                    // Delete existing empty note
+                    await dataService.deleteNote(localId);
+                }
+
+                setSaveStatus('saved');
+                if (shouldClose) {
+                    // Ensure audio is stopped
+                    if (audioRef.current) {
+                        audioRef.current.pause();
+                        setIsPlaying(false);
+                    }
+                    onClose();
+                }
+                return;
+            }
+
+            // Derive Title (If not blank, or if shared and blank)
             let finalTitle = title.trim();
             if (!finalTitle && (noteType === 'text')) {
                 finalTitle = '';
@@ -480,6 +511,8 @@ const AddNoteModal = ({ isOpen, onClose, onSave, noteToEdit, initialType = 'text
                 finalTitle = 'Checklist';
             }
 
+            // If we reached here, it's either not blank OR it is blank-but-shared.
+            // If blank-but-shared, we default to Untitled to preserve the container.
             if (!finalTitle && !finalContent && finalItems.length === 0 && files.length === 0 && !finalAudioData) finalTitle = "Untitled Note";
 
             const finalFiles = files.map(f => {

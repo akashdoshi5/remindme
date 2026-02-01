@@ -113,6 +113,7 @@ const NotesPage = () => {
     const [previewData, setPreviewData] = useState(null);
     const [sharingNote, setSharingNote] = useState(null);
     const { share } = useShare();
+    const [showSearch, setShowSearch] = useState(false);
 
     useEffect(() => {
         const loadNotes = () => setNotes(dataService.getNotes());
@@ -327,36 +328,50 @@ const NotesPage = () => {
             </AnimatePresence>
 
             {/* STICKY HEADER & SEARCH */}
-            <div className="sticky top-20 z-30 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-sm -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-800 md:static md:bg-transparent md:p-0 md:border-none md:mb-6 transition-all">
+            <div className="sticky top-16 md:top-20 z-30 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-sm -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-800 md:static md:bg-transparent md:p-0 md:border-none md:mb-6 transition-all shadow-sm md:shadow-none">
                 <div className="flex flex-col gap-3">
 
-
-                    <div className="flex gap-2">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    {showSearch ? (
+                        <div className="flex items-center gap-2 bg-white dark:bg-gray-900 p-2 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in my-1">
+                            <Search size={20} className="text-gray-400 ml-2" />
                             <input
                                 type="text"
+                                autoFocus
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search..."
-                                className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50 shadow-sm text-sm"
+                                placeholder="Search notes, text, files..."
+                                className="flex-1 bg-transparent border-none outline-none text-gray-900 dark:text-white placeholder:text-gray-400 text-base"
                             />
-                            {searchQuery && (
-                                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                                    <X size={14} />
-                                </button>
-                            )}
+                            <button
+                                onClick={() => { setShowSearch(false); setSearchQuery(''); }}
+                                className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                            >
+                                <XCircle size={18} />
+                            </button>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="flex items-center justify-between py-2">
+                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                <FileText className="text-orange-500" />
+                                My Notes
+                            </h1>
+                            <button
+                                onClick={() => setShowSearch(true)}
+                                className="p-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-orange-500 transition-colors"
+                            >
+                                <Search size={20} />
+                            </button>
+                        </div>
+                    )}
 
                     <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1 items-center">
-                        {['All Notes', 'Voice', 'Text', 'Lists'].map(tab => (
+                        {['All Notes', 'Voice', 'Text', 'Lists', 'Shared'].map(tab => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
-                                className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${(activeTab === tab)
-                                    ? 'bg-orange-600 text-white shadow-sm'
-                                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'
+                                className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${(activeTab === tab)
+                                    ? 'bg-orange-600 text-white shadow-md shadow-orange-500/20'
+                                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                                     }`}
                             >
                                 {tab}
