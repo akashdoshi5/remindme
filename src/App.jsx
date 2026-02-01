@@ -272,6 +272,18 @@ const AppContent = () => {
 
 
 
+  // Back Button Navigation Logic (Stable Singleton Listener)
+  const locationRef = useRef(location);
+  const uiStateRef = useRef({ isSearchOpen, isSettingsOpen, isMobileMenuOpen, activeAlarm });
+
+  useEffect(() => {
+    locationRef.current = location;
+  }, [location]);
+
+  useEffect(() => {
+    uiStateRef.current = { isSearchOpen, isSettingsOpen, isMobileMenuOpen, activeAlarm };
+  }, [isSearchOpen, isSettingsOpen, isMobileMenuOpen, activeAlarm]);
+
   useEffect(() => {
     let listenerHandle;
 
@@ -280,33 +292,32 @@ const AppContent = () => {
         const { App: CapacitorApp } = await import('@capacitor/app');
         const { BackButtonManager } = await import('./services/BackButtonManager');
 
+        // Remove any existing listener if this somehow runs again
+        if (listenerHandle) listenerHandle.remove();
+
         listenerHandle = await CapacitorApp.addListener('backButton', async () => {
+          const { isSearchOpen, isSettingsOpen, isMobileMenuOpen, activeAlarm } = uiStateRef.current;
+          const currentPath = locationRef.current.pathname;
+
           // Priority 1: Registered Handlers (Modals)
           const handled = await BackButtonManager.handleBackPress();
-          if (handled) {
-            console.log("Back press handled by manager");
-            return;
-          }
+          if (handled) return;
 
-          // Priority 2: UI Context Modals (Search, Settings, Menu)
-          // These are "lighter" modals managed by Context, not full route overlays
+          // Priority 2: UI Context Modals
           if (isSearchOpen) { closeSearch(); return; }
           if (isSettingsOpen) { closeSettings(); return; }
           if (isMobileMenuOpen) { closeMobileMenu(); return; }
 
-          // Priority 3: Data-Driven Modals (Alarm Interaction)
+          // Priority 3: Data-Driven Modals
           if (activeAlarm) {
-            // Dismiss alarm modal (optional: maybe force snooze?)
             setActiveAlarm(null);
             return;
           }
 
           // Priority 4: Navigation Logic
-          // User Request: "back press on reminders and notes... is not going to home page"
-          if (location.pathname !== '/' && location.pathname !== '/login') {
+          if (currentPath !== '/' && currentPath !== '/login') {
             navigate('/');
           } else {
-            // On Home or Login -> Exit
             CapacitorApp.exitApp();
           }
         });
@@ -320,7 +331,7 @@ const AppContent = () => {
     return () => {
       if (listenerHandle) listenerHandle.remove();
     };
-  }, [location.pathname, isSearchOpen, isSettingsOpen, isMobileMenuOpen, closeSearch, closeSettings, closeMobileMenu]); // Re-bind on changes to ensure closure has latest state
+  }, []); // Run ONCE on mount
 
 
   return (

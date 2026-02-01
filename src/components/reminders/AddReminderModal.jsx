@@ -3,6 +3,8 @@ import { X, Clock, Calendar, Bell, Mic, MicOff, Pill, Upload, FileText, Trash2, 
 import { useVoice } from '../../hooks/useVoice';
 import { fileStorage } from '../../services/fileStorage';
 
+import { BackButtonManager } from '../../services/BackButtonManager';
+
 const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, autoStartListening = false }) => {
     if (!isOpen) return null;
 
@@ -55,26 +57,26 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     const [activeField, setActiveField] = useState(null); // 'title' or 'instructions'
     const handleSubmitRef = React.useRef(null); // Ref to access latest submit function
 
+    // Back Button Handling
     useEffect(() => {
-        if (isOpen) {
-            import('../../services/BackButtonManager').then(({ BackButtonManager }) => {
-                const unregister = BackButtonManager.register(async () => {
-                    console.log("Back button caught by AddReminderModal");
-                    if (handleSubmitRef.current) {
-                        try {
-                            await handleSubmitRef.current();
-                        } catch (e) {
-                            onClose();
-                        }
-                    } else {
-                        onClose();
-                    }
-                    return true;
-                });
-                return unregister;
-            }).catch(e => console.error("Failed to register back handler", e));
-        }
-    }, [isOpen]);
+        if (!isOpen) return;
+
+        const unregister = BackButtonManager.register(async () => {
+            console.log("Back button caught by AddReminderModal");
+            if (handleSubmitRef.current) {
+                try {
+                    await handleSubmitRef.current();
+                } catch (e) {
+                    onClose();
+                }
+            } else {
+                onClose();
+            }
+            return true;
+        });
+
+        return unregister;
+    }, [isOpen, onClose]);
 
     useEffect(() => {
         if (reminderToEdit) {
