@@ -275,25 +275,41 @@ const AppContent = () => {
 
     const initPlugin = async () => {
       try {
-        // Dynamic import is safer for mixed env 
         const { App: CapacitorApp } = await import('@capacitor/app');
+        const { BackButtonManager } = await import('./services/BackButtonManager');
 
-        listenerHandle = await CapacitorApp.addListener('backButton', () => {
-          // Priority 1: Modals
+        listenerHandle = await CapacitorApp.addListener('backButton', async () => {
+          // Priority 1: Registered Handlers (Modals)
+          const handled = await BackButtonManager.handleBackPress();
+          if (handled) {
+            console.log("Back press handled by manager");
+            return;
+          }
+
+          // Priority 2: UI Context Modals (Search, Settings, Menu)
+          // These are "lighter" modals managed by Context, not full route overlays
           if (isSearchOpen) { closeSearch(); return; }
           if (isSettingsOpen) { closeSettings(); return; }
           if (isMobileMenuOpen) { closeMobileMenu(); return; }
 
-          // Priority 2: Navigation
-          if (location.pathname !== '/') {
-            // Using window.location.hash or pathname? Router uses pathname.
+          // Priority 3: Data-Driven Modals (Alarm Interaction)
+          if (activeAlarm) {
+            // Dismiss alarm modal (optional: maybe force snooze?)
+            setActiveAlarm(null);
+            return;
+          }
+
+          // Priority 4: Navigation Logic
+          // User Request: "back press on reminders and notes... is not going to home page"
+          if (location.pathname !== '/' && location.pathname !== '/login') {
             navigate('/');
           } else {
+            // On Home or Login -> Exit
             CapacitorApp.exitApp();
           }
         });
       } catch (e) {
-        // Web mode
+        console.warn("Back button setup failed:", e);
       }
     };
 

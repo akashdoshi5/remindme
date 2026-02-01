@@ -97,13 +97,7 @@ export const useNotifications = () => {
     }, []);
 
     const scheduleReminders = useCallback(async (reminders) => {
-        console.log('📅 scheduleReminders called with', reminders.length, 'reminders');
-        console.table(reminders.map(r => ({
-            Title: r.title,
-            Date: r.targetDate || r.date,
-            Time: r.displayTime || r.time,
-            Status: r.status
-        })));
+        /* console.log('📅 scheduleReminders called with', reminders.length, 'reminders'); */
 
         try {
             // STEP 1: Process reminders into notification objects (SHARED LOGIC)
@@ -239,7 +233,7 @@ export const useNotifications = () => {
             /* console.log('✅ Final Valid Notifications:', filtered.length); */
 
             if (filtered.length === 0 && reminders.length > 0) {
-                alert(`Debug: 0/${reminders.length} scheduled. Filtered: ${filteredCount}, Past: ${pastCount}. First Reason: ${firstFilterReason}`);
+                console.warn(`Debug: 0/${reminders.length} scheduled. Filtered: ${filteredCount}, Past: ${pastCount}. First Reason: ${firstFilterReason}`);
             } else if (filtered.length > 0) {
                 // alert(`Debug: Prepared ${filtered.length} notifications. First: ${filtered[0].title} @ ${new Date(filtered[0].schedule.at).toLocaleTimeString()}`);
             }
@@ -271,8 +265,7 @@ export const useNotifications = () => {
                         });
                         // alert(`Success! Scheduled ${filtered.length}.`);
                     } catch (schedError) {
-                        alert(`Native Schedule Failed: ${schedError.message}`);
-                        console.error(schedError);
+                        console.error(`Native Schedule Failed: ${schedError.message}`);
                     }
                     /* console.log('✅ Scheduled successfully!'); */
 
@@ -280,7 +273,9 @@ export const useNotifications = () => {
                     const p = await LocalNotifications.getPending();
                     /* console.log('📡 Verified Pending Count:', p.notifications.length); */
                     if (p.notifications.length === 0) {
-                        alert('CRITICAL: Native says success but 0 pending found! Check Logcat.');
+                        if (p.notifications.length === 0) {
+                            console.error('CRITICAL: Native says success but 0 pending found! Check Logcat.');
+                        }
                     }
                 } else {
                     /* console.warn('⚠️ No notifications to schedule after filtering'); */
@@ -292,7 +287,8 @@ export const useNotifications = () => {
 
         } catch (error) {
             console.error("Scheduling Error:", error);
-            alert("General Schedule Error: " + error.message);
+            console.error("Scheduling Error:", error);
+            // alert("General Schedule Error: " + error.message);
         }
     }, []);
 

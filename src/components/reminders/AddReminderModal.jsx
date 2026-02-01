@@ -53,6 +53,28 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     // Voice Hook
     const { isListening, transcript, startListening, stopListening, resetTranscript, isSupported } = useVoice();
     const [activeField, setActiveField] = useState(null); // 'title' or 'instructions'
+    const handleSubmitRef = React.useRef(null); // Ref to access latest submit function
+
+    useEffect(() => {
+        if (isOpen) {
+            import('../../services/BackButtonManager').then(({ BackButtonManager }) => {
+                const unregister = BackButtonManager.register(async () => {
+                    console.log("Back button caught by AddReminderModal");
+                    if (handleSubmitRef.current) {
+                        try {
+                            await handleSubmitRef.current();
+                        } catch (e) {
+                            onClose();
+                        }
+                    } else {
+                        onClose();
+                    }
+                    return true;
+                });
+                return unregister;
+            }).catch(e => console.error("Failed to register back handler", e));
+        }
+    }, [isOpen]);
 
     useEffect(() => {
         if (reminderToEdit) {
@@ -353,6 +375,10 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
         }
     };
 
+    // Keep ref updated
+    useEffect(() => {
+        handleSubmitRef.current = handleSubmit;
+    }, [handleSubmit]);
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] md:p-4">

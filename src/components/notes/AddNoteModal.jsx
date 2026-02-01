@@ -11,6 +11,26 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
     // if (!isOpen) return null; // Removed to allow conditional rendering from parent to handle lifecycle
     const { user } = useAuth();
 
+    // Back Button Handling
+    useEffect(() => {
+        if (isOpen) {
+            // Dynamically import to avoid circular dep issues during init if any
+            import('../../services/BackButtonManager').then(({ BackButtonManager }) => {
+                const unregister = BackButtonManager.register(async () => {
+                    console.log("Back button caught by AddNoteModal");
+                    // Trigger Save (using ref to access latest state/function)
+                    if (performSaveRef.current) {
+                        await performSaveRef.current(true); // true = shouldClose
+                    } else {
+                        onClose();
+                    }
+                    return true; // Stop propagation
+                });
+                return unregister;
+            }).catch(e => console.error("Failed to register back handler", e));
+        }
+    }, [isOpen]);
+
     // ... existing effect ...
 
     const [noteType, setNoteType] = useState(initialType); // 'text' or 'shopping'
@@ -483,6 +503,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
             // LOGIC: If Blank AND Not Shared -> Delete/Discard
             if (isBlank && !isShared) {
                 console.warn("Auto-Delete: Note is blank and unshared.");
+                if (shouldClose) alert("Blank note discarded.");
 
                 if (!isNew && localId) {
                     // Delete existing empty note
@@ -580,6 +601,11 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
             if (shouldClose) alert("Failed to save. Please try again.");
         }
     };
+
+    // Keep ref updated for Back Button handling
+    useEffect(() => {
+        performSaveRef.current = performSave;
+    }, [performSave]);
 
     // Debounced Auto-save
     useEffect(() => {
