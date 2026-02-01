@@ -886,6 +886,7 @@ export const dataService = {
         now.setMinutes(now.getMinutes() + minutes);
         const newTime = now.toISOString();
 
+        // 1. Update Firestore if authenticated
         if (auth.currentUser) {
             if (instanceKey) {
                 const key = `logs.${instanceKey}`;
@@ -898,13 +899,18 @@ export const dataService = {
                 };
                 await firestoreService.updateReminder(id, payload);
             } else {
-                await firestoreService.updateReminder(id, { time: newTime, status: 'upcoming' });
+                // For simple reminders, we move the base time
+                // Convert back to HH:MM for base time if possible, or use ISO
+                // Actually, ISO is safer for snooze, but r.time usually HH:MM.
+                // Let's use HH:MM for the base time property to keep it compatible with split(':')
+                const hhmm = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+                await firestoreService.updateReminder(id, { time: hhmm, status: 'upcoming' });
             }
-            return;
         }
 
+        // 2. Update Local Store (Immediate UI Refresh)
         if (instanceKey) {
-            store.reminders = store.reminders.map(r => {
+            store.reminders = (store.reminders || []).map(r => {
                 if (String(r.id) === String(id)) {
                     const newLogs = { ...(r.logs || {}) };
                     newLogs[instanceKey] = {
@@ -916,14 +922,19 @@ export const dataService = {
                 }
                 return r;
             });
-            save();
-            return;
+        } else {
+            const hhmm = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+            store.reminders = (store.reminders || []).map(r =>
+                String(r.id) === String(id) ? { ...r, time: hhmm, status: 'upcoming' } : r
+            );
         }
 
-        if (!store.reminders) return;
-        store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, time: newTime, status: 'upcoming' } : r);
         save();
-        return store.reminders.find(r => String(r.id) === String(id));
+
+        // Trigger generic update event for hooks that don't listen to storage
+        window.dispatchEvent(new Event('data-updated'));
+
+        return (store.reminders || []).find(r => String(r.id) === String(id));
     },
 
     // History & Reports

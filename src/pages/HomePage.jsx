@@ -53,8 +53,10 @@ const HomePage = () => {
                 else if (r.status === 'missed') missed++;
                 else {
                     upcoming++;
-                    // Find next upcoming
-                    if (!next && rDate > now) {
+                    // Find next upcoming or currently snoozed/ringing
+                    // Tolerance of 2 minutes for "Next" if snoozed
+                    const tolerance = r.status === 'snoozed' ? 2 * 60 * 1000 : 0;
+                    if (!next && (rDate.getTime() + tolerance) >= now.getTime()) {
                         next = r;
                     }
                 }

@@ -204,6 +204,9 @@ const RemindersPage = () => {
         : reminders.filter(r => {
             if (!r) return false;
             // Standard Filters only apply if NOT searching (or should search also filter? Note says "previewed as happening in notes", usually global search)
+            if (statusFilter === 'upcoming') {
+                return r.status === 'upcoming' || r.status === 'snoozed';
+            }
             if (statusFilter !== 'all' && r.status !== statusFilter) return false;
             if (filter !== 'All' && r.type !== filter) return false;
             return true;
