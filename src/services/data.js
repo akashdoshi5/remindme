@@ -314,10 +314,11 @@ export const dataService = {
 
                         expanded.push({
                             ...r,
+                            ...exception, // OVERRIDE with exception data (instructions, files, etc)
                             uniqueId: `${r.id}_${instanceKey}`,
                             instanceKey: instanceKey,
                             time: time, // Original time
-                            displayTime: displayTime, // Potentially snoozed time
+                            displayTime: displayTime, // Potentially snoozed/overridden time
                             period: period,
                             status: status,
                             takenAt: log ? log.takenAt : null,
@@ -514,6 +515,7 @@ export const dataService = {
 
                         expanded.push({
                             ...r,
+                            ...exception, // OVERRIDE with exception data (instructions, files, etc)
                             uniqueId: `${r.id}_${instanceKey}`,
                             instanceKey: instanceKey,
                             displayTime: displayTime,

@@ -124,15 +124,15 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                         setCustomDays([]);
                     }
                 }
-
-                // Initialize Start Date correctly
-                if (reminderToEdit.instanceKey) {
-                    setStartDate(reminderToEdit.instanceKey.split('_')[0]);
-                } else {
-                    setStartDate(reminderToEdit.schedule?.startDate || reminderToEdit.date || new Date().toISOString().split('T')[0]);
-                }
             }
             setDurationDays(reminderToEdit.schedule?.durationDays || 30);
+
+            // Universal Start Date Initialization
+            if (reminderToEdit.instanceKey && editScope === 'this') {
+                setStartDate(reminderToEdit.instanceKey.split('_')[0]);
+            } else {
+                setStartDate(reminderToEdit.schedule?.startDate || reminderToEdit.date || new Date().toISOString().split('T')[0]);
+            }
         } else {
             // Reset for new
             setTitle('');
@@ -154,6 +154,17 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             setDurationDays(30);
         }
     }, [reminderToEdit, isOpen]);
+
+    // REACTIVE START DATE: Sync with Edit Scope
+    useEffect(() => {
+        if (!isOpen || !reminderToEdit) return;
+
+        if (editScope === 'this' && reminderToEdit.instanceKey) {
+            setStartDate(reminderToEdit.instanceKey.split('_')[0]);
+        } else if (editScope === 'all') {
+            setStartDate(reminderToEdit.schedule?.startDate || reminderToEdit.date || new Date().toISOString().split('T')[0]);
+        }
+    }, [editScope, reminderToEdit, isOpen]);
 
     // Auto-start voice check
     useEffect(() => {
@@ -349,23 +360,13 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
         setIsSaving(true);
 
         try {
-            // FIX: Always save files to the SERIES (Main Reminder Object)
-            // If we are editing "This Instance", we need to perform TWO updates:
-            // 1. Update the parent/series with the new file list (if files exist or changed).
-            // 2. Update the specific instance with time/status changes.
             if (reminderToEdit && editScope === 'this') {
-                // 1. Update Series Files
-                // Note: We use the parent ID.
-                await onSave({ files: finalFiles }, null); // Null instanceKey = Series Update
-
-                // 2. Update Instance (Time, Instructions, etc) - EXCLUDING files to avoid duplication/confusion
-                // (Though files on instance wouldn't hurt, user wants series visibility).
-                const instanceData = { ...data };
-                delete instanceData.files; // Don't save files to the exception object
-                await onSave(instanceData, reminderToEdit.instanceKey);
+                // Update specific instance ONLY
+                // Note: ExpandRemindersForDate now inherits instructions/files from exceptions
+                await onSave(data, reminderToEdit.instanceKey);
             } else {
                 // Standard Update (Series or New)
-                // Just save everything to the main object
+                // Just save everything to the main series object
                 await onSave(data, null);
             }
 

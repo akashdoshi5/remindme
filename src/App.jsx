@@ -231,8 +231,6 @@ const AppContent = () => {
               });
             });
           }
-
-          window.dispatchEvent(new Event('storage-update'));
         }
       }
     };
