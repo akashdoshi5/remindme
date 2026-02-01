@@ -951,45 +951,12 @@ export const dataService = {
 
     updateNote: async (id, updates) => {
         if (auth.currentUser) {
-            // Smart Merge for Concurrency (Files & Items)
-            try {
-                // 1. Fetch current server state to avoid overwriting with stale data
-                const existingNote = await firestoreService.getNote(id).catch(() => null);
-
-                if (existingNote) {
-                    // MERGE FILES: Union by ID/Name
-                    // If updates.files is missing, keep existing.
-                    // If updates.files is present, merge it with existing.
-                    if (updates.files) {
-                        const existingFiles = existingNote.files || [];
-                        const newFiles = updates.files;
-
-                        // Map by unique ID (or name if ID missing)
-                        const fileMap = new Map();
-                        existingFiles.forEach(f => fileMap.set(f.id || f.name, f));
-                        newFiles.forEach(f => fileMap.set(f.id || f.name, f));
-
-                        updates.files = Array.from(fileMap.values());
-                    }
-
-                    // MERGE ITEMS (Checklist): Union by ID
-                    if (updates.items) {
-                        const existingItems = existingNote.items || [];
-                        const newItems = updates.items;
-
-                        const itemMap = new Map();
-                        existingItems.forEach(i => itemMap.set(i.id || i.text, i));
-                        newItems.forEach(i => itemMap.set(i.id || i.text, i)); // Updates win conflicts
-
-                        updates.items = Array.from(itemMap.values());
-                    }
-                }
-            } catch (e) {
-                console.warn("Smart Merge failed, falling back to direct update", e);
-            }
-
             // eslint-disable-next-line no-unused-vars
             const { ownerId, sharedWith, createdAt, ownerEmail, ...cleanUpdates } = updates;
+
+            // Remove undefined values to prevent Firestore crash ("Unsupported field value: undefined")
+            Object.keys(cleanUpdates).forEach(key => cleanUpdates[key] === undefined && delete cleanUpdates[key]);
+
             await firestoreService.updateNote(id, cleanUpdates);
             return;
         }
