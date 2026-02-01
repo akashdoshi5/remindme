@@ -361,25 +361,27 @@ const ReportsPage = () => {
     return (
         <div className="max-w-5xl mx-auto pb-12 relative">
 
-            {/* HEADER: Title & Profile Switcher */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                        {viewingProfile ? `Report: ${viewingProfile.relationship?.name}` : t('reports')}
-                    </h1>
-                    <p className="text-gray-500 text-sm">
-                        {viewingProfile ? "Viewing shared health data (Read-Only)" : "Track your adherence and health trends"}
-                    </p>
-                </div>
+            {/* STICKY HEADER: Title & Profile Switcher */}
+            <div className="sticky top-16 md:top-20 z-40 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-md -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-800 md:px-0 md:mx-0 md:rounded-b-2xl md:mb-6 transition-all shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white capitalize">
+                            {viewingProfile ? `Report: ${viewingProfile.relationship?.name}` : t('reports')}
+                        </h1>
+                        <p className="text-gray-500 text-xs md:text-sm">
+                            {viewingProfile ? "Viewing shared health data (Read-Only)" : "Track your adherence and health trends"}
+                        </p>
+                    </div>
 
-                {/* Local Profile Switcher */}
-                <div>
-                    <span className="text-xs uppercase font-bold text-gray-400 mr-2">Viewing:</span>
-                    <ProfileSwitcher
-                        value={viewingProfile}
-                        onChange={setViewingProfile}
-                        className="inline-block"
-                    />
+                    {/* Local Profile Switcher */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs uppercase font-bold text-gray-400 hidden md:inline">Viewing:</span>
+                        <ProfileSwitcher
+                            value={viewingProfile}
+                            onChange={setViewingProfile}
+                            className="inline-block"
+                        />
+                    </div>
                 </div>
             </div>
 
