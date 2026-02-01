@@ -549,6 +549,16 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                 return f;
             });
 
+            // FETCH FRESH STATE to avoid overwriting sharedWith with stale prop
+            let currentSharedWith = isNew ? [] : noteToEdit?.sharedWith;
+            if (!isNew && noteToEdit?.id) {
+                const freshNote = dataService?.store?.notes?.find(n => n.id === noteToEdit.id);
+                if (freshNote) {
+                    console.log("Found fresh note state, preserving sharedWith:", freshNote.sharedWith);
+                    currentSharedWith = freshNote.sharedWith;
+                }
+            }
+
             const dataToSave = {
                 title: finalTitle,
                 content: noteType === 'text' ? finalContent : '',
@@ -560,7 +570,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                 audioData: finalAudioData,
                 id: localId, // Always present now
                 ownerId: noteToEdit?.ownerId, // Preserve owner
-                sharedWith: isNew ? [] : noteToEdit?.sharedWith, // Initialize for new, preserve/ignore for existing
+                sharedWith: currentSharedWith, // Use FRESH sharedWith
                 forceCreate: isNew, // Flag for parent to know this is a first-time save
                 isPinned: isPinned
             };

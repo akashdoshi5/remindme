@@ -156,13 +156,23 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     }, [reminderToEdit, isOpen]);
 
     // REACTIVE START DATE: Sync with Edit Scope
+    // REACTIVE START DATE: Sync with Edit Scope
     useEffect(() => {
         if (!isOpen || !reminderToEdit) return;
 
         if (editScope === 'this' && reminderToEdit.instanceKey) {
             setStartDate(reminderToEdit.instanceKey.split('_')[0]);
         } else if (editScope === 'all') {
-            setStartDate(reminderToEdit.schedule?.startDate || reminderToEdit.date || new Date().toISOString().split('T')[0]);
+            const originalStart = reminderToEdit.schedule?.startDate || reminderToEdit.date;
+
+            // FIX: If series started in the past, default picker to TODAY to encourage clean history splitting.
+            // But if it's a future series, keep the future date.
+            const today = new Date().toLocaleDateString('en-CA');
+            if (originalStart < today) {
+                setStartDate(today);
+            } else {
+                setStartDate(originalStart || today);
+            }
         }
     }, [editScope, reminderToEdit, isOpen]);
 
@@ -477,6 +487,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                     <input
                                         type="date"
                                         readOnly={editScope === 'this'}
+                                        min={(editScope === 'all' && reminderToEdit?.schedule?.startDate < new Date().toLocaleDateString('en-CA')) ? new Date().toLocaleDateString('en-CA') : undefined}
                                         className={`w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white transition-all ${editScope === 'this' ? 'opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900' : 'focus:ring-2 focus:ring-orange-500'}`}
                                         value={startDate}
                                         onChange={(e) => setStartDate(e.target.value)}

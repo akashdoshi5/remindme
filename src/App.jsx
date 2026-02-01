@@ -265,6 +265,39 @@ const AppContent = () => {
     return () => window.removeEventListener('storage-update', checkStatus);
   }, [activeAlarm]);
 
+  // FORCE NOTIFICATION PUSH on Resume/Permission Change
+  // This addresses the user report: "notifications enabled later -> missing reminders"
+  useEffect(() => {
+    const handleResume = async () => {
+      console.log("App/Visibility Resumed. Force refreshing schedule.");
+      // 1. Check permissions again
+      const perm = await useNotifications.checkPermissions();
+      if (perm === 'granted') {
+        // 2. Trigger data refresh which cascades into notification scheduling
+        window.dispatchEvent(new Event('storage-update'));
+        // 3. Explicitly ask dataService to ensure logic runs
+        dataService.save();
+      }
+    };
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') handleResume();
+    });
+
+    // Also try to hook into Capacitor App state if available
+    let appListener;
+    import('@capacitor/app').then(({ App }) => {
+      appListener = App.addListener('appStateChange', (state) => {
+        if (state.isActive) handleResume();
+      });
+    }).catch(() => { });
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleResume);
+      if (appListener) appListener.remove();
+    };
+  }, []);
+
 
 
 
@@ -313,10 +346,15 @@ const AppContent = () => {
           }
 
           // Priority 4: Navigation Logic
-          const normalizedPath = currentPath.replace(/\/$/, '') || '/';
-          if (normalizedPath !== '/' && normalizedPath !== '/login' && normalizedPath !== '/signup') {
-            navigate('/');
+          // Remove query params and trailing slashes for root check
+          const cleanPath = currentPath.split('?')[0].split('#')[0].replace(/\/$/, '') || '/';
+          const isRoot = cleanPath === '/' || cleanPath === '/login' || cleanPath === '/signup';
+
+          if (!isRoot) {
+            console.log("Back Button: Navigating to Home");
+            navigate('/', { replace: true }); // Use replace to clear history stack
           } else {
+            console.log("Back Button: Exiting App (Root Page)");
             CapacitorApp.exitApp();
           }
         });

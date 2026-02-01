@@ -268,6 +268,7 @@ export const dataService = {
 
                         // Calculate Effective Time & Check Status
                         // FIX: Handle ISO Snooze Time for correct status (even if snoozed to next day)
+                        // FIX: Prefer Exception Time if user manually edited "This Instance Only"
                         let displayTime = exception?.time || time; // Use exception time if exists
                         let checkDateTime = new Date(dateString);
                         // Default to scheduled time
@@ -317,7 +318,9 @@ export const dataService = {
                             ...exception, // OVERRIDE with exception data (instructions, files, etc)
                             uniqueId: `${r.id}_${instanceKey}`,
                             instanceKey: instanceKey,
-                            time: time, // Original time
+                            // FIX: Ensure 'time' property reflects the override for the UI list
+                            time: displayTime,
+                            originalTime: time,
                             displayTime: displayTime, // Potentially snoozed/overridden time
                             period: period,
                             status: status,
@@ -714,7 +717,9 @@ export const dataService = {
                     schedule: {
                         ...(reminder.schedule || {}),
                         ...updates.schedule,
-                        startDate: todayStr, // Start new series today
+                        // FIX: If user provided a start date (e.g. they picked a new date in the modal), use it.
+                        // Otherwise default to today (since the old series ended yesterday).
+                        startDate: updates.schedule?.startDate || todayStr,
                         endDate: updates.schedule?.endDate || null
                     }
                 };
