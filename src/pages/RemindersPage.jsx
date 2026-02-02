@@ -613,21 +613,42 @@ const RemindersPage = () => {
                                                                 let isActionable = true;
                                                                 let reason = '';
 
-                                                                if (reminder.displayTime) {
-                                                                    const [h, m] = reminder.displayTime.split(':').map(Number);
-                                                                    const reminderDate = new Date(selectedDate);
-                                                                    reminderDate.setHours(h, m, 0, 0);
+                                                                // Lock Logic: Disable action for history older than Yesterday
+                                                                const yesterday = new Date();
+                                                                yesterday.setDate(yesterday.getDate() - 1);
+                                                                yesterday.setHours(0, 0, 0, 0);
 
-                                                                    const now = new Date();
-                                                                    const diffMs = now.getTime() - reminderDate.getTime();
-                                                                    const hoursDiff = diffMs / (1000 * 60 * 60);
+                                                                // V8 FIX: If Searching, check the REMINDER's date, not the selected calendar date
+                                                                let checkDate = new Date(selectedDate);
+                                                                if (searchQuery) {
+                                                                    if (reminder.targetDate) checkDate = new Date(reminder.targetDate);
+                                                                    else if (reminder.date) checkDate = new Date(reminder.date);
+                                                                    else if (reminder.schedule?.startDate) checkDate = new Date(reminder.schedule.startDate);
+                                                                }
+                                                                checkDate.setHours(0, 0, 0, 0);
 
-                                                                    if (hoursDiff < -2) {
-                                                                        isActionable = false;
-                                                                        reason = 'Too Early';
-                                                                    } else if (hoursDiff > 2) {
-                                                                        isActionable = false;
-                                                                        reason = 'Missed';
+                                                                const isLocked = checkDate < yesterday;
+                                                                if (isLocked) {
+                                                                    isActionable = false;
+                                                                    reason = 'History';
+                                                                } else {
+                                                                    // Only check time window if NOT locked history
+                                                                    if (reminder.displayTime) {
+                                                                        const [h, m] = reminder.displayTime.split(':').map(Number);
+                                                                        const reminderDate = new Date(selectedDate);
+                                                                        reminderDate.setHours(h, m, 0, 0);
+
+                                                                        const now = new Date();
+                                                                        const diffMs = now.getTime() - reminderDate.getTime();
+                                                                        const hoursDiff = diffMs / (1000 * 60 * 60);
+
+                                                                        if (hoursDiff < -2) {
+                                                                            isActionable = false;
+                                                                            reason = 'Too Early';
+                                                                        } else if (hoursDiff > 2) {
+                                                                            isActionable = false;
+                                                                            reason = 'Missed';
+                                                                        }
                                                                     }
                                                                 }
 
