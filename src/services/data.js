@@ -42,6 +42,9 @@ let activeProfile = null; // null = mine, { uid, name, email } = patient
 let patientData = { reminders: [], notes: [], history: [] }; // Read-only cache for viewed patient
 let patientUnsubscribe = null;
 
+// SYNC LISTENERS (V6)
+let syncUnsubscribes = []; // Array of unsubscribe functions for current user
+
 const getCurrentStore = () => activeProfile ? patientData : store;
 
 const save = () => {
@@ -82,12 +85,84 @@ export const dataService = {
             patientUnsubscribe();
             patientUnsubscribe = null;
         }
+
+        // Cleanup old listeners
+        syncUnsubscribes.forEach(unsub => unsub());
+        syncUnsubscribes = [];
+
         store = loadStore(); // Load whatever local data exists for this user
 
-        // 3. Sync-Up Check
-        if (uid && ((store.reminders && store.reminders.length > 0) || (store.notes && store.notes.length > 0))) {
-            console.log("Authenticated User: Syncing local cache to Cloud...");
-            firestoreService.migrateLocalData(store).catch(e => console.error("Sync-up failed", e));
+        // 3. Sync-Up Check & Realtime Listeners
+        if (uid) {
+            // A. Initial Migration (Push local to cloud if needed)
+            if ((store.reminders && store.reminders.length > 0) || (store.notes && store.notes.length > 0)) {
+                console.log("Authenticated User: Syncing local cache to Cloud...");
+                firestoreService.migrateLocalData(store).catch(e => console.error("Sync-up failed", e));
+            }
+
+            // B. Setup Realtime Listeners (Pull cloud to local)
+            console.log("Setting up Realtime Sync for:", uid);
+
+            // Reminders Listener
+            const unsubReminders = firestoreService.getRemindersRealtime((reminders) => {
+                store.reminders = reminders;
+                save(); // Persist to local storage
+            });
+            syncUnsubscribes.push(unsubReminders);
+
+            // Notes Listener (Owned)
+            const unsubNotes = firestoreService.getNotesRealtime((notes) => {
+                // Preserve existing SHARED notes when owned notes update
+                const currentShared = store.notes.filter(n => n.isShared);
+
+                // Combine new OWNED with existing SHARED
+                // Filter out any owned notes that might be in currentShared (unlikely but safe)
+                const sharedMap = new Map(currentShared.map(n => [n.id, n]));
+
+                // If an owned note is also in sharedMap, we prefer the OWNED version (latest from this listener)
+                // Actually, sharedMap only contains isShared=true.
+                // Just concat.
+                store.notes = [...notes, ...Array.from(sharedMap.values())];
+
+                // Sort by createdAt descending
+                store.notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+                save();
+            });
+            syncUnsubscribes.push(unsubNotes);
+
+            // Shared Notes Listener
+            const unsubShared = firestoreService.getSharedNotesRealtime((sharedNotes) => {
+                // Merge Shared into Store
+                // We need to avoid duplicates if a note is both owned and shared (unlikely).
+                // We also need to avoid overwriting owned notes when shared update comes.
+                // current store.notes has OWNED notes (from above).
+                // We should append SHARED notes.
+                const owned = store.notes.filter(n => !n.isShared);
+
+                // Deduplicate by ID just in case
+                const sharedMap = new Map(sharedNotes.map(n => [n.id, n]));
+                owned.forEach(n => {
+                    if (sharedMap.has(n.id)) sharedMap.delete(n.id); // Prefer owned version if conflict?
+                });
+
+                store.notes = [...owned, ...Array.from(sharedMap.values())];
+
+                // Sort by date or order?
+                store.notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+                save();
+            });
+            syncUnsubscribes.push(unsubShared);
+
+            // Settings Listener
+            const unsubSettings = firestoreService.getSettingsRealtime((settings) => {
+                if (settings) {
+                    store.settings = { ...store.settings, ...settings };
+                    save();
+                }
+            });
+            syncUnsubscribes.push(unsubSettings);
         }
 
         notifyListeners();
@@ -349,25 +424,48 @@ export const dataService = {
                         let currentH = startHour;
                         while (currentH < endHour) {
                             const timeStr = `${String(currentH).padStart(2, '0')}:00`;
-                            const instanceKey = `${dateString}_time_${timeStr}`;
-                            const log = (r.logs || {})[instanceKey];
+                            // Standardize Key (V5.5 Match Writer)
+                            let instanceKey = `${dateString}_time_${timeStr}`;
+
+                            // Check for Exception Override
+                            // Writer (AddReminderModal) saves keys as `${date}_time_${time}` or `${date}_${time}`
+                            // We should check both to be robust.
+                            const altKey = `${dateString}_${timeStr}`;
+
+                            const log = (r.logs || {})[instanceKey] || (r.logs || {})[altKey];
+                            const exception = (r.exceptions || {})[instanceKey] || (r.exceptions || {})[altKey];
+
+                            if (exception && exception.status === 'cancelled') {
+                                currentH += intervalHours;
+                                continue;
+                            }
+
+                            // Determine Display Time (Override if exception has time)
+                            let displayTime = exception?.time || timeStr;
 
                             // Status Check
                             let status = 'upcoming';
+                            let checkTime = displayTime;
+
+                            // Parse checkTime for status logic
+                            const [ch, cm] = checkTime.split(':').map(Number);
                             const iDate = new Date(dateString);
-                            iDate.setHours(currentH, 0, 0, 0);
+                            iDate.setHours(ch, cm, 0, 0);
 
                             if (log) status = log.status;
+                            else if (exception && exception.status) status = exception.status;
                             else if (iDate < now) status = 'missed'; // Auto miss if past
 
                             expanded.push({
                                 ...r,
+                                ...exception, // Merge exception data (instructions, etc)
                                 uniqueId: `${r.id}_${instanceKey}`,
-                                instanceKey,
-                                displayTime: timeStr,
+                                instanceKey: exception ? (r.exceptions[instanceKey] ? instanceKey : altKey) : instanceKey,
+                                displayTime: displayTime,
                                 status,
                                 isInterval: true,
-                                targetDate: dateString
+                                targetDate: dateString,
+                                time: displayTime // Ensure UI sees the updated time
                             });
 
                             currentH += intervalHours;
@@ -464,9 +562,20 @@ export const dataService = {
 
                     // Process natural instances
                     times.forEach(time => {
-                        const instanceKey = `${dateString}_${time || 'default'}`;
-                        const log = (r.logs || {})[instanceKey];
-                        const exception = (r.exceptions || {})[instanceKey];
+                        // CRITICAL FIX V5.4: Key Format Standardization
+                        // Debug logs showed keys like '2026-02-01_time_20:00'. 
+                        // Previous code generated '2026-02-01_20:00'.
+                        // We must check BOTH to be safe, or standardize execution.
+                        let instanceKey = `${dateString}_${time || 'default'}`;
+                        const legacyKey = `${dateString}_time_${time || 'default'}`;
+
+                        let log = (r.logs || {})[instanceKey] || (r.logs || {})[legacyKey];
+                        let exception = (r.exceptions || {})[instanceKey] || (r.exceptions || {})[legacyKey];
+
+                        // Normalize key for future use in this loop
+                        if ((r.logs || {})[legacyKey] || (r.exceptions || {})[legacyKey]) {
+                            instanceKey = legacyKey;
+                        }
 
                         if (exception && exception.status === 'cancelled') return;
 
@@ -660,6 +769,7 @@ export const dataService = {
         if (!reminder) return;
 
         if (instanceKey) {
+            console.log("DataService: Creating Exception:", instanceKey, updates);
             // Create Exception Logic (local)
             store.reminders = store.reminders.map(r => {
                 if (String(r.id) === String(id)) {
@@ -696,12 +806,19 @@ export const dataService = {
 
             if (isRecurring && startDate && startDate < yesterdayStr) {
                 console.log("History Preservation: Soft splitting series.");
+
+                // Determine Split Point
+                const targetStartDate = updates.schedule?.startDate || todayStr;
+                const splitDateObj = new Date(targetStartDate);
+                splitDateObj.setDate(splitDateObj.getDate() - 1);
+                const oldSeriesEndDate = splitDateObj.toLocaleDateString('en-CA');
+
                 // 1. END OLD SERIES locally
                 store.reminders = store.reminders.map(r => {
                     if (String(r.id) === String(id)) {
                         return {
                             ...r,
-                            schedule: { ...r.schedule, endDate: yesterdayStr },
+                            schedule: { ...r.schedule, endDate: oldSeriesEndDate },
                             status: 'ended'
                         };
                     }
@@ -717,9 +834,7 @@ export const dataService = {
                     schedule: {
                         ...(reminder.schedule || {}),
                         ...updates.schedule,
-                        // FIX: If user provided a start date (e.g. they picked a new date in the modal), use it.
-                        // Otherwise default to today (since the old series ended yesterday).
-                        startDate: updates.schedule?.startDate || todayStr,
+                        startDate: targetStartDate,
                         endDate: updates.schedule?.endDate || null
                     }
                 };
@@ -731,7 +846,7 @@ export const dataService = {
                 if (auth.currentUser) {
                     // Update old series endDate
                     await firestoreService.updateReminder(id, {
-                        schedule: { ...reminder.schedule, endDate: yesterdayStr },
+                        schedule: { ...reminder.schedule, endDate: oldSeriesEndDate },
                         status: 'ended'
                     });
                     // Create new series
@@ -1054,19 +1169,55 @@ export const dataService = {
     },
 
     shareNote: async (id, email) => {
+        // 1. Optimistic Local Update
+        const noteIndex = store.notes ? store.notes.findIndex(n => String(n.id) === String(id)) : -1;
+        if (noteIndex > -1) {
+            const note = store.notes[noteIndex];
+            if (!note.sharedWith) note.sharedWith = [];
+            if (!note.sharedWith.includes(email)) {
+                store.notes[noteIndex].sharedWith = [...note.sharedWith, email];
+                save(); // Persist & Notify UI Immediately
+            }
+        }
+
+        // 2. Firestore Update
         if (auth.currentUser) {
-            await firestoreService.shareNote(id, email);
+            try {
+                await firestoreService.shareNote(id, email);
+                return true;
+            } catch (e) {
+                console.error("Share failed:", e);
+                // Optional Sync Revert could go here
+                return false;
+            }
+        } else {
+            // Local fallback already handled by optimistic update
             return true;
         }
-        return false;
     },
 
     unshareNote: async (id, email) => {
-        if (auth.currentUser) {
-            await firestoreService.unshareNote(id, email);
-            return true;
+        // 1. Optimistic Local Update
+        const noteIndex = store.notes ? store.notes.findIndex(n => String(n.id) === String(id)) : -1;
+        if (noteIndex > -1) {
+            const note = store.notes[noteIndex];
+            if (note.sharedWith) {
+                store.notes[noteIndex].sharedWith = note.sharedWith.filter(e => e !== email);
+                save(); // Persist & Notify UI Immediately
+            }
         }
-        return false;
+
+        // 2. Firestore Update
+        if (auth.currentUser) {
+            try {
+                await firestoreService.unshareNote(id, email);
+                return true;
+            } catch (e) {
+                console.error("Unshare failed:", e);
+                return false;
+            }
+        }
+        return true;
     },
 
     // Caregivers

@@ -36,6 +36,18 @@ setPersistence(auth, browserLocalPersistence).catch((error) => {
 });
 const db = getFirestore(app);
 
+// ENABLE OFFLINE PERSISTENCE (V7 Optimization)
+import { enableIndexedDbPersistence } from "firebase/firestore";
+enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code == 'failed-precondition') {
+        // Multiple tabs open, persistence can only be enabled in one tab at a time.
+        console.warn("Persistence failed: Multiple tabs open");
+    } else if (err.code == 'unimplemented') {
+        // The current browser does not support all of the features required to enable persistence
+        console.warn("Persistence failed: Browser not supported");
+    }
+});
+
 // Initialize Native Google Auth
 if (Capacitor.isNativePlatform()) {
     GoogleAuth.initialize({

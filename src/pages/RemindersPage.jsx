@@ -462,15 +462,29 @@ const RemindersPage = () => {
                                                     What if all are past? Then separator should be after the last item?
                                                     Let's stick to "Current Time" indicator mainly.
                                                 */}
-                                                {isToday && idx === separatorIndex && (
-                                                    <div ref={scrollRef} className="flex items-center gap-4 py-4 opacity-80 scroll-mt-32">
-                                                        <div className="h-[2px] flex-1 bg-red-400/30"></div>
-                                                        <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full border border-red-200 dark:border-red-800">
-                                                            Current Time
-                                                        </span>
-                                                        <div className="h-[2px] flex-1 bg-red-400/30"></div>
-                                                    </div>
-                                                )}
+                                                {isToday && idx === separatorIndex && (() => {
+                                                    // Ensure we only render the separator in the CORRECT group
+                                                    const now = new Date();
+                                                    const currentH = now.getHours();
+
+                                                    let isCorrectGroup = false;
+                                                    if (group === 'Morning' && currentH < 12) isCorrectGroup = true;
+                                                    else if (group === 'Afternoon' && currentH >= 12 && currentH < 17) isCorrectGroup = true;
+                                                    else if (group === 'Evening' && currentH >= 17) isCorrectGroup = true;
+
+                                                    if (isCorrectGroup) {
+                                                        return (
+                                                            <div ref={scrollRef} className="flex items-center gap-4 py-4 opacity-80 scroll-mt-32">
+                                                                <div className="h-[2px] flex-1 bg-red-400/30"></div>
+                                                                <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full border border-red-200 dark:border-red-800">
+                                                                    Current Time
+                                                                </span>
+                                                                <div className="h-[2px] flex-1 bg-red-400/30"></div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
 
                                                 <motion.div
                                                     layout
@@ -558,7 +572,17 @@ const RemindersPage = () => {
                                                                 const yesterday = new Date();
                                                                 yesterday.setDate(yesterday.getDate() - 1);
                                                                 yesterday.setHours(0, 0, 0, 0);
-                                                                const isLocked = new Date(selectedDate) < yesterday;
+
+                                                                // V8 FIX: If Searching, check the REMINDER's date, not the selected calendar date
+                                                                let checkDate = new Date(selectedDate);
+                                                                if (searchQuery) {
+                                                                    if (reminder.targetDate) checkDate = new Date(reminder.targetDate);
+                                                                    else if (reminder.date) checkDate = new Date(reminder.date);
+                                                                    else if (reminder.schedule?.startDate) checkDate = new Date(reminder.schedule.startDate);
+                                                                }
+                                                                checkDate.setHours(0, 0, 0, 0);
+
+                                                                const isLocked = checkDate < yesterday;
 
                                                                 if (isLocked) {
                                                                     return (

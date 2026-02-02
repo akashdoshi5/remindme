@@ -11,7 +11,6 @@ const ShareModal = ({ isOpen, onClose, note }) => {
     const [errorMsg, setErrorMsg] = useState('');
 
     // Use derived state from props to ensure updates are reflected immediately
-    // If the parent updates 'note', this component re-renders and sees the new 'sharedWith'
     const sharedWith = note.sharedWith || [];
 
     const handleShare = async (e) => {
@@ -25,14 +24,11 @@ const ShareModal = ({ isOpen, onClose, note }) => {
             if (result) {
                 setSuccessMsg(`Access granted to ${email}`);
 
-                // PRODUCTION URL
-                const appUrl = 'https://remindme-app-9988.web.app';
-                const subject = encodeURIComponent(`Shared Note: ${note.title}`);
-                const body = encodeURIComponent(`I've shared a note with you on RemindMe Buddy.\n\nYou can view it here: ${appUrl}/notes`);
-                window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+                // Do NOT auto-open mailto (browser blocks/confuses)
+                // Just show success and the button.
 
                 setEmail('');
-                setTimeout(() => setSuccessMsg(''), 5000);
+                setTimeout(() => setSuccessMsg(''), 8000);
             } else {
                 setErrorMsg('Sharing failed. Please try again.');
             }
@@ -89,15 +85,16 @@ const ShareModal = ({ isOpen, onClose, note }) => {
                     </form>
 
                     {successMsg && (
-                        <div className="mb-4 bg-green-50 dark:bg-green-900/20 p-3 rounded-lg flex flex-col gap-2">
-                            <p className="text-sm text-green-600 dark:text-green-400">{successMsg}</p>
+                        <div className="mb-4 bg-green-50 dark:bg-green-900/20 p-3 rounded-lg flex flex-col gap-2 border border-green-200 dark:border-green-800">
+                            <p className="text-sm text-green-700 dark:text-green-300 font-medium">✓ {successMsg}</p>
+                            <p className="text-xs text-green-600 dark:text-green-400">Note: User must log in to see this note.</p>
                             <a
-                                href={`mailto:${email || ''}?subject=Shared Note: ${note.title}&body=I've shared a note with you on RemindMe Buddy. You can view it here: https://remindme-app-9988.web.app/notes`}
+                                href={`mailto:${email || ''}?subject=Shared Note: ${note.title}&body=I've shared a note with you on RemindMe Buddy.%0D%0A%0D%0AYou can view it here: https://remindme-app-9988.web.app/notes`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-xs flex items-center justify-center gap-1 bg-green-600 text-white py-1.5 rounded-md hover:bg-green-700 font-bold"
+                                className="text-xs flex items-center justify-center gap-2 bg-green-600 text-white py-2 px-3 rounded-lg hover:bg-green-700 font-bold transition-colors shadow-sm"
                             >
-                                <Mail size={12} /> Send Email Invite
+                                <Mail size={16} /> Send Email Invite (Manual)
                             </a>
                         </div>
                     )}

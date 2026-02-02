@@ -103,20 +103,7 @@ const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
                         <ChevronRight size={16} className="text-gray-400" />
                     </button>
 
-                    <div className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                        <div className="flex items-center gap-3 text-gray-700 dark:text-gray-200 font-medium">
-                            <Globe size={20} /> Language
-                        </div>
-                        <select
-                            value={language}
-                            onChange={(e) => setLanguage(e.target.value)}
-                            className="bg-transparent font-bold text-orange-600 dark:text-orange-400 outline-none cursor-pointer"
-                        >
-                            <option value="en">English (US)</option>
-                            <option value="hi">Hindi (India)</option>
-                            <option value="mr">Marathi (India)</option>
-                        </select>
-                    </div>
+
 
                     <button
                         onClick={async () => {

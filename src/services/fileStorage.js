@@ -20,8 +20,50 @@ export const fileStorage = {
      * @param {Function} onProgress (progress) => void - progress is 0-100
      * @returns {Promise<{id: string, url: string, type: 'local'|'cloud'}>}
      */
+    /**
+     * V7 Optimization: Client-Side Compression
+     */
+    compressImage: async (file, maxWidth = 1920, quality = 0.7) => {
+        if (!file.type.startsWith('image/') || file.type === 'image/gif') return file; // Skip non-images or GIFs
+        if (file.size < 1024 * 1024) return file; // Skip small images (<1MB)
+
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    canvas.toBlob((blob) => {
+                        console.log(`Compressed: ${(file.size / 1024).toFixed(0)}KB -> ${(blob.size / 1024).toFixed(0)}KB`);
+                        resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+                    }, 'image/jpeg', quality);
+                };
+            };
+            reader.onerror = (e) => resolve(file); // Fail safe
+        });
+    },
+
     saveFile: async (fileBlob, onProgress) => {
+        // V7: Compress before uploading
+        const fileToUpload = await fileStorage.compressImage(fileBlob);
+
         const user = auth.currentUser;
+
         const id = crypto.randomUUID();
 
         // Cloud Storage (Firebase)

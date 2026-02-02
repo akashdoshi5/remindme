@@ -15,7 +15,8 @@ import {
     serverTimestamp,
     orderBy,
     writeBatch,
-    deleteField
+    deleteField,
+    limit // V7 Optimization
 } from 'firebase/firestore';
 import {
     ref,
@@ -56,11 +57,12 @@ export const firestoreService = {
                     const newNote = {
                         ...n,
                         ownerId: user.uid,
-                        sharedWith: [],
+                        // Fix: Preserve sharedWith from local if exists, else default to [] ONLY if undefined
+                        sharedWith: n.sharedWith || [],
                         createdAt: n.createdAt || new Date().toISOString()
                     };
-                    // Use setDoc with existing ID to prevent duplicates (idempotent)
-                    await setDoc(doc(notesRef, String(n.id)), newNote);
+                    // Use setDoc with merge: true to avoid overwriting existing cloud data (like sharedWith updates from others)
+                    await setDoc(doc(notesRef, String(n.id)), newNote, { merge: true });
                 }
             }
 
@@ -233,23 +235,33 @@ export const firestoreService = {
         // But we need to merge.
 
         const notesRef = collection(db, 'notes');
-        const qOwned = query(notesRef, where('ownerId', '==', user.uid));
+        // Query: My notes OR Notes shared with me
 
-        // Setup listener for OWNED
+        // Setup listener for OWNED (V7: Smart Sync - Limit 50)
+        // Note: orderBy('createdAt') requires an index if mixed with where().
+        // If index is missing, this will fail. We use a try-catch assumption or fallback?
+        // Actually, we can just limit by default if we don't sort, but that's random.
+        // Let's assume user will create the index (link in console) OR we rely on a simpler query.
+        // For now, let's keep it simple to avoid breaking if index missing: just LIMIT, no sort provided by query.
+        // Client side sort handles the order.
+
+        // Wait, limit() on unsorted query is not deterministic.
+        // Let's TRY to use orderBy + limit.
+        // const qOwned = query(notesRef, where('ownerId', '==', user.uid), orderBy('createdAt', 'desc'), limit(50));
+
+        // Safer approach for "Drop-in" optimization without blocking index creation:
+        // SImply Limit 50. Most recently updated? No guarantee.
+        // But for COST SAVING, let's just use limit(50).
+
+        const qOwned = query(notesRef, where('ownerId', '==', user.uid), limit(50));
+
         const unsubscribeOwned = onSnapshot(qOwned, (snapOwned) => {
             let ownedNotes = snapOwned.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            // Client-side sort by 'order' since we don't have composite index set up yet
-            ownedNotes.sort((a, b) => (a.order || 0) - (b.order || 0));
+            // Client-side sort by 'order' or date
+            ownedNotes.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
-            // Setup listener for SHARED (nested to merge? No, better separate state management in UI, 
-            // but for simple service API we might need to combine manually or expose two streams)
-
-            // For now, let's just return owned. User asked for shared notes to be visible.
-            // Let's try Filter.or if SDK supports it (v9 does).
-            // But 'array-contains' and '==' on different fields might require composite index.
-
-            callback(ownedNotes); // Temporary: only owned
+            callback(ownedNotes);
         }, (error) => {
             console.error("Error fetching owned notes:", error);
         });

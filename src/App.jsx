@@ -265,18 +265,22 @@ const AppContent = () => {
     return () => window.removeEventListener('storage-update', checkStatus);
   }, [activeAlarm]);
 
+  const { checkPermissions: checkPermissionsHook } = useNotifications(); // Renamed to avoid conflict with destructured 'checkPermissions' from useNotifications() above
+
   // FORCE NOTIFICATION PUSH on Resume/Permission Change
   // This addresses the user report: "notifications enabled later -> missing reminders"
   useEffect(() => {
     const handleResume = async () => {
       console.log("App/Visibility Resumed. Force refreshing schedule.");
       // 1. Check permissions again
-      const perm = await useNotifications.checkPermissions();
-      if (perm === 'granted') {
-        // 2. Trigger data refresh which cascades into notification scheduling
-        window.dispatchEvent(new Event('storage-update'));
-        // 3. Explicitly ask dataService to ensure logic runs
-        dataService.save();
+      try {
+        const perm = await checkPermissionsHook(); // Use the hook's checkPermissions
+        if (perm === 'granted') {
+          // 2. Trigger data refresh which cascades into notification scheduling
+          window.dispatchEvent(new Event('storage-update'));
+        }
+      } catch (err) {
+        console.error("HandleResume Error:", err);
       }
     };
 
@@ -348,14 +352,22 @@ const AppContent = () => {
           // Priority 4: Navigation Logic
           // Remove query params and trailing slashes for root check
           const cleanPath = currentPath.split('?')[0].split('#')[0].replace(/\/$/, '') || '/';
+
+          // Define Root/Home Paths where Back should Exit
           const isRoot = cleanPath === '/' || cleanPath === '/login' || cleanPath === '/signup';
 
-          if (!isRoot) {
-            console.log("Back Button: Navigating to Home");
-            navigate('/', { replace: true }); // Use replace to clear history stack
-          } else {
+          // Define Top-Level Tabs where Back should go Home (User Request)
+          const isTopLevel = ['/reminders', '/notes', '/caregivers', '/reports'].includes(cleanPath);
+
+          if (isRoot) {
             console.log("Back Button: Exiting App (Root Page)");
             CapacitorApp.exitApp();
+          } else if (isTopLevel) {
+            console.log("Back Button: Navigating to Home");
+            navigate('/');
+          } else {
+            console.log("Back Button: Navigating Back");
+            navigate(-1);
           }
         });
       } catch (e) {

@@ -108,6 +108,8 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                     else if (mins >= 660 && mins <= 900) reminderToEdit.period = 'lunch';
                     else if (mins >= 1080 && mins <= 1320) reminderToEdit.period = 'dinner';
                 }
+            } else if (reminderToEdit.type === 'Medication') {
+                setIsCourse(false); // Single med instance (converted/legacy)
             } else {
                 setIsCourse(false);
                 const freq = reminderToEdit.frequency || 'Daily';
@@ -125,6 +127,19 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                     }
                 }
             }
+
+            // CRITICAL FIX V5.5: Validate Instance Key presence
+            console.log("AddReminderModal: Init with reminder:", reminderToEdit.title, "InstanceKey:", reminderToEdit.instanceKey);
+
+            // If it has an instanceKey, it IS an instance, so default scope MUST be 'this'
+            if (reminderToEdit.instanceKey) {
+                console.log("-> Scope set to THIS");
+                setEditScope('this');
+            } else {
+                console.log("-> Scope set to ALL");
+                setEditScope('all');
+            }
+
             setDurationDays(reminderToEdit.schedule?.durationDays || 30);
 
             // Universal Start Date Initialization
@@ -156,7 +171,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     }, [reminderToEdit, isOpen]);
 
     // REACTIVE START DATE: Sync with Edit Scope
-    // REACTIVE START DATE: Sync with Edit Scope
+    // REACTIVE START DATE: Sync with Edit Scope & Preserve End Date Logic
     useEffect(() => {
         if (!isOpen || !reminderToEdit) return;
 
@@ -164,15 +179,40 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             setStartDate(reminderToEdit.instanceKey.split('_')[0]);
         } else if (editScope === 'all') {
             const originalStart = reminderToEdit.schedule?.startDate || reminderToEdit.date;
+            // Original logic: Default to today if past
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const todayStr = today.toLocaleDateString('en-CA');
 
-            // FIX: If series started in the past, default picker to TODAY to encourage clean history splitting.
-            // But if it's a future series, keep the future date.
-            const today = new Date().toLocaleDateString('en-CA');
-            if (originalStart < today) {
-                setStartDate(today);
+            let newStart = originalStart || todayStr;
+
+            if (originalStart && originalStart < todayStr) {
+                newStart = todayStr;
+
+                // CRITICAL FIX: If we move Start to Today, we must ADJUST Duration so End Date stays same!
+                // Unless End Date is also past...
+                // Original End Date Calculation
+                if (reminderToEdit.schedule?.durationDays) {
+                    const oStartObj = new Date(originalStart);
+                    const oEndObj = new Date(oStartObj);
+                    oEndObj.setDate(oStartObj.getDate() + reminderToEdit.schedule.durationDays);
+
+                    if (oEndObj > today) {
+                        // Recalculate remaining duration from TODAY
+                        const diffTime = oEndObj - today;
+                        const remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        setDurationDays(remainingDays > 0 ? remainingDays : 1);
+                    } else {
+                        // Series already ended? Default to 30 days extension
+                        setDurationDays(30);
+                    }
+                }
             } else {
-                setStartDate(originalStart || today);
+                // Future start, keep original duration
+                setDurationDays(reminderToEdit.schedule?.durationDays || 30);
             }
+
+            setStartDate(newStart);
         }
     }, [editScope, reminderToEdit, isOpen]);
 
@@ -261,20 +301,9 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        // VALIDATION: Prevent History Corruption
-        // If the reminder started in the past, do NOT allow moving the start date forward (later).
-        // Moving it backward (earlier) is allowed to extend history.
-        if (reminderToEdit && editScope !== 'this') {
-            const oldStart = reminderToEdit.schedule?.startDate || reminderToEdit.date;
-            if (oldStart) {
-                const todayStr = new Date().toLocaleDateString('en-CA');
-                // If it's a past reminder AND we are trying to move start date forward
-                if (oldStart < todayStr && startDate > oldStart) {
-                    alert("Cannot move the Start Date forward for an active past reminder.\n\nYou can only extend it backward (earlier) to preserve history.");
-                    return;
-                }
-            }
-        }
+        // VALIDATION: Legacy check removed. 
+        // We now allow moving Start Date forward because dataService handles "Soft Split" (History Preservation)
+        // by ending the old series and creating a new one.
 
         if (editScope === 'this' && reminderToEdit) {
             let targetDateStr = startDate;
@@ -367,12 +396,15 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             data.time = time;
         }
 
+        console.log("Saving Reminder Data:", data, "Scope:", editScope, "Key:", reminderToEdit?.instanceKey);
+
         setIsSaving(true);
 
         try {
             if (reminderToEdit && editScope === 'this') {
                 // Update specific instance ONLY
-                // Note: ExpandRemindersForDate now inherits instructions/files from exceptions
+                // Explicitly verify time is in passed data
+                if (!data.time) console.warn("WARNING: Saving exception without time!");
                 await onSave(data, reminderToEdit.instanceKey);
             } else {
                 // Standard Update (Series or New)
