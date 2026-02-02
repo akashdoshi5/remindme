@@ -315,12 +315,26 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
 
             const targetDateTime = new Date(`${targetDateStr}T${time}`);
             const now = new Date();
+            const todayStr = now.toLocaleDateString('en-CA');
 
             if (reminderToEdit.status !== 'missed') {
-                if (targetDateTime < now) {
+                // V10: Fix "Time in Past" validation. Only alert if Date Matches Today AND Time is Past.
+                // If Date is Future, Time can be anything.
+                if (targetDateStr === todayStr && targetDateTime < now) {
                     alert("Please select a future time.");
                     return;
                 }
+                // Also Check validation for strictly past dates if not 'missed'?
+                // But we locked past dates already.
+            }
+        }
+
+        // V10: Series Update Confirmation
+        if (reminderToEdit && editScope === 'all' && (reminderToEdit.frequency !== 'Once' || reminderToEdit.schedule?.type === 'recurring')) {
+            const confirmed = window.confirm("Update Series?\n\nThis will update all FUTURE events. Past events will be preserved in history.");
+            if (!confirmed) {
+                setIsSaving(false);
+                return;
             }
         }
 
@@ -390,7 +404,6 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                 alert("Please select a time.");
                 setIsSaving(false);
                 return;
-
             }
             // CRITICAL FIX: Always set time for both 'this' and 'all' scopes
             data.time = time;
@@ -518,9 +531,53 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Date</label>
                                     <input
                                         type="date"
-                                        readOnly={editScope === 'this' && reminderToEdit?.frequency !== 'Once'}
-                                        min={(editScope === 'all' && reminderToEdit?.schedule?.startDate < new Date().toLocaleDateString('en-CA')) ? new Date().toLocaleDateString('en-CA') : undefined}
-                                        className={`w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white transition-all ${(editScope === 'this' && reminderToEdit?.frequency !== 'Once') ? 'opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900' : 'focus:ring-2 focus:ring-orange-500'}`}
+                                        readOnly={(() => {
+                                            // V10: Strict Date Locking Logic
+                                            // 1. Past events are ALWAYS locked
+                                            const originalStart = reminderToEdit?.schedule?.startDate || reminderToEdit?.date || reminderToEdit?.targetDate; // targetDate for instances
+                                            const today = new Date().toLocaleDateString('en-CA');
+
+                                            // Check if it's visually in the past (based on what was set)
+                                            // For instances, use the instance key date if available for strictness? 
+                                            // User said: "past... not editable".
+                                            let checkDate = originalStart;
+                                            if (reminderToEdit?.instanceKey) checkDate = reminderToEdit.instanceKey.split('_')[0];
+
+                                            const isPast = checkDate < today;
+
+                                            if (isPast) return true;
+
+                                            // 2. Ongoing Series (Future/Today)
+                                            // "in between start is not editable"
+                                            // If it's a series instance (frequency !== 'Once' && editScope === 'this'), Lock it.
+                                            // EXCEPT if user wants to reschedule a single future instance? 
+                                            // User said: "single future reminders can be rescheduled completely".
+                                            // BUT also: "when the event is in the series then in this event it should not change date".
+                                            // CONTRADICTION?
+                                            // Clarification 3: "if the event is just the normal once single event... start date should be able to change"
+                                            // Clarification 4: "the series which is ongoing should also see the start and end date as it is set"
+
+                                            // Interpretation:
+                                            // - Single 'Once' event (Future): Editable.
+                                            // - Series Instance (Future): Locked? (To prevent detaching? Or allow rescheduling?)
+                                            // User said: "start is not editable" for "in between".
+                                            // So: Series Instance -> Locked. Single Event -> Editable.
+
+                                            if (editScope === 'this' && reminderToEdit?.frequency !== 'Once') return true;
+
+                                            return false;
+                                        })()}
+                                        min={(editScope === 'all' && reminderToEdit?.schedule?.startDate < new Date().toLocaleDateString('en-CA')) ? undefined : new Date().toLocaleDateString('en-CA')}
+                                        className={`w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white transition-all ${
+                                            // Copy same logic for className styling opacity
+                                            (() => {
+                                                const originalStart = reminderToEdit?.schedule?.startDate || reminderToEdit?.date || (reminderToEdit?.instanceKey?.split('_')[0]);
+                                                const today = new Date().toLocaleDateString('en-CA');
+                                                const isPast = originalStart < today;
+                                                const isSeriesInstance = editScope === 'this' && reminderToEdit?.frequency !== 'Once';
+                                                return (isPast || isSeriesInstance) ? 'opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900' : 'focus:ring-2 focus:ring-orange-500';
+                                            })()
+                                            }`}
                                         value={startDate}
                                         onChange={(e) => setStartDate(e.target.value)}
                                     />

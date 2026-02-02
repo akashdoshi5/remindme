@@ -290,15 +290,31 @@ const RemindersPage = () => {
                     ) : (
                         <div className="flex items-center justify-between bg-white dark:bg-gray-900 p-2 md:p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 relative z-50">
                             <button onClick={(e) => { e.stopPropagation(); handleDateChange(-1); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400"><ChevronLeft size={20} /></button>
-                            <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-2 font-bold text-base md:text-lg text-gray-900 dark:text-gray-100">
+                            <div className="flex items-center gap-2 relative group cursor-pointer">
+                                {/* V10: Quick Calendar Picker */}
+                                <input
+                                    type="date"
+                                    className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full"
+                                    value={selectedDate.toLocaleDateString('en-CA')}
+                                    onChange={(e) => {
+                                        if (e.target.value) {
+                                            const parts = e.target.value.split('-');
+                                            const d = new Date();
+                                            d.setFullYear(parts[0], parts[1] - 1, parts[2]);
+                                            d.setHours(0, 0, 0, 0);
+                                            setSelectedDate(d);
+                                        }
+                                    }}
+                                />
+                                <div className="flex items-center gap-2 font-bold text-base md:text-lg text-gray-900 dark:text-gray-100 group-hover:text-orange-600 transition-colors">
                                     <Calendar size={18} className="text-orange-500" />
                                     {new Date(selectedDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                                    <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 rotate-90" />
                                 </div>
                                 {new Date(selectedDate).setHours(0, 0, 0, 0) !== new Date().setHours(0, 0, 0, 0) && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setSelectedDate(new Date()); }}
-                                        className="px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-[10px] md:text-xs font-bold rounded-lg uppercase tracking-wide"
+                                        className="px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-[10px] md:text-xs font-bold rounded-lg uppercase tracking-wide relative z-20"
                                     >
                                         Today
                                     </button>
@@ -519,10 +535,36 @@ const RemindersPage = () => {
                                                                 })()}
                                                             </div>
                                                             <div className="min-w-0 flex-1">
-                                                                <h3 className={`font-bold text-base md:text-lg truncate leading-tight ${isPastTime && reminder.status !== 'taken' ? 'text-gray-600 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>
-                                                                    {reminder.title}
-                                                                </h3>
+                                                                <div className="flex items-center gap-2">
+                                                                    <h3 className={`font-bold text-base md:text-lg truncate leading-tight ${isPastTime && reminder.status !== 'taken' ? 'text-gray-600 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                                                                        {reminder.title}
+                                                                    </h3>
+                                                                    {/* V10: Search Result Extra Info */}
+                                                                    {searchQuery && (reminder.schedule?.type === 'recurring' || reminder.frequency !== 'Once') && (
+                                                                        <span className="shrink-0 p-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" title="Recurring/Course">
+                                                                            <RefreshCcw size={12} />
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+
                                                                 {reminder.instructions && <p className="text-gray-500 dark:text-gray-400 text-xs md:text-sm truncate">{reminder.instructions}</p>}
+
+                                                                {/* V10: Show Date Range in Search Results */}
+                                                                {searchQuery && reminder.schedule && reminder.schedule.startDate && (
+                                                                    <div className="text-[10px] md:text-xs text-blue-500 mt-0.5 flex items-center gap-1 bg-blue-50 dark:bg-blue-900/10 self-start px-1.5 py-0.5 rounded w-fit">
+                                                                        <span>{new Date(reminder.schedule.startDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                                                                        <ArrowRightLeft size={8} />
+                                                                        <span>
+                                                                            {/* Calculate End Date roughly or show "Ongoing" */}
+                                                                            {(() => {
+                                                                                if (!reminder.schedule.durationDays) return "Ongoing";
+                                                                                const d = new Date(reminder.schedule.startDate);
+                                                                                d.setDate(d.getDate() + reminder.schedule.durationDays);
+                                                                                return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                                                                            })()}
+                                                                        </span>
+                                                                    </div>
+                                                                )}
 
                                                                 {/* Attachments Display */}
                                                                 {reminder.files && reminder.files.length > 0 && (
