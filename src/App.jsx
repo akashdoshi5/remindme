@@ -332,7 +332,9 @@ const AppContent = () => {
 
         listenerHandle = await CapacitorApp.addListener('backButton', async () => {
           const { isSearchOpen, isSettingsOpen, isMobileMenuOpen, activeAlarm } = uiStateRef.current;
-          const currentPath = locationRef.current.pathname;
+          // Fallback to window.location if ref is stale/empty
+          const currentPath = locationRef.current.pathname || window.location.pathname;
+          console.log("[BackButton] Path:", currentPath);
 
           // Priority 1: Registered Handlers (Modals)
           const handled = await BackButtonManager.handleBackPress();
@@ -350,23 +352,24 @@ const AppContent = () => {
           }
 
           // Priority 4: Navigation Logic
-          // Remove query params and trailing slashes for root check
-          const cleanPath = currentPath.split('?')[0].split('#')[0].replace(/\/$/, '') || '/';
+          // Navigation Logic
+          const path = currentPath.toLowerCase().split('?')[0].split('#')[0].replace(/\/$/, '') || '/';
+          console.log("[BackButton] Normalized Path:", path);
 
-          // Define Root/Home Paths where Back should Exit
-          const isRoot = cleanPath === '/' || cleanPath === '/login' || cleanPath === '/signup';
+          // Top Level Routes (Tabs)
+          const topLevelRoutes = ['/reminders', '/notes', '/caregivers', '/reports'];
+          const isTopLevel = topLevelRoutes.some(r => path === r || path.startsWith(r + '/'));
 
-          // Define Top-Level Tabs where Back should go Home (User Request)
-          const isTopLevel = ['/reminders', '/notes', '/caregivers', '/reports'].includes(cleanPath);
+          const isRoot = path === '/' || path === '/login' || path === '/signup' || path === '/home';
 
           if (isRoot) {
-            console.log("Back Button: Exiting App (Root Page)");
+            console.log("[BackButton] Exiting App");
             CapacitorApp.exitApp();
           } else if (isTopLevel) {
-            console.log("Back Button: Navigating to Home");
-            navigate('/');
+            console.log("[BackButton] Navigating Home (Replace)");
+            navigate('/', { replace: true });
           } else {
-            console.log("Back Button: Navigating Back");
+            console.log("[BackButton] Default Back");
             navigate(-1);
           }
         });
