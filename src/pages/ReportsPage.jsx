@@ -687,9 +687,11 @@ const ReportsPage = () => {
                                             <div className="flex justify-between items-start">
                                                 <h4 className="font-bold text-gray-900 dark:text-gray-100 leading-tight">{event.title}</h4>
                                                 <div className="flex flex-col items-end gap-1">
-                                                    <span className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-opacity group-hover:opacity-0 ${event.status === 'taken' && event.takenAt ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-900' : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-100 dark:border-gray-600'}`}>
-                                                        {event.status === 'taken' && event.takenAt
-                                                            ? new Date(event.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                                    <span className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-opacity group-hover:opacity-0 ${event.status === 'taken' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-900' : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-100 dark:border-gray-600'}`}>
+                                                        {event.status === 'taken'
+                                                            ? (event.takenAt
+                                                                ? new Date(event.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                                                : new Date().setHours(event.displayTime.split(':')[0], event.displayTime.split(':')[1]) && new Date(new Date().setHours(event.displayTime.split(':')[0], event.displayTime.split(':')[1])).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
                                                             : event.displayTime
                                                         }
                                                     </span>

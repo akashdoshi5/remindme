@@ -612,7 +612,18 @@ const RemindersPage = () => {
                                                                 )}
 
                                                                 <div className={`flex items-center gap-2 mt-1 text-xs font-bold ${isPastTime ? 'text-gray-400' : 'text-orange-500'}`}>
-                                                                    <Clock size={12} /> {reminder.displayTime}
+                                                                    {reminder.status === 'taken' && reminder.takenAt ? (
+                                                                        <>
+                                                                            <CheckCircle size={12} className="text-green-500" />
+                                                                            <span className="text-green-600 dark:text-green-400">
+                                                                                {new Date(reminder.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                            </span>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <Clock size={12} /> {reminder.displayTime}
+                                                                        </>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </div>
