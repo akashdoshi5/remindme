@@ -218,21 +218,37 @@ export const dataService = {
 
                 // If we have a local version, merge critical fields that might have pending writes
                 if (localR) {
-                    // Merge Logs: Keep local logs if cloud is missing them (pending sync)
-                    const mergedLogs = { ...cloudR.logs };
+                    // Merge Logs: Conflict Resolution Strategy
+                    const mergedLogs = { ...cloudR.logs }; // Start with Cloud as base
+
                     if (localR.logs) {
                         Object.keys(localR.logs).forEach(key => {
-                            // If local has a log that cloud doesn't, OR local has a timestamp? 
-                            // Simple heuristic: If cloud is empty/missing for this key, use local.
-                            if (!mergedLogs[key]) {
-                                mergedLogs[key] = localR.logs[key];
+                            const localLog = localR.logs[key];
+                            const cloudLog = mergedLogs[key];
+
+                            // Case 1: Cloud doesn't have this log yet (New local action)
+                            if (!cloudLog) {
+                                mergedLogs[key] = localLog;
+                            }
+                            // Case 2: Conflict - Check timestamps
+                            else {
+                                // If local has a timestamp and cloud doesn't, or local is newer
+                                const localTime = localLog.updatedAt ? new Date(localLog.updatedAt).getTime() : 0;
+                                const cloudTime = cloudLog.updatedAt ? new Date(cloudLog.updatedAt).getTime() : 0;
+
+                                // Heuristic: If I just acted on it (localTime > cloudTime), keep local.
+                                // If equal, prefer 'taken' over 'missed' (positive status wins)
+                                if (localTime > cloudTime) {
+                                    mergedLogs[key] = localLog;
+                                } else if (localTime === cloudTime) {
+                                    // Tie-breaker: Taken/Snoozed > Missed/Upcoming
+                                    if (localLog.status === 'taken' && cloudLog.status !== 'taken') {
+                                        mergedLogs[key] = localLog;
+                                    }
+                                }
                             }
                         });
                     }
-
-                    // Note: For 'status' (single instance), we generally trust Cloud as source of truth
-                    // because Firestore SDK handles latency compensation (local writes appear in snapshot instantly).
-                    // The main risk was blind overwriting references or partial log updates.
 
                     return { ...cloudR, logs: mergedLogs };
                 }
@@ -1169,6 +1185,7 @@ export const dataService = {
                     newLogs[instanceKey] = {
                         status: status,
                         takenAt: status === 'taken' ? new Date().toISOString() : null,
+                        updatedAt: new Date().toISOString() // V10.21: Timestamp for Sync
                     };
                     return { ...r, logs: newLogs };
                 }
@@ -1205,7 +1222,8 @@ export const dataService = {
                 const payload = {
                     [key]: {
                         status: status,
-                        takenAt: status === 'taken' ? new Date().toISOString() : null
+                        takenAt: status === 'taken' ? new Date().toISOString() : null,
+                        updatedAt: new Date().toISOString()
                     }
                 };
                 await firestoreService.updateReminder(id, payload);
@@ -1225,7 +1243,8 @@ export const dataService = {
                     const newLogs = { ...(r.logs || {}) };
                     newLogs[instanceKey] = {
                         status,
-                        takenAt: customTimestamp
+                        takenAt: customTimestamp,
+                        updatedAt: new Date().toISOString()
                     };
                     return { ...r, logs: newLogs };
                 }
@@ -1259,7 +1278,8 @@ export const dataService = {
                 const payload = {
                     [key]: {
                         status: status,
-                        takenAt: customTimestamp
+                        takenAt: customTimestamp,
+                        updatedAt: new Date().toISOString()
                     }
                 };
                 await firestoreService.updateReminder(id, payload);
