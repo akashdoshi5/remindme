@@ -197,12 +197,8 @@ export const dataService = {
     isReadOnly: () => !!activeProfile, // Exposed helper for UI
 
     // Caregiver Actions
-    addCaregiver: async (email) => {
-        // Add a "Caregiver" (Viewer) to MY list
-        // We create a doc in my subcollection
-        await firestoreService.addCaregiver({ email, status: 'invited', createdAt: new Date().toISOString() });
-        // Refresh local list happens via sync logic usually, but let's assume realtime listener handles it
-    },
+    // addCaregiver: (Moved to bottom)
+
 
     getPatientsForMe: async () => {
         if (!auth.currentUser) return [];

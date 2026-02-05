@@ -809,129 +809,129 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                                     <option value="1095">3 Years</option>
                                                 </select>
                                             </div>
-                                        </div>
 
-                                    {showCustomDays && (
-                                        <div className="flex justify-between mt-1 px-1">
-                                            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-                                                <button
-                                                    key={day}
-                                                    type="button"
-                                                    onClick={() => toggleDay(day)}
-                                                    className={`w-9 h-9 rounded-full text-xs font-bold transition-all border ${customDays.includes(day)
-                                                        ? 'bg-orange-500 border-orange-500 text-white shadow-md transform scale-105'
-                                                        : 'bg-white border-gray-200 text-gray-500 hover:border-orange-300 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400'
-                                                        }`}
-                                                >
-                                                    {day.charAt(0)}
-                                                </button>
-                                            ))}
-                                        </div>
+
+                                            {showCustomDays && (
+                                                <div className="flex justify-between mt-1 px-1">
+                                                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
+                                                        <button
+                                                            key={day}
+                                                            type="button"
+                                                            onClick={() => toggleDay(day)}
+                                                            className={`w-9 h-9 rounded-full text-xs font-bold transition-all border ${customDays.includes(day)
+                                                                ? 'bg-orange-500 border-orange-500 text-white shadow-md transform scale-105'
+                                                                : 'bg-white border-gray-200 text-gray-500 hover:border-orange-300 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400'
+                                                                }`}
+                                                        >
+                                                            {day.charAt(0)}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </>
                                     )}
-                                </>
+                                </div>
                             )}
                         </div>
-                        )}
-                    </div>
 
-                    {/* Files Section */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Attachments</label>
-                        <div className="flex flex-col gap-2">
-                            {files.map((file, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded">
-                                    <span className="text-xs truncate max-w-[150px] dark:text-gray-300">{file.name}</span>
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                // Handle Preview
-                                                if (file.url) {
-                                                    // Existing storage URL
-                                                    window.open(file.url, '_blank');
-                                                } else if (file instanceof File) {
-                                                    // New local file
-                                                    const url = URL.createObjectURL(file);
-                                                    window.open(url, '_blank');
-                                                } else if (file.data) {
-                                                    // Base64 or Blob data if stored that way
-                                                    const win = window.open();
-                                                    win.document.write('<iframe src="' + file.data + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
-                                                }
-                                            }}
-                                            className="text-orange-500 hover:text-orange-600 dark:text-orange-400"
-                                            title="Preview File"
-                                        >
-                                            <Eye size={14} />
-                                        </button>
-                                        <button type="button" onClick={() => setFiles(files.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-400"><Trash2 size={14} /></button>
+                        {/* Files Section */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Attachments</label>
+                            <div className="flex flex-col gap-2">
+                                {files.map((file, idx) => (
+                                    <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded">
+                                        <span className="text-xs truncate max-w-[150px] dark:text-gray-300">{file.name}</span>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    // Handle Preview
+                                                    if (file.url) {
+                                                        // Existing storage URL
+                                                        window.open(file.url, '_blank');
+                                                    } else if (file instanceof File) {
+                                                        // New local file
+                                                        const url = URL.createObjectURL(file);
+                                                        window.open(url, '_blank');
+                                                    } else if (file.data) {
+                                                        // Base64 or Blob data if stored that way
+                                                        const win = window.open();
+                                                        win.document.write('<iframe src="' + file.data + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                                                    }
+                                                }}
+                                                className="text-orange-500 hover:text-orange-600 dark:text-orange-400"
+                                                title="Preview File"
+                                            >
+                                                <Eye size={14} />
+                                            </button>
+                                            <button type="button" onClick={() => setFiles(files.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-400"><Trash2 size={14} /></button>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
 
-                            {isUploading && (
-                                <div className="flex items-center justify-center p-3 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 text-gray-500">
-                                    <span className="animate-spin mr-2">⏳</span> Uploading...
-                                </div>
-                            )}
+                                {isUploading && (
+                                    <div className="flex items-center justify-center p-3 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 text-gray-500">
+                                        <span className="animate-spin mr-2">⏳</span> Uploading...
+                                    </div>
+                                )}
 
-                            <label
-                                onDragOver={handleDragOver}
-                                onDragLeave={handleDragLeave}
-                                onDrop={handleDrop}
-                                className={`flex items-center justify-center gap-2 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${isDragging
-                                    ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 scale-[1.02]'
-                                    : `border-gray-300 dark:border-gray-700 hover:border-orange-400 dark:hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-gray-500 dark:text-gray-400 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`
-                                    }`}
+                                <label
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleDrop}
+                                    className={`flex items-center justify-center gap-2 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${isDragging
+                                        ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 scale-[1.02]'
+                                        : `border-gray-300 dark:border-gray-700 hover:border-orange-400 dark:hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-gray-500 dark:text-gray-400 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`
+                                        }`}
+                                >
+                                    <Upload size={18} />
+                                    <span className="text-sm">{isDragging ? 'Drop Files Here' : 'Attach File (Rx, Photo) or Drag & Drop'}</span>
+                                    <input type="file" multiple className="hidden" onChange={handleFileChange} disabled={isUploading} />
+                                </label>
+                            </div>
+                        </div>
+
+                        {/* Instructions */}
+                        <div>
+                            <div className="flex justify-between items-center mb-1">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Instructions (Optional)</label>
+                                {isSupported && (
+                                    <button type="button" onClick={() => handleMicClick('instructions')} className={`text-xs flex items-center gap-1 ${isListening && activeField === 'instructions' ? 'text-red-500 animate-pulse' : 'text-orange-600 dark:text-orange-400'}`}>
+                                        {isListening && activeField === 'instructions' ? <MicOff size={14} /> : <Mic size={14} />}
+                                        {isListening && activeField === 'instructions' ? 'Stop Listening' : 'Dictate'}
+                                    </button>
+                                )}
+                            </div>
+                            <textarea
+                                rows="2"
+                                placeholder="e.g., Take with food"
+                                className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none resize-none focus:ring-2 focus:ring-orange-500 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-600"
+                                value={instructions}
+                                onChange={(e) => setInstructions(e.target.value)}
+                            ></textarea>
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl border border-orange-100 dark:border-orange-800/50">
+                            {/* Important Tag Removed as per user request */}
+                            <span className="text-sm text-gray-500 dark:text-gray-400">Attachments will be visible on all future reminders in this series.</span>
+                        </div>
+                    </div>
+
+                    <div className="fixed bottom-0 left-0 right-0 p-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 z-[110] md:static md:z-30 md:border-t md:shrink-0">
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="flex-1 py-3.5 text-lg font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors"
                             >
-                                <Upload size={18} />
-                                <span className="text-sm">{isDragging ? 'Drop Files Here' : 'Attach File (Rx, Photo) or Drag & Drop'}</span>
-                                <input type="file" multiple className="hidden" onChange={handleFileChange} disabled={isUploading} />
-                            </label>
+                                Close
+                            </button>
+                            <button type="submit" disabled={isUploading || isSaving} className="btn btn-primary flex-[2] py-3.5 text-lg shadow-orange-500/25 disabled:opacity-70 disabled:grayscale">
+                                {isUploading ? 'Uploading...' : isSaving ? 'Saving...' : 'Save Reminder'}
+                            </button>
                         </div>
                     </div>
-
-                    {/* Instructions */}
-                    <div>
-                        <div className="flex justify-between items-center mb-1">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Instructions (Optional)</label>
-                            {isSupported && (
-                                <button type="button" onClick={() => handleMicClick('instructions')} className={`text-xs flex items-center gap-1 ${isListening && activeField === 'instructions' ? 'text-red-500 animate-pulse' : 'text-orange-600 dark:text-orange-400'}`}>
-                                    {isListening && activeField === 'instructions' ? <MicOff size={14} /> : <Mic size={14} />}
-                                    {isListening && activeField === 'instructions' ? 'Stop Listening' : 'Dictate'}
-                                </button>
-                            )}
-                        </div>
-                        <textarea
-                            rows="2"
-                            placeholder="e.g., Take with food"
-                            className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none resize-none focus:ring-2 focus:ring-orange-500 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-600"
-                            value={instructions}
-                            onChange={(e) => setInstructions(e.target.value)}
-                        ></textarea>
-                    </div>
-
-                    <div className="flex items-center gap-2 bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl border border-orange-100 dark:border-orange-800/50">
-                        {/* Important Tag Removed as per user request */}
-                        <span className="text-sm text-gray-500 dark:text-gray-400">Attachments will be visible on all future reminders in this series.</span>
-                    </div>
-            </div>
-
-            <div className="fixed bottom-0 left-0 right-0 p-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 z-[110] md:static md:z-30 md:border-t md:shrink-0">
-                <div className="flex gap-3">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="flex-1 py-3.5 text-lg font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors"
-                    >
-                        Close
-                    </button>
-                    <button type="submit" disabled={isUploading || isSaving} className="btn btn-primary flex-[2] py-3.5 text-lg shadow-orange-500/25 disabled:opacity-70 disabled:grayscale">
-                        {isUploading ? 'Uploading...' : isSaving ? 'Saving...' : 'Save Reminder'}
-                    </button>
-                </div>
-            </div>
-        </form>
+                </form>
             </div >
         </div >
     );

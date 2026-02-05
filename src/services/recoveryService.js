@@ -67,7 +67,7 @@ export const recoveryService = {
                             // ORPHAN FOUND
                             const url = await getDownloadURL(itemRef);
                             let meta = {};
-                            try { meta = await getMetadata(itemRef); } catch (e) { }
+                            try { meta = await getMetadata(itemRef); } catch (e) { /* ignore */ }
 
                             recoveredFiles.push({
                                 id: id,
