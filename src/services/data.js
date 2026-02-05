@@ -211,13 +211,40 @@ export const dataService = {
 
     // SYNC: Update local store from Cloud (acting as cache)
     syncFromCloud: (type, data) => {
-        if (activeProfile) return; // Don't sync cloud data into 'store' if we are viewing someone else (though cloud sync should usually target 'store')
-        // Actually sync listeners should update 'store' regardless of view?
-        // Yes, background sync should keep 'store' fresh.
+        if (activeProfile) return; // Don't sync when viewing patient
 
-        if (type === 'reminders') store.reminders = data;
-        if (type === 'notes') store.notes = data;
-        if (type === 'caregivers') store.caregivers = data;
+        if (type === 'reminders') {
+            // V10.20: SMART MERGE to prevent overwriting pending local changes (logs)
+            if (!store.reminders) store.reminders = [];
+
+            store.reminders = data.map(cloudR => {
+                const localR = store.reminders.find(r => String(r.id) === String(cloudR.id));
+
+                // If we have a local version, merge critical fields that might have pending writes
+                if (localR) {
+                    // Merge Logs: Keep local logs if cloud is missing them (pending sync)
+                    const mergedLogs = { ...cloudR.logs };
+                    if (localR.logs) {
+                        Object.keys(localR.logs).forEach(key => {
+                            // If local has a log that cloud doesn't, OR local has a timestamp? 
+                            // Simple heuristic: If cloud is empty/missing for this key, use local.
+                            if (!mergedLogs[key]) {
+                                mergedLogs[key] = localR.logs[key];
+                            }
+                        });
+                    }
+
+                    // Note: For 'status' (single instance), we generally trust Cloud as source of truth
+                    // because Firestore SDK handles latency compensation (local writes appear in snapshot instantly).
+                    // The main risk was blind overwriting references or partial log updates.
+
+                    return { ...cloudR, logs: mergedLogs };
+                }
+                return cloudR;
+            });
+        }
+        else if (type === 'notes') store.notes = data;
+        else if (type === 'caregivers') store.caregivers = data;
 
         if (type === 'settings') {
             store.settings = { ...(store.settings || {}), ...data };
@@ -225,6 +252,9 @@ export const dataService = {
 
         // Save to local storage for offline use / persistence
         save();
+
+        // Trigger UI update
+        notifyListeners();
     },
 
     // Export store access for migration
@@ -459,6 +489,7 @@ export const dataService = {
                             expanded.push({
                                 ...r,
                                 ...exception, // Merge exception data (instructions, etc)
+                                files: (exception && exception.files && exception.files.length > 0) ? exception.files : (r.files || []),
                                 uniqueId: `${r.id}_${instanceKey}`,
                                 instanceKey: exception ? (r.exceptions[instanceKey] ? instanceKey : altKey) : instanceKey,
                                 displayTime: displayTime,
@@ -480,6 +511,23 @@ export const dataService = {
                 else if (r.frequency === 'Daily') show = true;
                 else if (r.frequency === 'Today') show = (r.date === dateString || (!r.date && dateString === todayStr));
                 else if (r.date === dateString) show = true;
+                else if (r.frequency === 'Monthly') {
+                    // Monthly Logic: Same day of month
+                    const start = new Date(r.schedule?.startDate || r.date || '2000-01-01');
+                    const current = new Date(dateString);
+                    // Check if day matches
+                    if (start.getDate() === current.getDate()) {
+                        show = true;
+
+                        // Handle short months (e.g. 31st on Feb) -> Skip? Or fallback to last day?
+                        // Standard behavior: Skip if date doesn't exist in current month.
+                        // JS Date auto-corrects (Jan 31 + 1 month -> March 3) which is bad for recurrence.
+                        // But here we are iterating DAYS. `dateString` is valid. 
+                        // We check if `dateString`'s day matches `start`'s day.
+                        // If Start is 31st, and dateString is Feb 28, they don't match. So it skips.
+                        // User wants simple monthly.
+                    }
+                }
                 else if (r.frequency === 'Weekly') {
                     // Calculate day difference from start
                     const start = new Date(r.schedule?.startDate || r.date || '2000-01-01');
@@ -628,6 +676,7 @@ export const dataService = {
                         expanded.push({
                             ...r,
                             ...exception, // OVERRIDE with exception data (instructions, files, etc)
+                            files: (exception && exception.files && exception.files.length > 0) ? exception.files : (r.files || []),
                             uniqueId: `${r.id}_${instanceKey}`,
                             instanceKey: instanceKey,
                             displayTime: displayTime,
@@ -691,6 +740,8 @@ export const dataService = {
 
                         expanded.push({
                             ...r,
+                            ...ex, // Apply Exception Data (Title, Notes, etc)
+                            files: (ex.files && ex.files.length > 0) ? ex.files : (r.files || []),
                             uniqueId: `${r.id}_${key}`,
                             instanceKey: key,
                             displayTime: displayTime,
@@ -751,13 +802,93 @@ export const dataService = {
 
     addReminder: async (reminder) => {
         if (activeProfile) return; // Read Only
+
+        let newReminder;
         if (auth.currentUser) {
-            return await firestoreService.addReminder(reminder);
+            newReminder = await firestoreService.addReminder(reminder);
+        } else {
+            newReminder = { ...reminder, id: Date.now() };
+            if (!store.reminders) store.reminders = [];
+            store.reminders.push(newReminder);
+            save();
         }
-        const newReminder = { ...reminder, id: Date.now() };
-        if (!store.reminders) store.reminders = [];
-        store.reminders.push(newReminder);
-        save();
+
+        // V10.8: Auto-Complete Past Instances Logic
+        try {
+            const now = new Date();
+            const todayStr = now.toLocaleDateString('en-CA');
+            const startStr = newReminder.schedule?.startDate || newReminder.date;
+
+            // Only backfill if we have a start date and it is <= today
+            if (startStr && startStr <= todayStr) {
+                console.log("Checking for past instances to auto-complete...", startStr);
+                const logs = {};
+                let hasUpdates = false;
+
+                // Limit backfill to 365 days to prevent crashes on crazy old dates
+                const startDate = new Date(startStr);
+                const loopDate = new Date(startStr);
+                // Reset time to avoid loop issues
+                loopDate.setHours(0, 0, 0, 0);
+
+                const limitDate = new Date(todayStr);
+                limitDate.setHours(0, 0, 0, 0);
+
+                const oneDay = 24 * 60 * 60 * 1000;
+                let iterations = 0;
+
+                while (loopDate <= limitDate && iterations < 365) {
+                    const dStr = loopDate.toLocaleDateString('en-CA');
+
+                    // Use expandRemindersForDate with explicit single reminder to get correct instances
+                    const instances = dataService.expandRemindersForDate(dStr, [newReminder], store.settings || {});
+
+                    instances.forEach(inst => {
+                        // Check exact time
+                        let isPast = false;
+                        if (dStr < todayStr) isPast = true;
+                        else if (dStr === todayStr) {
+                            // Check time
+                            if (inst.time) {
+                                const instanceDate = new Date(`${dStr}T${inst.time}`);
+                                if (instanceDate < now) isPast = true;
+                            } else {
+                                // All day? Assume done? Or keep active? 
+                                // User said "past reminders... considering u have taken".
+                                // If today passed, it's done? If today is current, effectively "Time < Now" matters.
+                                // If no time, standard is notification at specific time.
+                                // Let's assume strict time comparison. If no time, treat as 'Now' (upcoming).
+                            }
+                        }
+
+                        if (isPast) {
+                            logs[inst.instanceKey] = {
+                                status: 'taken', // V10.11 FIX: Must be 'taken' to match expandReminders status logic
+                                takenAt: new Date().toISOString()
+                            };
+                            hasUpdates = true;
+                        }
+                    });
+
+                    loopDate.setTime(loopDate.getTime() + oneDay);
+                    iterations++;
+                }
+
+                if (hasUpdates) {
+                    console.log("Auto-completing past instances:", Object.keys(logs).length);
+                    // Update the reminder
+                    // NOTE: updateReminder merges logs
+                    await dataService.updateReminder(newReminder.id, { logs });
+
+                    // Update returned object locally just in case UI uses it immediately without refetch
+                    newReminder.logs = { ...newReminder.logs, ...logs };
+                }
+            }
+        } catch (err) {
+            console.error("Auto-completion failed", err);
+            // Non-blocking error
+        }
+
         return newReminder;
     },
 
@@ -769,6 +900,48 @@ export const dataService = {
         if (!reminder) return;
 
         if (instanceKey) {
+            // DETACH LOGIC: If Date is changed, verify if we should detach from series
+            // Check if 'date' is present in updates and differs from the instanceKey date
+            const originalDate = instanceKey.split('_')[0];
+            if (updates.date && updates.date !== originalDate) {
+                console.log("DataService: Date changed for instance. Detaching...", instanceKey, "to", updates.date);
+
+                // 1. Cancel the original instance in the series
+                // We recursively call updateReminder with just status='cancelled' for the OLD instanceKey
+                // This ensures the series timeline hides the old one.
+                await dataService.updateReminder(id, { status: 'cancelled' }, instanceKey);
+
+                // 2. Create a NEW Single Reminder for the new date
+                const newId = String(Date.now());
+
+                // Clean up the update payload to be a proper Single Reminder
+                const newReminder = {
+                    ...reminder, // Copy original series props (title, type, etc)
+                    ...updates,  // Apply changes (new date, new time, etc)
+                    id: newId,
+                    frequency: 'Once', // Force Single
+                    schedule: null,     // Remove Series Schedule
+                    date: updates.date, // Ensure top-level date is set
+                    // Ensure time is set correctly from updates or original instance
+                    time: updates.time || updates.schedule?.startTime || reminder.time || '09:00',
+
+                    // Reset Series-specifics
+                    logs: {},
+                    exceptions: {},
+                    instanceKey: null,
+                    isVirtual: false
+                };
+
+                // Remove internal props that shouldn't be copied
+                delete newReminder.period;
+                delete newReminder.displayTime;
+                delete newReminder.uniqueId;
+
+                console.log("DataService: Creating detached reminder:", newReminder);
+                await dataService.addReminder(newReminder);
+                return;
+            }
+
             console.log("DataService: Creating Exception:", instanceKey, updates);
             // Create Exception Logic (local)
             store.reminders = store.reminders.map(r => {
@@ -795,6 +968,9 @@ export const dataService = {
             }
         } else {
             // SERIES UPDATE
+            // V10.18 FIX: Skip series splitting if ONLY updating logs (auto-complete)
+            const isLogsOnlyUpdate = Object.keys(updates).length === 1 && updates.logs;
+
             // Check if we need to split history to preserve old data
             const todayStr = new Date().toLocaleDateString('en-CA');
             const yesterdayObj = new Date();
@@ -804,7 +980,7 @@ export const dataService = {
             const startDate = reminder.schedule?.startDate || reminder.date;
             const isRecurring = reminder.schedule?.type === 'recurring' || (reminder.frequency && reminder.frequency !== 'Once');
 
-            if (isRecurring && startDate && startDate < yesterdayStr) {
+            if (!isLogsOnlyUpdate && isRecurring && startDate && startDate < yesterdayStr) {
                 console.log("History Preservation: Soft splitting series.");
 
                 // Determine Split Point
@@ -842,6 +1018,57 @@ export const dataService = {
                 delete newReminder.logs; // Reset logs for new series
                 store.reminders.push(newReminder);
 
+                // V10.16: Auto-complete ANY past instances in the NEW series
+                try {
+                    const startStr = newReminder.schedule?.startDate;
+                    if (startStr) {
+                        const todayStr = new Date().toLocaleDateString('en-CA');
+                        const now = new Date();
+                        const logs = {};
+                        let hasUpdates = false;
+
+                        const loopDate = new Date(startStr);
+                        loopDate.setHours(0, 0, 0, 0);
+                        const limitDate = new Date(todayStr);
+                        limitDate.setHours(0, 0, 0, 0);
+
+                        const oneDay = 24 * 60 * 60 * 1000;
+                        let iterations = 0;
+
+                        while (loopDate <= limitDate && iterations < 365) {
+                            const dStr = loopDate.toLocaleDateString('en-CA');
+                            const instances = dataService.expandRemindersForDate(dStr, [newReminder], store.settings || {});
+
+                            instances.forEach(inst => {
+                                let isPast = false;
+                                if (dStr < todayStr) isPast = true;
+                                else if (dStr === todayStr) {
+                                    if (inst.time) {
+                                        const instanceDate = new Date(`${dStr}T${inst.time}`);
+                                        if (instanceDate < now) isPast = true;
+                                    }
+                                }
+
+                                if (isPast) {
+                                    logs[inst.instanceKey] = {
+                                        status: 'taken',
+                                        takenAt: new Date().toISOString()
+                                    };
+                                    hasUpdates = true;
+                                }
+                            });
+                            loopDate.setTime(loopDate.getTime() + oneDay);
+                            iterations++;
+                        }
+
+                        if (hasUpdates) {
+                            newReminder.logs = { ...(newReminder.logs || {}), ...logs };
+                        }
+                    }
+                } catch (e) {
+                    console.error("Auto-complete failed in updateReminder split", e);
+                }
+
                 // 3. Update Firestore
                 if (auth.currentUser) {
                     // Update old series endDate
@@ -854,7 +1081,73 @@ export const dataService = {
                 }
             } else {
                 // NORMAL UPDATE (local)
+                // V10.20 FIX: Reset 'missed' status if Date or Time is changed
+                if (updates.time || updates.date || (updates.schedule && updates.schedule.startTime)) {
+                    const r = store.reminders.find(item => String(item.id) === String(id));
+                    if (r && r.status === 'missed') {
+                        updates.status = 'upcoming'; // Reset to upcoming/active
+                    }
+                }
+
                 store.reminders = store.reminders.map(r => String(r.id) === String(id) ? { ...r, ...updates } : r);
+
+                // V10.17: Auto-complete for NORMAL updates too (but skip if already logs-only)
+                if (!isLogsOnlyUpdate) {
+                    const reminder = store.reminders.find(r => String(r.id) === String(id));
+                    if (reminder && reminder.frequency !== 'Once') {
+                        try {
+                            const startStr = reminder.schedule?.startDate;
+                            if (startStr) {
+                                const todayStr = new Date().toLocaleDateString('en-CA');
+                                const now = new Date();
+                                const logs = {};
+                                let hasUpdates = false;
+
+                                const loopDate = new Date(startStr);
+                                loopDate.setHours(0, 0, 0, 0);
+                                const limitDate = new Date(todayStr);
+                                limitDate.setHours(0, 0, 0, 0);
+
+                                const oneDay = 24 * 60 * 60 * 1000;
+                                let iterations = 0;
+
+                                while (loopDate <= limitDate && iterations < 365) {
+                                    const dStr = loopDate.toLocaleDateString('en-CA');
+                                    const instances = dataService.expandRemindersForDate(dStr, [reminder], store.settings || {});
+
+                                    instances.forEach(inst => {
+                                        let isPast = false;
+                                        if (dStr < todayStr) isPast = true;
+                                        else if (dStr === todayStr) {
+                                            if (inst.time) {
+                                                const instanceDate = new Date(`${dStr}T${inst.time}`);
+                                                if (instanceDate < now) isPast = true;
+                                            }
+                                        }
+
+                                        if (isPast && (!reminder.logs || !reminder.logs[inst.instanceKey])) {
+                                            logs[inst.instanceKey] = {
+                                                status: 'taken',
+                                                takenAt: new Date().toISOString()
+                                            };
+                                            hasUpdates = true;
+                                        }
+                                    });
+                                    loopDate.setTime(loopDate.getTime() + oneDay);
+                                    iterations++;
+                                }
+
+                                if (hasUpdates) {
+                                    reminder.logs = { ...(reminder.logs || {}), ...logs };
+                                    updates.logs = reminder.logs; // Ensure Firestore gets the updated logs
+                                }
+                            }
+                        } catch (e) {
+                            console.error("Auto-complete failed in normal update", e);
+                        }
+                    }
+                }
+
                 // NORMAL UPDATE (Firestore)
                 if (auth.currentUser) {
                     await firestoreService.updateReminder(id, updates);
@@ -871,93 +1164,113 @@ export const dataService = {
 
     // NEW: Detailed Status Logging for Medication
     logReminderStatus: async (id, instanceKey, status) => {
-        if (auth.currentUser) {
-            const key = `logs.${instanceKey}`;
-            const payload = {
-                [key]: {
-                    status: status,
-                    takenAt: status === 'taken' ? new Date().toISOString() : null
+        // V10.20: OPTIMISTIC UPDATE FIRST
+        // Update Local Store immediately for UI responsiveness
+        if (store.reminders) {
+            store.reminders = store.reminders.map(r => {
+                if (String(r.id) === String(id)) {
+                    const newLogs = { ...(r.logs || {}) };
+                    newLogs[instanceKey] = {
+                        status: status,
+                        takenAt: status === 'taken' ? new Date().toISOString() : null,
+                    };
+                    return { ...r, logs: newLogs };
                 }
-            };
-            await firestoreService.updateReminder(id, payload);
+                return r;
+            });
+
+            // Also add to global history if 'taken'
+            if (status === 'taken') {
+                const r = store.reminders.find(item => String(item.id) === String(id));
+                if (r) {
+                    if (!store.history) store.history = [];
+                    // Prevent duplicate history entries for same minute?
+                    store.history.push({
+                        id: Date.now(),
+                        reminderId: id,
+                        title: r.title,
+                        type: r.category || r.type,
+                        status: 'taken',
+                        date: new Date().toISOString().split('T')[0],
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            }
+
+            // Persist Local
+            await save();
+            notifyListeners(); // Force UI refresh
         }
 
-        if (!store.reminders) return;
-
-        store.reminders = store.reminders.map(r => {
-            if (String(r.id) === String(id)) {
-                const newLogs = { ...(r.logs || {}) };
-                newLogs[instanceKey] = {
-                    status: status,
-                    takenAt: status === 'taken' ? new Date().toISOString() : null,
+        // THEN Update Firestore
+        if (auth.currentUser) {
+            try {
+                const key = `logs.${instanceKey}`;
+                const payload = {
+                    [key]: {
+                        status: status,
+                        takenAt: status === 'taken' ? new Date().toISOString() : null
+                    }
                 };
-                return { ...r, logs: newLogs };
-            }
-            return r;
-        });
-
-        // Also add to global history if 'taken'
-        if (status === 'taken') {
-            const r = store.reminders.find(item => String(item.id) === String(id));
-            if (r) {
-                if (!store.history) store.history = [];
-                store.history.push({
-                    id: Date.now(),
-                    reminderId: id,
-                    title: r.title,
-                    type: r.category || r.type,
-                    status: 'taken',
-                    date: new Date().toISOString().split('T')[0],
-                    timestamp: new Date().toISOString()
-                });
+                await firestoreService.updateReminder(id, payload);
+            } catch (err) {
+                console.error("Firestore sync failed for status log:", err);
+                // We keep local change. Queueing would be next step.
             }
         }
-        await save();
     },
 
     // NEW: Status logging with custom timestamp
     logReminderStatusWithTime: async (id, instanceKey, status, customTimestamp) => {
-        if (auth.currentUser) {
-            const key = `logs.${instanceKey}`;
-            const payload = {
-                [key]: {
-                    status: status,
-                    takenAt: customTimestamp
+        // V10.20: OPTIMISTIC UPDATE FIRST
+        if (store.reminders) {
+            store.reminders = store.reminders.map(r => {
+                if (String(r.id) === String(id)) {
+                    const newLogs = { ...(r.logs || {}) };
+                    newLogs[instanceKey] = {
+                        status,
+                        takenAt: customTimestamp
+                    };
+                    return { ...r, logs: newLogs };
                 }
-            };
-            await firestoreService.updateReminder(id, payload);
+                return r;
+            });
+
+            // Also add to global history if 'taken'
+            if (status === 'taken') {
+                const r = store.reminders.find(item => String(item.id) === String(id));
+                if (r) {
+                    if (!store.history) store.history = [];
+                    store.history.push({
+                        id: Date.now(),
+                        reminderId: id,
+                        title: r.title,
+                        type: r.category || r.type,
+                        status: 'taken',
+                        date: new Date(customTimestamp).toISOString().split('T')[0],
+                        timestamp: customTimestamp
+                    });
+                }
+            }
+            save(); // Persist immediately
+            notifyListeners();
         }
 
-        if (!store.reminders) return;
-        store.reminders = store.reminders.map(r => {
-            if (String(r.id) === String(id)) {
-                const newLogs = { ...(r.logs || {}) };
-                newLogs[instanceKey] = {
-                    status,
-                    takenAt: customTimestamp
+        // THEN Update Firestore
+        if (auth.currentUser) {
+            try {
+                const key = `logs.${instanceKey}`;
+                const payload = {
+                    [key]: {
+                        status: status,
+                        takenAt: customTimestamp
+                    }
                 };
-                return { ...r, logs: newLogs };
-            }
-            return r;
-        });
-
-        // Also add to global history if 'taken'
-        if (status === 'taken') {
-            const r = store.reminders.find(item => String(item.id) === String(id));
-            if (r) {
-                if (!store.history) store.history = [];
-                store.history.push({
-                    id: Date.now(),
-                    reminderId: id,
-                    title: r.title,
-                    type: r.category || r.type,
-                    status: 'taken',
-                    date: new Date(customTimestamp).toISOString().split('T')[0],
-                    timestamp: customTimestamp
-                });
+                await firestoreService.updateReminder(id, payload);
+            } catch (err) {
+                console.error("Firestore sync failed for timed status:", err);
             }
         }
-        save();
     },
 
 
@@ -1017,8 +1330,11 @@ export const dataService = {
         const isPastRecurring = (reminder.schedule?.type === 'recurring' || (reminder.frequency && reminder.frequency !== 'Once')) &&
             startDate && startDate < todayStr;
 
-        if (isPastRecurring) {
-            // SOFT DELETE
+        // Check if it's ALREADY ended (Soft Deleted previously)
+        const isAlreadyEnded = reminder.schedule?.endDate && reminder.schedule.endDate < todayStr;
+
+        if (isPastRecurring && !isAlreadyEnded) {
+            // SOFT DELETE (Archive)
             // End Date = Today - 2 Days (Day Before Yesterday)
             const softEndDateObj = new Date();
             softEndDateObj.setDate(softEndDateObj.getDate() - 2);
@@ -1060,29 +1376,7 @@ export const dataService = {
         now.setMinutes(now.getMinutes() + minutes);
         const newTime = now.toISOString();
 
-        // 1. Update Firestore if authenticated
-        if (auth.currentUser) {
-            if (instanceKey) {
-                const key = `logs.${instanceKey}`;
-                const payload = {
-                    [key]: {
-                        status: 'snoozed',
-                        snoozedUntil: newTime,
-                        timestamp: now.toISOString()
-                    }
-                };
-                await firestoreService.updateReminder(id, payload);
-            } else {
-                // For simple reminders, we move the base time
-                // Convert back to HH:MM for base time if possible, or use ISO
-                // Actually, ISO is safer for snooze, but r.time usually HH:MM.
-                // Let's use HH:MM for the base time property to keep it compatible with split(':')
-                const hhmm = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-                await firestoreService.updateReminder(id, { time: hhmm, status: 'upcoming' });
-            }
-        }
-
-        // 2. Update Local Store (Immediate UI Refresh)
+        // 1. Update Local Store (Immediate UI Refresh - OPTIMISTIC)
         if (instanceKey) {
             store.reminders = (store.reminders || []).map(r => {
                 if (String(r.id) === String(id)) {
@@ -1104,11 +1398,32 @@ export const dataService = {
         }
 
         save();
-
         // Trigger generic update event for hooks that don't listen to storage
         window.dispatchEvent(new Event('data-updated'));
+        notifyListeners();
 
-        return (store.reminders || []).find(r => String(r.id) === String(id));
+        // 2. Update Firestore if authenticated (Async)
+        if (auth.currentUser) {
+            try {
+                if (instanceKey) {
+                    const key = `logs.${instanceKey}`;
+                    const payload = {
+                        [key]: {
+                            status: 'snoozed',
+                            snoozedUntil: newTime,
+                            timestamp: now.toISOString()
+                        }
+                    };
+                    await firestoreService.updateReminder(id, payload);
+                } else {
+                    const hhmm = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+                    await firestoreService.updateReminder(id, { time: hhmm, status: 'upcoming' });
+                }
+            } catch (e) {
+                console.error("Firestore snooze failed:", e);
+            }
+        }
+
     },
 
     // History & Reports
@@ -1124,30 +1439,50 @@ export const dataService = {
     },
 
     addNote: async (note) => {
-        if (auth.currentUser) {
-            return await firestoreService.addNote(note);
-        }
-        const newNote = { ...note, id: Date.now() };
+        // V10.20: Optimistic Add
+        const id = note.id || Date.now();
+        const newNote = { ...note, id };
+
+        // 1. Update Local
         if (!store.notes) store.notes = [];
         store.notes.unshift(newNote);
         save();
+        notifyListeners();
+
+        // 2. Update Cloud
+        if (auth.currentUser) {
+            try {
+                // firestoreService.addNote handles existing ID with setDoc
+                await firestoreService.addNote(newNote);
+            } catch (e) {
+                console.error("Firestore addNote failed:", e);
+            }
+        }
         return newNote;
     },
 
     updateNote: async (id, updates) => {
-        if (auth.currentUser) {
-            // eslint-disable-next-line no-unused-vars
-            const { ownerId, createdAt, ownerEmail, ...cleanUpdates } = updates;
-
-            // Remove undefined values to prevent Firestore crash ("Unsupported field value: undefined")
-            Object.keys(cleanUpdates).forEach(key => cleanUpdates[key] === undefined && delete cleanUpdates[key]);
-
-            await firestoreService.updateNote(id, cleanUpdates);
-            return;
+        // V10.20: Optimistic Update
+        // 1. Update Local
+        if (store.notes) {
+            store.notes = store.notes.map(n => String(n.id) === String(id) ? { ...n, ...updates } : n);
+            save();
+            notifyListeners();
         }
-        if (!store.notes) return;
-        store.notes = store.notes.map(n => n.id === id ? { ...n, ...updates } : n);
-        save();
+
+        // 2. Update Cloud
+        if (auth.currentUser) {
+            try {
+                // eslint-disable-next-line no-unused-vars
+                const { ownerId, createdAt, ownerEmail, ...cleanUpdates } = updates;
+                // Remove undefined values
+                Object.keys(cleanUpdates).forEach(key => cleanUpdates[key] === undefined && delete cleanUpdates[key]);
+
+                await firestoreService.updateNote(id, cleanUpdates);
+            } catch (e) {
+                console.error("Firestore updateNote failed:", e);
+            }
+        }
     },
 
     deleteNote: async (id) => {

@@ -38,9 +38,9 @@ const HelpGuide = ({ isOpen, onClose }) => {
                                 <Search size={24} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Find Notes & Reminders Fast</h3>
+                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Find Anything Fast</h3>
                                 <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-                                    Instantly find what you need by title, content, or <strong>attachments</strong>. See previews and open files directly from the search results.
+                                    Search by title, content, or <strong>file attachments</strong>. Attach photos, PDFs, or documents to reminders and notes for quick reference.
                                 </p>
                             </div>
                         </div>
@@ -51,27 +51,40 @@ const HelpGuide = ({ isOpen, onClose }) => {
                                 <Pill size={24} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Complex Medication Schedules</h3>
+                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Medication Courses</h3>
                                 <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-                                    Need to track a course of antibiotics or multiple daily doses? Toggle <strong>'Complex Schedule'</strong> to set specific times for Breakfast, Lunch, and Dinner, or define custom intervals (e.g., every 4 hours) for a set number of days.
+                                    For antibiotics or multi-dose schedules, toggle <strong>'Complex Schedule'</strong> to set times for Breakfast/Lunch/Dinner or custom intervals (e.g., every 4 hours) for a specific duration.
                                 </p>
                             </div>
                         </div>
 
-                        {/* Section 2: Smart History & 2-Hour Rule */}
+                        {/* Section 3: Editing Recurring Reminders */}
+                        <div className="flex gap-4">
+                            <div className="flex-shrink-0 w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                                <Calendar size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Edit Recurring Reminders</h3>
+                                <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
+                                    When editing a recurring reminder, choose <strong>"This Event Only"</strong> to change just one instance, or <strong>"All Future Events"</strong> to update the entire series. Past history is always preserved.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Section 4: Smart History & 2-Hour Rule */}
                         <div className="flex gap-4">
                             <div className="flex-shrink-0 w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center text-blue-600 dark:text-blue-400">
                                 <Clock size={24} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Smart History & Rules</h3>
+                                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Action Window & History</h3>
                                 <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-                                    You can mark reminders as <strong>Taken</strong> within 2 hours. Use <span className="font-bold text-purple-600">Reports</span> to edit data for Today and Yesterday. Deleting a schedule stops future events but keeps your history safe.
+                                    Mark reminders as <strong>Taken</strong> within 2 hours before or after the scheduled time. Beyond that, they're marked as "Missed". Use <span className="font-bold text-purple-600">Reports</span> to manually edit today's and yesterday's logs. Past reminders are auto-marked as "Taken" to keep your history clean.
                                 </p>
                             </div>
                         </div>
 
-                        {/* Section 3: Shared Notes */}
+                        {/* Section 5: Shared Notes */}
                         <div className="flex gap-4">
                             <div className="flex-shrink-0 w-12 h-12 bg-teal-100 dark:bg-teal-900/30 rounded-2xl flex items-center justify-center text-teal-600 dark:text-teal-400">
                                 <Users size={24} />
@@ -79,12 +92,12 @@ const HelpGuide = ({ isOpen, onClose }) => {
                             <div>
                                 <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Share Notes</h3>
                                 <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-                                    Easily share important notes and lists with your caregivers or family members directly from the app.
+                                    Share important notes, lists, and documents with caregivers or family members. They'll see updates in real-time.
                                 </p>
                             </div>
                         </div>
 
-                        {/* Section 4: Caregivers */}
+                        {/* Section 6: Caregivers */}
                         <div className="flex gap-4">
                             <div className="flex-shrink-0 w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center text-green-600 dark:text-green-400">
                                 <ShieldCheck size={24} />
@@ -92,7 +105,7 @@ const HelpGuide = ({ isOpen, onClose }) => {
                             <div>
                                 <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">Caregivers & Privacy</h3>
                                 <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-                                    Caregivers can view your progress but <strong>cannot edit</strong> your data. Your health record belongs to you.
+                                    Caregivers can view your progress reports but <strong>cannot edit</strong> your reminders or data. You stay in full control.
                                 </p>
                             </div>
                         </div>

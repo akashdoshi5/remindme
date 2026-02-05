@@ -1,14 +1,16 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Activity, Users, Settings, X, LogOut, Globe, ChevronRight, User } from 'lucide-react';
+import { Activity, Users, Settings, X, LogOut, Globe, ChevronRight, User, Cloud, CloudOff, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import ProfileSwitcher from '../caregiver/ProfileSwitcher';
+import { useSyncStatus } from '../../hooks/useSyncStatus';
 
 const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
     const { logout } = useAuth();
     const { language, setLanguage } = useLanguage();
     const navigate = useNavigate();
+    const { status, isOnline } = useSyncStatus();
 
     if (!isOpen) return null;
 
@@ -44,10 +46,19 @@ const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
                                 <h3 className="font-bold text-gray-900 dark:text-white truncate">
                                     {useAuth().user.displayName || 'Logged In'}
                                 </h3>
-                                <p className="text-xs text-green-600 font-medium flex items-center gap-1">
-                                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                                    Sync Active
+
+                                {/* DYNAMIC SYNC STATUS */}
+                                <p className={`text-xs font-medium flex items-center gap-1.5 mt-0.5 ${status === 'synced' ? 'text-green-600' :
+                                        status === 'syncing' ? 'text-blue-600' : 'text-gray-500'
+                                    }`}>
+                                    {status === 'synced' && <Cloud size={14} className="text-green-500" />}
+                                    {status === 'syncing' && <RefreshCw size={14} className="animate-spin text-blue-500" />}
+                                    {status === 'offline' && <CloudOff size={14} className="text-gray-400" />}
+
+                                    {status === 'synced' ? 'All Saved' :
+                                        status === 'syncing' ? 'Syncing...' : 'Offline (Saved Locally)'}
                                 </p>
+
                                 <p className="text-xs text-gray-400 truncate mt-0.5">{useAuth().user.email}</p>
                             </>
                         ) : (

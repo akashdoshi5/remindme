@@ -179,40 +179,45 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             setStartDate(reminderToEdit.instanceKey.split('_')[0]);
         } else if (editScope === 'all') {
             const originalStart = reminderToEdit.schedule?.startDate || reminderToEdit.date;
-            // Original logic: Default to today if past
+
+            // V10.15 FIX: Default to Today to preserve past history (Logs)
+            // Unless the selected instance or original start is in the Future.
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const todayStr = today.toLocaleDateString('en-CA');
 
-            let newStart = originalStart || todayStr;
+            let targetDate = todayStr; // Default Safest Split (Today)
 
-            if (originalStart && originalStart < todayStr) {
-                newStart = todayStr;
-
-                // CRITICAL FIX: If we move Start to Today, we must ADJUST Duration so End Date stays same!
-                // Unless End Date is also past...
-                // Original End Date Calculation
-                if (reminderToEdit.schedule?.durationDays) {
-                    const oStartObj = new Date(originalStart);
-                    const oEndObj = new Date(oStartObj);
-                    oEndObj.setDate(oStartObj.getDate() + reminderToEdit.schedule.durationDays);
-
-                    if (oEndObj > today) {
-                        // Recalculate remaining duration from TODAY
-                        const diffTime = oEndObj - today;
-                        const remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        setDurationDays(remainingDays > 0 ? remainingDays : 1);
-                    } else {
-                        // Series already ended? Default to 30 days extension
-                        setDurationDays(30);
-                    }
-                }
+            if (reminderToEdit.instanceKey) {
+                const iDate = reminderToEdit.instanceKey.split('_')[0];
+                // If instance is in future, split there. If past, split Today.
+                if (iDate > todayStr) targetDate = iDate;
             } else {
-                // Future start, keep original duration
-                setDurationDays(reminderToEdit.schedule?.durationDays || 30);
+                // Root Edit: If original start is in future, keep it. If past, move to Today.
+                if (originalStart > todayStr) targetDate = originalStart;
             }
 
-            setStartDate(newStart);
+            setStartDate(targetDate);
+
+            // V10.16: AUTO-ADJUST DURATION to maintain original end date
+            const originalDuration = reminderToEdit.schedule?.durationDays || 1;
+            if (targetDate !== originalStart && originalDuration > 1) {
+                const oStartObj = new Date(originalStart);
+                const oEndObj = new Date(oStartObj);
+                oEndObj.setDate(oStartObj.getDate() + (parseInt(originalDuration) - 1));
+
+                const nStartObj = new Date(targetDate);
+                const diffTime = oEndObj - nStartObj;
+                const newDur = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+                if (newDur > 0) {
+                    if (reminderToEdit.isCourse || isCourse) setMedDuration(newDur);
+                    else setDurationDays(newDur);
+                } else {
+                    if (reminderToEdit.isCourse || isCourse) setMedDuration(1);
+                    else setDurationDays(1);
+                }
+            }
         }
     }, [editScope, reminderToEdit, isOpen]);
 
@@ -227,6 +232,12 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             setActiveField(null);
         }
     }, [isOpen, autoStartListening]);
+
+    // V10.13: Safeguard Duration > 0
+    useEffect(() => {
+        if (medDuration < 1) setMedDuration(1);
+        if (durationDays < 1) setDurationDays(1);
+    }, [medDuration, durationDays]);
 
     // Update fields when transcript changes
     useEffect(() => {
@@ -277,11 +288,27 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     const handleFileChange = async (e) => {
         setIsUploading(true);
         const selected = Array.from(e.target.files);
+
+        // V10: 12MB Limit Check
+        const validFiles = [];
+        for (const file of selected) {
+            if (file.size > 12 * 1024 * 1024) { // 12MB
+                alert(`File "${file.name}" is too large (>${(file.size / 1024 / 1024).toFixed(1)}MB). Max 12MB.`);
+                continue;
+            }
+            validFiles.push(file);
+        }
+
+        if (validFiles.length === 0) {
+            setIsUploading(false);
+            return;
+        }
+
         try {
-            const processed = await Promise.all(selected.map(async (file) => {
+            const processed = await Promise.all(validFiles.map(async (file) => {
                 const storageData = await fileStorage.saveFile(file);
                 return {
-                    id: storageData.id, // Keep for legacy if needed
+                    id: storageData.id,
                     storageData: storageData,
                     name: file.name,
                     type: file.type,
@@ -306,11 +333,12 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
         // by ending the old series and creating a new one.
 
         if (editScope === 'this' && reminderToEdit) {
+            // V10.1 FIX: Use the User-Selected Date (startDate) for validation, NOT the old instance key!
             let targetDateStr = startDate;
-            if (reminderToEdit.instanceKey) {
+            if (!targetDateStr && reminderToEdit.instanceKey) {
                 targetDateStr = reminderToEdit.instanceKey.split('_')[0];
-            } else {
-                targetDateStr = startDate || new Date().toISOString().split('T')[0];
+            } else if (!targetDateStr) {
+                targetDateStr = new Date().toISOString().split('T')[0];
             }
 
             const targetDateTime = new Date(`${targetDateStr}T${time}`);
@@ -320,10 +348,14 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             if (reminderToEdit.status !== 'missed') {
                 // V10: Fix "Time in Past" validation. Only alert if Date Matches Today AND Time is Past.
                 // If Date is Future, Time can be anything.
+                /* 
+                // USER REQUEST V10.4: "remove that time check". 
+                // Allow setting past times for Today (e.g. logging done tasks).
                 if (targetDateStr === todayStr && targetDateTime < now) {
                     alert("Please select a future time.");
                     return;
                 }
+                */
                 // Also Check validation for strictly past dates if not 'missed'?
                 // But we locked past dates already.
             }
@@ -567,20 +599,41 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
 
                                             return false;
                                         })()}
-                                        min={(editScope === 'all' && reminderToEdit?.schedule?.startDate < new Date().toLocaleDateString('en-CA')) ? undefined : new Date().toLocaleDateString('en-CA')}
-                                        className={`w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white transition-all ${
-                                            // Copy same logic for className styling opacity
-                                            (() => {
-                                                const originalStart = reminderToEdit?.schedule?.startDate || reminderToEdit?.date || (reminderToEdit?.instanceKey?.split('_')[0]);
-                                                const today = new Date().toLocaleDateString('en-CA');
-                                                const isPast = originalStart < today;
-                                                const isSeriesInstance = editScope === 'this' && reminderToEdit?.frequency !== 'Once';
-                                                return (isPast || isSeriesInstance) ? 'opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900' : 'focus:ring-2 focus:ring-orange-500';
-                                            })()
+                                        // V10.10: Removed 'min' constraint to allow backdating new reminders (for auto-complete)
+                                        className={`w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white transition-all ${(() => {
+                                            const originalStart = reminderToEdit?.schedule?.startDate || reminderToEdit?.date || (reminderToEdit?.instanceKey?.split('_')[0]);
+                                            const today = new Date().toLocaleDateString('en-CA');
+                                            const isPast = originalStart < today;
+                                            const isSeriesInstance = editScope === 'this' && reminderToEdit?.frequency !== 'Once';
+                                            return (isPast || isSeriesInstance) ? 'opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900' : 'focus:ring-2 focus:ring-orange-500';
+                                        })()
                                             }`}
                                         value={startDate}
                                         onChange={(e) => setStartDate(e.target.value)}
                                     />
+                                    {/* V10.17: Live Schedule Preview (Calculated from state) */}
+                                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 ml-1 flex items-center gap-1">
+                                        <Calendar size={10} className="opacity-70" />
+                                        Schedule Preview: <span className="font-medium text-blue-600 dark:text-blue-400">
+                                            {(() => {
+                                                const start = new Date(startDate);
+                                                const dur = isCourse ? parseInt(medDuration) : (frequency === 'Once' ? 1 : parseInt(durationDays || 30));
+                                                const end = new Date(start);
+                                                end.setDate(start.getDate() + (dur - 1));
+
+                                                return (
+                                                    <>
+                                                        {start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                                                        {frequency !== 'Once' ? (
+                                                            <> - {end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ({dur} days)</>
+                                                        ) : (
+                                                            <span className="italic opacity-80"> (Single Event)</span>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+                                        </span>
+                                    </p>
                                 </div>
 
                                 {!isCourse && (
@@ -674,7 +727,16 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
 
                                             {/* Duration for Course */}
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Course Duration (Days)</label>
+                                                <div className="flex justify-between mb-1">
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Course Duration (Days)</label>
+                                                    <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                                                        Until {(() => {
+                                                            const d = new Date(startDate);
+                                                            d.setDate(d.getDate() + (parseInt(medDuration) - 1));
+                                                            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                                                        })()}
+                                                    </span>
+                                                </div>
                                                 <div className="flex items-center gap-2 h-[40px]">
                                                     <input
                                                         type="range"
@@ -696,168 +758,180 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                     {editScope !== 'this' && (
                                         <>
                                             <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Repeats?</label>
-                                                    <select
-                                                        className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                                                        value={frequency}
-                                                        onChange={handleFrequencyChange}
-                                                    >
-                                                        <option value="Once">No (Once)</option>
-                                                        <option value="Daily">Daily</option>
-                                                        <option value="Weekly">Weekly</option>
-                                                        <option value="Every 1 Hour">Hourly</option>
-                                                        <option value="Every 2 Hours">Every 2h</option>
-                                                        <option value="Every 3 Hours">Every 3h</option>
-                                                        <option value="Every 4 Hours">Every 4h</option>
-                                                        <option value="Custom">Custom</option>
-                                                    </select>
-                                                </div>
-
-                                                {/* Ends After - Only for Recurring */}
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ends?</label>
-                                                    <select
-                                                        className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                                                        value={durationDays || 30}
-                                                        onChange={(e) => setDurationDays(parseInt(e.target.value))}
-                                                        disabled={frequency === 'Once'}
-                                                    >
-                                                        <option value="1">1 Day</option>
-                                                        <option value="3">3 Days</option>
-                                                        <option value="5">5 Days</option>
-                                                        <option value="7">1 Week</option>
-                                                        <option value="14">2 Weeks</option>
-                                                        <option value="30">30 Days (1 Month)</option>
-                                                        <option value="60">60 Days (2 Months)</option>
-                                                        <option value="90">90 Days (3 Months)</option>
-                                                        <option value="180">180 Days (6 Months)</option>
-                                                        <option value="365">1 Year</option>
-                                                    </select>
-                                                </div>
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Repeats?</label>
+                                                <select
+                                                    className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                                    value={frequency}
+                                                    onChange={handleFrequencyChange}
+                                                >
+                                                    <option value="Once">No (Once)</option>
+                                                    <option value="Daily">Daily</option>
+                                                    <option value="Weekly">Weekly</option>
+                                                    <option value="Monthly">Monthly</option>
+                                                    <option value="Every 1 Hour">Hourly</option>
+                                                    <option value="Every 2 Hours">Every 2h</option>
+                                                    <option value="Every 3 Hours">Every 3h</option>
+                                                    <option value="Every 4 Hours">Every 4h</option>
+                                                    <option value="Custom">Custom</option>
+                                                </select>
                                             </div>
 
-                                            {showCustomDays && (
-                                                <div className="flex justify-between mt-1 px-1">
-                                                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-                                                        <button
-                                                            key={day}
-                                                            type="button"
-                                                            onClick={() => toggleDay(day)}
-                                                            className={`w-9 h-9 rounded-full text-xs font-bold transition-all border ${customDays.includes(day)
-                                                                ? 'bg-orange-500 border-orange-500 text-white shadow-md transform scale-105'
-                                                                : 'bg-white border-gray-200 text-gray-500 hover:border-orange-300 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400'
-                                                                }`}
-                                                        >
-                                                            {day.charAt(0)}
-                                                        </button>
-                                                    ))}
+                                            {/* Ends After - Only for Recurring */}
+                                            <div>
+                                                <div className="flex justify-between mb-1">
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Ends?</label>
+                                                    {frequency !== 'Once' && (
+                                                        <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                                                            Until {(() => {
+                                                                const d = new Date(startDate);
+                                                                d.setDate(d.getDate() + (parseInt(durationDays || 30) - 1));
+                                                                return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                                                            })()}
+                                                        </span>
+                                                    )}
                                                 </div>
-                                            )}
-                                        </>
+                                                <select
+                                                    className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                                    value={durationDays || 30}
+                                                    onChange={(e) => setDurationDays(parseInt(e.target.value))}
+                                                    disabled={frequency === 'Once'}
+                                                >
+                                                    <option value="1">1 Day</option>
+                                                    <option value="3">3 Days</option>
+                                                    <option value="5">5 Days</option>
+                                                    <option value="7">1 Week</option>
+                                                    <option value="14">2 Weeks</option>
+                                                    <option value="30">30 Days (1 Month)</option>
+                                                    <option value="60">60 Days (2 Months)</option>
+                                                    <option value="180">180 Days (6 Months)</option>
+                                                    <option value="365">1 Year</option>
+                                                    <option value="730">2 Years</option>
+                                                    <option value="1095">3 Years</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                    {showCustomDays && (
+                                        <div className="flex justify-between mt-1 px-1">
+                                            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
+                                                <button
+                                                    key={day}
+                                                    type="button"
+                                                    onClick={() => toggleDay(day)}
+                                                    className={`w-9 h-9 rounded-full text-xs font-bold transition-all border ${customDays.includes(day)
+                                                        ? 'bg-orange-500 border-orange-500 text-white shadow-md transform scale-105'
+                                                        : 'bg-white border-gray-200 text-gray-500 hover:border-orange-300 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400'
+                                                        }`}
+                                                >
+                                                    {day.charAt(0)}
+                                                </button>
+                                            ))}
+                                        </div>
                                     )}
-                                </div>
+                                </>
                             )}
                         </div>
-
-                        {/* Files Section */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Attachments</label>
-                            <div className="flex flex-col gap-2">
-                                {files.map((file, idx) => (
-                                    <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded">
-                                        <span className="text-xs truncate max-w-[150px] dark:text-gray-300">{file.name}</span>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    // Handle Preview
-                                                    if (file.url) {
-                                                        // Existing storage URL
-                                                        window.open(file.url, '_blank');
-                                                    } else if (file instanceof File) {
-                                                        // New local file
-                                                        const url = URL.createObjectURL(file);
-                                                        window.open(url, '_blank');
-                                                    } else if (file.data) {
-                                                        // Base64 or Blob data if stored that way
-                                                        const win = window.open();
-                                                        win.document.write('<iframe src="' + file.data + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
-                                                    }
-                                                }}
-                                                className="text-orange-500 hover:text-orange-600 dark:text-orange-400"
-                                                title="Preview File"
-                                            >
-                                                <Eye size={14} />
-                                            </button>
-                                            <button type="button" onClick={() => setFiles(files.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-400"><Trash2 size={14} /></button>
-                                        </div>
-                                    </div>
-                                ))}
-
-                                {isUploading && (
-                                    <div className="flex items-center justify-center p-3 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 text-gray-500">
-                                        <span className="animate-spin mr-2">⏳</span> Uploading...
-                                    </div>
-                                )}
-
-                                <label
-                                    onDragOver={handleDragOver}
-                                    onDragLeave={handleDragLeave}
-                                    onDrop={handleDrop}
-                                    className={`flex items-center justify-center gap-2 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${isDragging
-                                        ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 scale-[1.02]'
-                                        : `border-gray-300 dark:border-gray-700 hover:border-orange-400 dark:hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-gray-500 dark:text-gray-400 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`
-                                        }`}
-                                >
-                                    <Upload size={18} />
-                                    <span className="text-sm">{isDragging ? 'Drop Files Here' : 'Attach File (Rx, Photo) or Drag & Drop'}</span>
-                                    <input type="file" multiple className="hidden" onChange={handleFileChange} disabled={isUploading} />
-                                </label>
-                            </div>
-                        </div>
-
-                        {/* Instructions */}
-                        <div>
-                            <div className="flex justify-between items-center mb-1">
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Instructions (Optional)</label>
-                                {isSupported && (
-                                    <button type="button" onClick={() => handleMicClick('instructions')} className={`text-xs flex items-center gap-1 ${isListening && activeField === 'instructions' ? 'text-red-500 animate-pulse' : 'text-orange-600 dark:text-orange-400'}`}>
-                                        {isListening && activeField === 'instructions' ? <MicOff size={14} /> : <Mic size={14} />}
-                                        {isListening && activeField === 'instructions' ? 'Stop Listening' : 'Dictate'}
-                                    </button>
-                                )}
-                            </div>
-                            <textarea
-                                rows="2"
-                                placeholder="e.g., Take with food"
-                                className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none resize-none focus:ring-2 focus:ring-orange-500 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-600"
-                                value={instructions}
-                                onChange={(e) => setInstructions(e.target.value)}
-                            ></textarea>
-                        </div>
-
-                        <div className="flex items-center gap-2 bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl border border-orange-100 dark:border-orange-800/50">
-                            {/* Important Tag Removed as per user request */}
-                            <span className="text-sm text-gray-500 dark:text-gray-400">Attachments will be visible on all future reminders in this series.</span>
-                        </div>
+                        )}
                     </div>
 
-                    <div className="fixed bottom-0 left-0 right-0 p-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 z-[110] md:static md:z-30 md:border-t md:shrink-0">
-                        <div className="flex gap-3">
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="flex-1 py-3.5 text-lg font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors"
+                    {/* Files Section */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Attachments</label>
+                        <div className="flex flex-col gap-2">
+                            {files.map((file, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded">
+                                    <span className="text-xs truncate max-w-[150px] dark:text-gray-300">{file.name}</span>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                // Handle Preview
+                                                if (file.url) {
+                                                    // Existing storage URL
+                                                    window.open(file.url, '_blank');
+                                                } else if (file instanceof File) {
+                                                    // New local file
+                                                    const url = URL.createObjectURL(file);
+                                                    window.open(url, '_blank');
+                                                } else if (file.data) {
+                                                    // Base64 or Blob data if stored that way
+                                                    const win = window.open();
+                                                    win.document.write('<iframe src="' + file.data + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                                                }
+                                            }}
+                                            className="text-orange-500 hover:text-orange-600 dark:text-orange-400"
+                                            title="Preview File"
+                                        >
+                                            <Eye size={14} />
+                                        </button>
+                                        <button type="button" onClick={() => setFiles(files.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-400"><Trash2 size={14} /></button>
+                                    </div>
+                                </div>
+                            ))}
+
+                            {isUploading && (
+                                <div className="flex items-center justify-center p-3 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 text-gray-500">
+                                    <span className="animate-spin mr-2">⏳</span> Uploading...
+                                </div>
+                            )}
+
+                            <label
+                                onDragOver={handleDragOver}
+                                onDragLeave={handleDragLeave}
+                                onDrop={handleDrop}
+                                className={`flex items-center justify-center gap-2 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${isDragging
+                                    ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 scale-[1.02]'
+                                    : `border-gray-300 dark:border-gray-700 hover:border-orange-400 dark:hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-gray-500 dark:text-gray-400 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`
+                                    }`}
                             >
-                                Close
-                            </button>
-                            <button type="submit" disabled={isUploading || isSaving} className="btn btn-primary flex-[2] py-3.5 text-lg shadow-orange-500/25 disabled:opacity-70 disabled:grayscale">
-                                {isUploading ? 'Uploading...' : isSaving ? 'Saving...' : 'Save Reminder'}
-                            </button>
+                                <Upload size={18} />
+                                <span className="text-sm">{isDragging ? 'Drop Files Here' : 'Attach File (Rx, Photo) or Drag & Drop'}</span>
+                                <input type="file" multiple className="hidden" onChange={handleFileChange} disabled={isUploading} />
+                            </label>
                         </div>
                     </div>
-                </form>
+
+                    {/* Instructions */}
+                    <div>
+                        <div className="flex justify-between items-center mb-1">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Instructions (Optional)</label>
+                            {isSupported && (
+                                <button type="button" onClick={() => handleMicClick('instructions')} className={`text-xs flex items-center gap-1 ${isListening && activeField === 'instructions' ? 'text-red-500 animate-pulse' : 'text-orange-600 dark:text-orange-400'}`}>
+                                    {isListening && activeField === 'instructions' ? <MicOff size={14} /> : <Mic size={14} />}
+                                    {isListening && activeField === 'instructions' ? 'Stop Listening' : 'Dictate'}
+                                </button>
+                            )}
+                        </div>
+                        <textarea
+                            rows="2"
+                            placeholder="e.g., Take with food"
+                            className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none resize-none focus:ring-2 focus:ring-orange-500 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-600"
+                            value={instructions}
+                            onChange={(e) => setInstructions(e.target.value)}
+                        ></textarea>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl border border-orange-100 dark:border-orange-800/50">
+                        {/* Important Tag Removed as per user request */}
+                        <span className="text-sm text-gray-500 dark:text-gray-400">Attachments will be visible on all future reminders in this series.</span>
+                    </div>
+            </div>
+
+            <div className="fixed bottom-0 left-0 right-0 p-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 z-[110] md:static md:z-30 md:border-t md:shrink-0">
+                <div className="flex gap-3">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="flex-1 py-3.5 text-lg font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors"
+                    >
+                        Close
+                    </button>
+                    <button type="submit" disabled={isUploading || isSaving} className="btn btn-primary flex-[2] py-3.5 text-lg shadow-orange-500/25 disabled:opacity-70 disabled:grayscale">
+                        {isUploading ? 'Uploading...' : isSaving ? 'Saving...' : 'Save Reminder'}
+                    </button>
+                </div>
+            </div>
+        </form>
             </div >
         </div >
     );

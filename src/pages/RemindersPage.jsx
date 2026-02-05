@@ -311,15 +311,17 @@ const RemindersPage = () => {
                                     {new Date(selectedDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
                                     <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 rotate-90" />
                                 </div>
-                                {new Date(selectedDate).setHours(0, 0, 0, 0) !== new Date().setHours(0, 0, 0, 0) && (
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); setSelectedDate(new Date()); }}
-                                        className="px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-[10px] md:text-xs font-bold rounded-lg uppercase tracking-wide relative z-20"
-                                    >
-                                        Today
-                                    </button>
-                                )}
                             </div>
+
+                            {/* Today Button - Moved OUTSIDE relative container to prevent click blocking */}
+                            {new Date(selectedDate).setHours(0, 0, 0, 0) !== new Date().setHours(0, 0, 0, 0) && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setSelectedDate(new Date()); }}
+                                    className="px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-[10px] md:text-xs font-bold rounded-lg uppercase tracking-wide relative z-20"
+                                >
+                                    Today
+                                </button>
+                            )}
                             <div className="flex items-center gap-1">
                                 <button onClick={() => setShowSearch(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400">
                                     <Search size={20} />
@@ -540,7 +542,8 @@ const RemindersPage = () => {
                                                                         {reminder.title}
                                                                     </h3>
                                                                     {/* V10: Search Result Extra Info */}
-                                                                    {searchQuery && (reminder.schedule?.type === 'recurring' || reminder.frequency !== 'Once') && (
+                                                                    {/* V10: Search Result Extra Info */}
+                                                                    {searchQuery && (reminder.frequency !== 'Once') && (
                                                                         <span className="shrink-0 p-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" title="Recurring/Course">
                                                                             <RefreshCcw size={12} />
                                                                         </span>
@@ -549,17 +552,23 @@ const RemindersPage = () => {
 
                                                                 {reminder.instructions && <p className="text-gray-500 dark:text-gray-400 text-xs md:text-sm truncate">{reminder.instructions}</p>}
 
-                                                                {/* V10: Show Date Range in Search Results */}
-                                                                {searchQuery && reminder.schedule && reminder.schedule.startDate && (
-                                                                    <div className="text-[10px] md:text-xs text-blue-500 mt-0.5 flex items-center gap-1 bg-blue-50 dark:bg-blue-900/10 self-start px-1.5 py-0.5 rounded w-fit">
+                                                                {/* V10.17: Show Date Range ONLY in Search Results */}
+                                                                {searchQuery && reminder.schedule && reminder.schedule.startDate && (reminder.frequency !== 'Once') && (
+                                                                    <div className="text-[10px] md:text-xs text-blue-500 mt-1 flex items-center gap-1 bg-blue-50 dark:bg-blue-900/10 self-start px-1.5 py-0.5 rounded w-fit border border-blue-100 dark:border-blue-900/30">
+                                                                        <Calendar size={10} className="opacity-70" />
                                                                         <span>{new Date(reminder.schedule.startDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-                                                                        <ArrowRightLeft size={8} />
+                                                                        <ArrowRightLeft size={8} className="opacity-50" />
                                                                         <span>
                                                                             {/* Calculate End Date roughly or show "Ongoing" */}
                                                                             {(() => {
-                                                                                if (!reminder.schedule.durationDays) return "Ongoing";
+                                                                                if (reminder.schedule.endDate) {
+                                                                                    return new Date(reminder.schedule.endDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                                                                                }
+                                                                                // V10.19: Check both durationDays and medDuration (for complex schedules)
+                                                                                const duration = reminder.schedule.durationDays || reminder.schedule.medDuration;
+                                                                                if (!duration) return "Ongoing";
                                                                                 const d = new Date(reminder.schedule.startDate);
-                                                                                d.setDate(d.getDate() + reminder.schedule.durationDays);
+                                                                                d.setDate(d.getDate() + (parseInt(duration) - 1));
                                                                                 return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
                                                                             })()}
                                                                         </span>
@@ -674,10 +683,12 @@ const RemindersPage = () => {
                                                                     isActionable = false;
                                                                     reason = 'History';
                                                                 } else {
-                                                                    // Only check time window if NOT locked history
+                                                                    // V10.17: Only check time window for TODAY and YESTERDAY
+                                                                    // For older dates, they should have been auto-completed
                                                                     if (reminder.displayTime) {
                                                                         const [h, m] = reminder.displayTime.split(':').map(Number);
-                                                                        const reminderDate = new Date(selectedDate);
+                                                                        // V10.19 FIX: Use checkDate instead of selectedDate for accurate time comparison in search
+                                                                        const reminderDate = new Date(checkDate);
                                                                         reminderDate.setHours(h, m, 0, 0);
 
                                                                         const now = new Date();
