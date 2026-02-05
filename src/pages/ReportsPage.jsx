@@ -301,7 +301,6 @@ const ReportsPage = () => {
             // STRICT 2-HOUR WINDOW ADHERENCE RULE
             if (activeReminders && selectedEvent) {
                 // 1. Get Scheduled Time
-                // selectedEvent.displayTime is HH:MM
                 const schedStr = selectedEvent.displayTime;
                 if (schedStr && schedStr.includes(':')) {
                     const [sH, sM] = schedStr.split(':').map(Number);
@@ -317,39 +316,44 @@ const ReportsPage = () => {
                     const diffMs = actualDate - scheduledDate;
                     const diffMinutes = diffMs / (1000 * 60);
 
-                    // 4. Validate Window (+/- 120 Minutes)
+                    // 4. Validate Window
+                    // Allow early taking? Yes, but warn if > 2 hours?
+                    // "It is too early" logic:
+                    /*
                     if (diffMinutes < -120) {
-                        alert("It is too early to take this medication (more than 2 hours before schedule). Please take it closer to the scheduled time.");
-                        return; // Block save
+                         alert("It is too early...");
+                         return;
                     }
+                    */
+
                     if (diffMinutes > 120) {
-                        // User is late.
-                        // "its too early and missed if not in 2 hrs window" -> This implies if late, it counts as MISSED.
-                        // We will force status to missed or alert them.
                         const confirmLate = window.confirm("You are more than 2 hours late. Strictly speaking, this counts as a 'Missed' dose for adherence tracking.\n\nClick OK to record as MISSED, or Cancel to correct the time.");
                         if (confirmLate) {
-                            handleStatusUpdate('missed'); // Recursively call with missed status
+                            handleStatusUpdate('missed');
                             return;
                         } else {
-                            return; // Let them edit time
+                            return;
                         }
                     }
                 }
             }
 
             // Valid Time Window -> Proceed to Save
+            const finalTime = takenTime || selectedEvent.displayTime || '09:00';
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`;
-            const customTimestamp = new Date(`${dateStr}T${takenTime}:00`).toISOString();
+            const customTimestamp = new Date(`${dateStr}T${finalTime}:00`).toISOString();
+
             dataService.logReminderStatusWithTime(selectedEvent.id, selectedEvent.instanceKey, status, customTimestamp);
         } else {
+            // Missed / Snoozed / Etc
             dataService.logReminderStatus(selectedEvent.id, selectedEvent.instanceKey, status);
         }
 
         setEditModalOpen(false);
         setTakenTime('');
         if (!viewingProfile) {
-            loadDayEvents(selectedDate); // Refresh list (only needed for self, effects handle others?)
-            calculateMonthStats(); // Refresh stats
+            loadDayEvents(selectedDate);
+            calculateMonthStats();
         }
     };
 
@@ -668,8 +672,10 @@ const ReportsPage = () => {
                                                 uniqueId: event.uniqueId || idx,
                                                 dateStr: `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`
                                             });
-                                            // Set default time in modal
-                                            setTakenTime(event.takenAt ? new Date(event.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : safeTime);
+                                            // Set default time in modal (Fix: ensure fallback to scheduled time)
+                                            setTakenTime(event.takenAt
+                                                ? new Date(event.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+                                                : safeTime);
                                             setEditModalOpen(true);
                                         }}
                                     >

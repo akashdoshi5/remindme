@@ -1416,6 +1416,13 @@ export const dataService = {
         save();
         // Trigger generic update event for hooks that don't listen to storage
         window.dispatchEvent(new Event('data-updated'));
+
+        // Fix Snooze Notification Bug: Clear the "Already Notified" flag for this instance
+        // so useReminders will see it as "new" when the snoozed time arrives.
+        if (instanceKey) {
+            window.dispatchEvent(new CustomEvent('clear-notification-ref', { detail: { instanceKey } }));
+        }
+
         notifyListeners();
 
         // 2. Update Firestore if authenticated (Async)
@@ -1440,6 +1447,11 @@ export const dataService = {
             }
         }
 
+    },
+
+    // NEW: Clear duplicate prevention ref in useReminders
+    clearNotificationRef: (instanceKey) => {
+        window.dispatchEvent(new CustomEvent('clear-notification-ref', { detail: { instanceKey } }));
     },
 
     // History & Reports
@@ -1685,6 +1697,14 @@ export const dataService = {
             time: `${h}:${m}`,
             date: now.toISOString().split('T')[0]
         };
+    },
+
+    getNote: async (id) => {
+        // Try local first? No, we want latest remote for conflict check.
+        if (auth.currentUser) {
+            return await firestoreService.getNote(id);
+        }
+        return store.notes.find(n => String(n.id) === String(id)) || null;
     },
 
     convertReminderToNote: (reminder) => {

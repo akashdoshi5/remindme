@@ -97,5 +97,20 @@ export const useReminders = (setActiveAlarm) => {
         return () => clearInterval(interval);
     }, [setActiveAlarm, sendNotification]);
 
+    // 3. Listen for Snooze/Done actions to CLEAR notified ref
+    // This ensures that if a reminder is snoozed, we can notify again when the snooze time arrives.
+    useEffect(() => {
+        const handleClearRef = (event) => {
+            const { instanceKey } = event.detail;
+            if (instanceKey && notifiedRef.current.has(instanceKey)) {
+                console.log(`🔔 Clearing Notification Ref for: ${instanceKey} (Snoozed/Done)`);
+                notifiedRef.current.delete(instanceKey);
+            }
+        };
+
+        window.addEventListener('clear-notification-ref', handleClearRef);
+        return () => window.removeEventListener('clear-notification-ref', handleClearRef);
+    }, []);
+
     return { reminders };
 };

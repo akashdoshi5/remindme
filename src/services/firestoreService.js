@@ -110,6 +110,21 @@ export const firestoreService = {
         await setDoc(userRef, { settings }, { merge: true });
     },
 
+    getNote: async (noteId) => {
+        const user = auth.currentUser;
+        if (!user) return null;
+        try {
+            // Shared notes are in 'notes' collection
+            const noteRef = doc(db, 'notes', String(noteId));
+            const snap = await getDoc(noteRef);
+            if (snap.exists()) return { id: snap.id, ...snap.data() };
+            return null;
+        } catch (e) {
+            console.error("Error fetching note:", e);
+            return null;
+        }
+    },
+
     deleteAllUserData: async () => {
         const user = auth.currentUser;
         if (!user) return;

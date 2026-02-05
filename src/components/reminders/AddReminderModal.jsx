@@ -758,58 +758,59 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                     {editScope !== 'this' && (
                                         <>
                                             <div className="grid grid-cols-2 gap-4">
-                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Repeats?</label>
-                                                <select
-                                                    className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                                                    value={frequency}
-                                                    onChange={handleFrequencyChange}
-                                                >
-                                                    <option value="Once">No (Once)</option>
-                                                    <option value="Daily">Daily</option>
-                                                    <option value="Weekly">Weekly</option>
-                                                    <option value="Monthly">Monthly</option>
-                                                    <option value="Every 1 Hour">Hourly</option>
-                                                    <option value="Every 2 Hours">Every 2h</option>
-                                                    <option value="Every 3 Hours">Every 3h</option>
-                                                    <option value="Every 4 Hours">Every 4h</option>
-                                                    <option value="Custom">Custom</option>
-                                                </select>
-                                            </div>
-
-                                            {/* Ends After - Only for Recurring */}
-                                            <div>
-                                                <div className="flex justify-between mb-1">
-                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Ends?</label>
-                                                    {frequency !== 'Once' && (
-                                                        <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
-                                                            Until {(() => {
-                                                                const d = new Date(startDate);
-                                                                d.setDate(d.getDate() + (parseInt(durationDays || 30) - 1));
-                                                                return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-                                                            })()}
-                                                        </span>
-                                                    )}
+                                                {/* Repeats */}
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Repeats?</label>
+                                                    <select
+                                                        className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                                        value={frequency}
+                                                        onChange={handleFrequencyChange}
+                                                    >
+                                                        <option value="Once">No (Once)</option>
+                                                        <option value="Daily">Daily</option>
+                                                        <option value="Weekly">Weekly</option>
+                                                        <option value="Monthly">Monthly</option>
+                                                        <option value="Every 1 Hour">Hourly</option>
+                                                        <option value="Every 2 Hours">Every 2h</option>
+                                                        <option value="Every 3 Hours">Every 3h</option>
+                                                        <option value="Every 4 Hours">Every 4h</option>
+                                                        <option value="Custom">Custom</option>
+                                                    </select>
                                                 </div>
-                                                <select
-                                                    className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                                                    value={durationDays || 30}
-                                                    onChange={(e) => setDurationDays(parseInt(e.target.value))}
-                                                    disabled={frequency === 'Once'}
-                                                >
-                                                    <option value="1">1 Day</option>
-                                                    <option value="3">3 Days</option>
-                                                    <option value="5">5 Days</option>
-                                                    <option value="7">1 Week</option>
-                                                    <option value="14">2 Weeks</option>
-                                                    <option value="30">30 Days (1 Month)</option>
-                                                    <option value="60">60 Days (2 Months)</option>
-                                                    <option value="180">180 Days (6 Months)</option>
-                                                    <option value="365">1 Year</option>
-                                                    <option value="730">2 Years</option>
-                                                    <option value="1095">3 Years</option>
-                                                </select>
-                                            </div>
 
+                                                {/* Ends After */}
+                                                <div>
+                                                    <div className="flex justify-between mb-1">
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Ends?</label>
+                                                        {frequency !== 'Once' && (
+                                                            <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                                                                Until {(() => {
+                                                                    const d = new Date(startDate);
+                                                                    d.setDate(d.getDate() + (parseInt(durationDays || 30) - 1));
+                                                                    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                                                                })()}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <select
+                                                        className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                                        value={durationDays || 30}
+                                                        onChange={(e) => setDurationDays(parseInt(e.target.value))}
+                                                        disabled={frequency === 'Once'}
+                                                    >
+                                                        <option value="1">1 Day</option>
+                                                        <option value="3">3 Days</option>
+                                                        <option value="7">1 Week</option>
+                                                        <option value="14">2 Weeks</option>
+                                                        <option value="30">1 Month</option>
+                                                        <option value="60">2 Months</option>
+                                                        <option value="90">3 Months</option>
+                                                        <option value="180">6 Months</option>
+                                                        <option value="365">1 Year</option>
+                                                        <option value="3650">Forever</option>
+                                                    </select>
+                                                </div>
+                                            </div>
 
                                             {showCustomDays && (
                                                 <div className="flex justify-between mt-1 px-1">
