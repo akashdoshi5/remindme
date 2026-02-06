@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useShare } from '../hooks/useShare';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, Search, Mic, Image as ImageIcon, Edit2, Trash2, X, MoreVertical, Share2, FileText, ShoppingCart, StopCircle, Play, ArrowRightLeft, Paperclip, Download, Eye, Users, GripVertical, Pin, Maximize2, Minimize2, XCircle } from 'lucide-react';
+import { Plus, Search, Mic, Image as ImageIcon, Edit2, Trash2, X, MoreVertical, Share2, FileText, ShoppingCart, StopCircle, Play, ArrowRightLeft, Paperclip, Download, Eye, Users, GripVertical, Pin, Maximize2, Minimize2, XCircle, RefreshCcw } from 'lucide-react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
 import { useVoice } from '../hooks/useVoice';
 import { fileStorage } from '../services/fileStorage';
@@ -21,6 +21,38 @@ const NotesPage = () => {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const isSelectionMode = selectedIds.size > 0;
     const [highlightedId, setHighlightedId] = useState(null);
+
+    // Pull to Refresh State
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [pullY, setPullY] = useState(0);
+    const touchStartRef = useRef(0);
+
+    const handleTouchStart = (e) => {
+        if (window.scrollY === 0) {
+            touchStartRef.current = e.touches[0].clientY;
+        }
+    };
+
+    const handleTouchMove = (e) => {
+        if (touchStartRef.current > 0 && window.scrollY === 0) {
+            const y = e.touches[0].clientY - touchStartRef.current;
+            if (y > 0) {
+                setPullY(y > 100 ? 100 + (y - 100) * 0.3 : y); // Resistance
+            }
+        }
+    };
+
+    const handleTouchEnd = async () => {
+        if (pullY > 80 && !isRefreshing) {
+            setIsRefreshing(true);
+            setPullY(0); // Reset position but show spinner
+            await dataService.forceSync();
+            setTimeout(() => setIsRefreshing(false), 500); // Min wait
+        } else {
+            setPullY(0);
+        }
+        touchStartRef.current = 0;
+    };
 
     const handleToggleSelect = (id) => {
         setHighlightedId(null); // Clear highlights immediately on selection
@@ -307,6 +339,9 @@ const NotesPage = () => {
     return (
         <div
             className="max-w-6xl mx-auto pb-24 md:pb-10 relative min-h-screen"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
             onClick={(e) => {
                 // Click outside to deselect
                 if (isSelectionMode && !e.target.closest('.card') && !e.target.closest('button')) {
@@ -314,6 +349,19 @@ const NotesPage = () => {
                 }
             }}
         >
+            {/* Pull to Refresh Spinner */}
+            {(pullY > 0 || isRefreshing) && (
+                <div
+                    className="flex justify-center items-center w-full overflow-hidden transition-all duration-300 ease-out"
+                    style={{ height: isRefreshing ? '60px' : `${pullY}px` }}
+                >
+                    <div className={`p-2 rounded-full bg-white dark:bg-gray-800 shadow-lg border border-gray-100 dark:border-gray-700 flex items-center justify-center ${isRefreshing ? 'animate-spin' : ''}`}
+                        style={{ transform: isRefreshing ? 'scale(1)' : `scale(${Math.min(pullY / 60, 1)}) rotate(${pullY * 2}deg)` }}
+                    >
+                        <RefreshCcw size={20} className="text-orange-500" />
+                    </div>
+                </div>
+            )}
             {/* FLOATING ACTION BAR FOR BATCH ACTIONS */}
             <AnimatePresence>
                 {isSelectionMode && (

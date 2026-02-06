@@ -23,6 +23,38 @@ const RemindersPage = () => {
     const [triggerReload, setTriggerReload] = useState(0);
     const [startVoice, setStartVoice] = useState(false);
 
+    // Pull to Refresh State
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [pullY, setPullY] = useState(0);
+    const touchStartRef = useRef(0);
+
+    const handleTouchStart = (e) => {
+        if (window.scrollY === 0) {
+            touchStartRef.current = e.touches[0].clientY;
+        }
+    };
+
+    const handleTouchMove = (e) => {
+        if (touchStartRef.current > 0 && window.scrollY === 0) {
+            const y = e.touches[0].clientY - touchStartRef.current;
+            if (y > 0) {
+                setPullY(y > 100 ? 100 + (y - 100) * 0.3 : y); // Resistance
+            }
+        }
+    };
+
+    const handleTouchEnd = async () => {
+        if (pullY > 80 && !isRefreshing) {
+            setIsRefreshing(true);
+            setPullY(0); // Reset position but show spinner
+            await dataService.forceSync();
+            setTimeout(() => setIsRefreshing(false), 500); // Min wait
+        } else {
+            setPullY(0);
+        }
+        touchStartRef.current = 0;
+    };
+
     // Delete Confirmation State
     const [deleteConfig, setDeleteConfig] = useState(null); // { id, title, isRecurring, instanceKey }
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -263,7 +295,25 @@ const RemindersPage = () => {
 
 
     return (
-        <div className="max-w-5xl mx-auto pb-24 md:pb-10 relative min-h-screen">
+        <div
+            className="max-w-5xl mx-auto pb-24 md:pb-10 relative min-h-screen"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+        >
+            {/* Pull to Refresh Spinner */}
+            {(pullY > 0 || isRefreshing) && (
+                <div
+                    className="flex justify-center items-center w-full overflow-hidden transition-all duration-300 ease-out"
+                    style={{ height: isRefreshing ? '60px' : `${pullY}px` }}
+                >
+                    <div className={`p-2 rounded-full bg-white dark:bg-gray-800 shadow-lg border border-gray-100 dark:border-gray-700 flex items-center justify-center ${isRefreshing ? 'animate-spin' : ''}`}
+                        style={{ transform: isRefreshing ? 'scale(1)' : `scale(${Math.min(pullY / 60, 1)}) rotate(${pullY * 2}deg)` }}
+                    >
+                        <RefreshCcw size={20} className="text-orange-500" />
+                    </div>
+                </div>
+            )}
 
 
             {/* Header & Filters */}
@@ -612,13 +662,34 @@ const RemindersPage = () => {
                                                                 )}
 
                                                                 <div className={`flex items-center gap-2 mt-1 text-xs font-bold ${isPastTime ? 'text-gray-400' : 'text-orange-500'}`}>
-                                                                    {reminder.status === 'taken' && reminder.takenAt ? (
-                                                                        <>
-                                                                            <CheckCircle size={12} className="text-green-500" />
-                                                                            <span className="text-green-600 dark:text-green-400">
-                                                                                {new Date(reminder.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                                            </span>
-                                                                        </>
+                                                                    {reminder.status === 'taken' ? (
+                                                                        (() => {
+                                                                            // ROBUST CHECK: Top-level OR Deep Log
+                                                                            let timeStr = null;
+                                                                            if (reminder.takenAt) {
+                                                                                timeStr = reminder.takenAt;
+                                                                            } else if (reminder.logs && reminder.instanceKey && reminder.logs[reminder.instanceKey]?.takenAt) {
+                                                                                timeStr = reminder.logs[reminder.instanceKey].takenAt;
+                                                                            }
+
+                                                                            if (timeStr) {
+                                                                                return (
+                                                                                    <>
+                                                                                        <CheckCircle size={12} className="text-green-500" />
+                                                                                        <span className="text-green-600 dark:text-green-400">
+                                                                                            {new Date(timeStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                                        </span>
+                                                                                    </>
+                                                                                );
+                                                                            }
+                                                                            // Fallback if status is taken but no time found (old/legacy)
+                                                                            return (
+                                                                                <>
+                                                                                    <CheckCircle size={12} className="text-green-500" />
+                                                                                    <span className="text-green-600 dark:text-green-400">Done</span>
+                                                                                </>
+                                                                            );
+                                                                        })()
                                                                     ) : (
                                                                         <>
                                                                             <Clock size={12} /> {reminder.displayTime}
@@ -651,7 +722,7 @@ const RemindersPage = () => {
                                                                         <button
                                                                             disabled
                                                                             title="Cannot delete past history"
-                                                                            className="p-2 md:p-3 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed"
+                                                                            className="h-12 w-12 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed flex items-center justify-center shrink-0"
                                                                         >
                                                                             <Trash2 size={18} />
                                                                         </button>
@@ -661,7 +732,7 @@ const RemindersPage = () => {
                                                                 return (
                                                                     <button
                                                                         onClick={(e) => { e.stopPropagation(); initiateDelete(reminder); }}
-                                                                        className="p-2 md:p-3 rounded-xl bg-gray-100 dark:bg-gray-700 text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                                                        className="h-12 w-12 rounded-xl bg-gray-100 dark:bg-gray-700 text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors flex items-center justify-center shrink-0"
                                                                     >
                                                                         <Trash2 size={18} />
                                                                     </button>
@@ -680,7 +751,7 @@ const RemindersPage = () => {
                                                                 yesterday.setDate(yesterday.getDate() - 1);
                                                                 yesterday.setHours(0, 0, 0, 0);
 
-                                                                // V8 FIX: If Searching, check the REMINDER's date, not the selected calendar date
+                                                                // V8 FIX: If Searching, check the REMINDER's date
                                                                 let checkDate = new Date(selectedDate);
                                                                 if (searchQuery) {
                                                                     if (reminder.targetDate) checkDate = new Date(reminder.targetDate);
@@ -694,11 +765,9 @@ const RemindersPage = () => {
                                                                     isActionable = false;
                                                                     reason = 'History';
                                                                 } else {
-                                                                    // V10.17: Only check time window for TODAY and YESTERDAY
-                                                                    // For older dates, they should have been auto-completed
+                                                                    // V10.17: Check time window
                                                                     if (reminder.displayTime) {
                                                                         const [h, m] = reminder.displayTime.split(':').map(Number);
-                                                                        // V10.19 FIX: Use checkDate instead of selectedDate for accurate time comparison in search
                                                                         const reminderDate = new Date(checkDate);
                                                                         reminderDate.setHours(h, m, 0, 0);
 
@@ -706,19 +775,36 @@ const RemindersPage = () => {
                                                                         const diffMs = now.getTime() - reminderDate.getTime();
                                                                         const hoursDiff = diffMs / (1000 * 60 * 60);
 
+                                                                        // V10.22: Time Window Logic
                                                                         if (hoursDiff < -2) {
+                                                                            // > 2 hours in FUTURE
                                                                             isActionable = false;
                                                                             reason = 'Too Early';
                                                                         } else if (hoursDiff > 2) {
-                                                                            isActionable = false;
-                                                                            reason = 'Missed';
+                                                                            // > 2 hours in PAST (Missed)
+                                                                            // V10.24 FEATURE: Allow "Grace Period" (Undo/Take) for another 2 hours (Total 4h)
+                                                                            if (hoursDiff <= 4) {
+                                                                                // Status is Missed, but still actionable (Grace Period)
+                                                                                reason = 'Missed'; // Display as Missed, but actionable
+                                                                            } else {
+                                                                                isActionable = false;
+                                                                                reason = 'Missed';
+                                                                            }
                                                                         }
                                                                     }
                                                                 }
 
+                                                                // Manual 'Missed' status check
                                                                 if (reminder.status === 'missed') {
-                                                                    isActionable = false;
-                                                                    reason = 'Missed';
+                                                                    // If manually missed (or auto), check grace period again?
+                                                                    // We re-calculated hoursDiff above.
+                                                                    // If we are here, isActionable might be true (from logic above)
+                                                                    // If hoursDiff is < 4, we allow it.
+                                                                    // But if hoursDiff is unknown (no time?), default lock?
+                                                                    if (!reminder.displayTime) {
+                                                                        isActionable = false;
+                                                                        reason = 'Missed';
+                                                                    }
                                                                 }
 
                                                                 return (
@@ -726,19 +812,30 @@ const RemindersPage = () => {
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
                                                                             if (!isActionable) return;
+
+                                                                            // If it's a "Missed" item being taken late, maybe prompt or just take it?
+                                                                            // Just take it.
                                                                             dataService.logReminderStatus(reminder.id, reminder.instanceKey, 'taken');
                                                                             setTriggerReload(prev => prev + 1);
                                                                         }}
                                                                         disabled={!isActionable}
-                                                                        className={`p-2 md:px-4 md:py-2 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 ${isActionable
-                                                                            ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/20'
+                                                                        className={`h-12 w-12 md:w-auto md:px-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 font-bold ${isActionable
+                                                                            ? (reason === 'Missed'
+                                                                                ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20' // Missed but actionable (Red button?) or Green? User wants to "Undo"/Take. Green is better for "Take".
+                                                                                : 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/20')
                                                                             : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none'
                                                                             }`}
                                                                     >
                                                                         {isActionable ? (
                                                                             <>
-                                                                                <Check size={20} className="md:hidden" />
-                                                                                <span className="hidden md:inline font-bold">{reminder.type === 'Medication' ? 'Take' : 'Done'}</span>
+                                                                                {/* Icon */}
+                                                                                {reason === 'Missed' ? <RefreshCcw size={18} className="md:hidden" /> : <Check size={20} className="md:hidden" />}
+
+                                                                                <span className="hidden md:inline font-bold">
+                                                                                    {reason === 'Missed'
+                                                                                        ? 'Take Late'
+                                                                                        : (reminder.type === 'Medication' ? 'Take' : 'Done')}
+                                                                                </span>
                                                                             </>
                                                                         ) : (
                                                                             <span className="text-xs font-bold uppercase">{reason}</span>
@@ -756,10 +853,10 @@ const RemindersPage = () => {
                                                                             setTriggerReload(prev => prev + 1);
                                                                         }
                                                                     }}
-                                                                    className="p-2 text-green-600 bg-green-100 rounded-full hover:bg-green-200 transaction-colors"
+                                                                    className="h-12 w-12 text-green-600 bg-green-100 rounded-xl hover:bg-green-200 transaction-colors flex items-center justify-center shrink-0"
                                                                     title="Undo Completion"
                                                                 >
-                                                                    <RefreshCcw size={16} />
+                                                                    <RefreshCcw size={18} />
                                                                 </button>
                                                             )}
                                                         </div>

@@ -1,220 +1,238 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Mic, MicOff, Image as ImageIcon, Trash2, FileText, Paperclip, Loader2, CheckSquare, Tag, Play, Square, Pause, Maximize2, Minimize2, GripVertical, Share2, Pin } from 'lucide-react';
-import { Reorder, useDragControls } from 'framer-motion';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, Mic, MicOff, Image as ImageIcon, Trash2, FileText, Paperclip, Loader2, CheckSquare, Tag, Play, Pause, GripVertical, Share2, Pin, Undo, Redo } from 'lucide-react';
+import { Reorder } from 'framer-motion';
 import { useVoice } from '../../hooks/useVoice';
 import { fileStorage } from '../../services/fileStorage';
 import { ocrService } from '../../services/ocrService';
 import { dataService } from '../../services/data';
 import { useAuth } from '../../context/AuthContext';
-
+import { mergeService } from '../../services/mergeService';
 import { BackButtonManager } from '../../services/BackButtonManager';
 
+// CUSTOM HOOK: useHistory
+const useHistory = (initialState) => {
+    const [history, setHistory] = useState([initialState]);
+    const [index, setIndex] = useState(0);
+
+    const currentState = history[index];
+
+    const setState = useCallback((newState, overwrite = false) => {
+        setHistory(prev => {
+            const current = prev[index];
+            if (current === newState) return prev; // No change
+
+            // If overwrite, replace current head
+            if (overwrite) {
+                const newHistory = [...prev];
+                newHistory[index] = newState;
+                return newHistory;
+            }
+
+            // Normal push
+            const newHistory = prev.slice(0, index + 1);
+            newHistory.push(newState);
+            return newHistory;
+        });
+        if (!overwrite) setIndex(prev => prev + 1);
+    }, [index]);
+
+    const undo = useCallback(() => {
+        setIndex(prev => Math.max(0, prev - 1));
+    }, []);
+
+    const redo = useCallback(() => {
+        setIndex(prev => Math.min(history.length - 1, prev + 1));
+    }, [history.length]);
+
+    // External reset
+    const reset = useCallback((state) => {
+        setHistory([state]);
+        setIndex(0);
+    }, []);
+
+    return { state: currentState, setState, undo, redo, canUndo: index > 0, canRedo: index < history.length - 1, reset };
+};
+
+
 const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, initialType = 'text', autoStartListening = false, searchQuery = '' }) => {
-    // if (!isOpen) return null; // Removed to allow conditional rendering from parent to handle lifecycle
     const { user } = useAuth();
 
-    // Back Button Handling
+    // BACK BUTTON
+    const performSaveRef = useRef(null);
     useEffect(() => {
         if (!isOpen) return;
-
         const unregister = BackButtonManager.register(async () => {
-            console.log("Back button caught by AddNoteModal");
-            // Trigger Save (using ref to access latest state/function)
-            if (performSaveRef.current) {
-                await performSaveRef.current(true); // true = shouldClose
-            } else {
-                onClose();
-            }
-            return true; // Stop propagation
+            if (performSaveRef.current) await performSaveRef.current(true);
+            else onClose();
+            return true;
         });
-
         return unregister;
     }, [isOpen, onClose]);
 
-    // ... existing effect ...
-
-    const [noteType, setNoteType] = useState(initialType); // 'text' or 'shopping'
+    // STATE
+    const [noteType, setNoteType] = useState(initialType);
     const [items, setItems] = useState([{ text: '', done: false, id: crypto.randomUUID() }]);
-    const [content, setContent] = useState('');
-    const [title, setTitle] = useState(''); // Explicit Title State
+
+    // Content with History
+    const { state: content, setState: setContent, undo, redo, canUndo, canRedo, reset: resetContent } = useHistory('');
+
+    const [title, setTitle] = useState('');
     const [tags, setTags] = useState('');
     const [showTagInput, setShowTagInput] = useState(false);
-    const [isPinned, setIsPinned] = useState(false); // New Pinned State
-
-    // Files
+    const [isPinned, setIsPinned] = useState(false);
     const [files, setFiles] = useState([]);
-    const [isProcessing, setIsProcessing] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
 
-    // Conflict Detection
-    const [remoteConflict, setRemoteConflict] = useState(null);
-    const lastFetchRef = useRef(Date.now());
+    // --- PREVIEW STATE ---
+    const [previewFile, setPreviewFile] = useState(null);
 
+    // Register Back Button for Preview
     useEffect(() => {
-        let interval;
-        if (noteToEdit?.id && isOpen) {
-            interval = setInterval(async () => {
-                if (!auth.currentUser) return;
-                try {
-                    // We need a direct method from firestoreService to get latest without store cache if possible
-                    // Or ensure store update triggers this? 
-                    // Let's use firestoreService directly for truth.
-                    // Assuming firestoreService is available (imported via dataService or directly?)
-                    // It is NOT imported directly. dataService abstracts it.
-                    // But dataService.getNote might be local.
-                    // We need to import firestoreService or add a method to dataService to force fetch.
-                    // Actually, dataService syncs automatically. We can just check store?
-                    // But store might not be updated instantly if listener is slow?
-                    // Let's rely on dataService.store for now or trigger a fetch.
-                } catch (e) { }
-            }, 15000);
+        if (previewFile) {
+            const unregister = BackButtonManager.register(async () => {
+                setPreviewFile(null);
+                return true;
+            });
+            return unregister;
         }
-        return () => clearInterval(interval);
-    }, [noteToEdit, isOpen]);
-    // Wait, I can't easily implement robust polling without direct firestore access or new dataService method.
-    // Let's just implement the "Pre-Save Check" which is safer.
+    }, [previewFile]);
 
-    // Actually, I can add a dedicated method to dataService: `checkRemoteVersion(id)`.
-    // But for now, let's keep it simple: Check on Save.
+    // SYNC STATE
+    const [localId, setLocalId] = useState(noteToEdit?.id || crypto.randomUUID());
+    const [isNew, setIsNew] = useState(!noteToEdit);
+    const [saveStatus, setSaveStatus] = useState('saved');
+    // Merge Refs
+    const baseContentRef = useRef(''); // The last known sync state (Snapshot) for Text
+    const baseFilesRef = useRef([]);   // Base state for Files
 
 
-    // ... (Init effects skipped) ...
+    // --- REAL-TIME SYNC ---
+    useEffect(() => {
+        if (!isOpen || !noteToEdit?.id) return;
 
-    const handleDragOver = (e) => {
-        e.preventDefault();
-        setIsDragging(true);
-    };
+        // Start listening to the specific note
+        const unsubscribe = dataService.getNoteRealtime(noteToEdit.id, (remoteNote) => {
+            if (!remoteNote) return; // Deleted?
 
-    const handleDragLeave = (e) => {
-        e.preventDefault();
-        setIsDragging(false);
-    };
+            // 1. Text Merge
+            if (remoteNote.type === 'text') {
+                const currentLocal = content || '';
+                const base = baseContentRef.current || '';
+                const remote = remoteNote.content || '';
 
-    const handleDrop = (e) => {
-        e.preventDefault();
-        setIsDragging(false);
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFileUpload({ target: { files: e.dataTransfer.files } });
-        }
-    };
+                if (remote !== base) {
+                    console.log("Remote update detected. Merging...");
+                    // Calc 3-way merge
+                    const merged = mergeService.threeWayMerge(base, currentLocal, remote);
 
-    // Audio State
-    const { isListening, transcript, startListening, stopListening, isSupported, resetTranscript } = useVoice({ continuous: true });
-    const [audioData, setAudioData] = useState(null);
-    const [recordingStatus, setRecordingStatus] = useState('idle'); // 'idle', 'recording', 'paused'
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [currentTime, setCurrentTime] = useState(0);
-    const [duration, setDuration] = useState(0);
-    const audioRef = useRef(null);
+                    if (merged !== currentLocal) {
+                        // Update Local state
+                        setContent(merged);
+                        console.log("Merged content applied.");
+                    }
+                    baseContentRef.current = remote; // Update new base
+                }
+            }
 
-    const mediaRecorderRef = useRef(null);
-    const audioChunksRef = useRef([]);
-    const streamRef = useRef(null);
-    const textareaRef = useRef(null);
-    const performSaveRef = useRef(null); // Ref to hold latest save function
+            // 2. Title Merge (Last Write Wins for simplicity, if remote changed and we didn't touch it much)
+            if (remoteNote.title !== undefined && remoteNote.title !== title) {
+                // For now, only update if we haven't touched title? 
+                // Or just let it be LWW. Real LWW requires tracking baseTitle.
+                // We'll skip complex title merge for now to avoid jumpiness.
+            }
 
-    // ... (Init effects skipped) ...
+            // Update other fields
+            if (remoteNote.isPinned !== undefined) setIsPinned(remoteNote.isPinned);
+            if (remoteNote.tags) setTags(remoteNote.tags.join(', '));
+            // 3. File Merge (3-Way)
+            const remoteFiles = remoteNote.files || [];
+            const baseFiles = baseFilesRef.current || [];
 
-    // Audio Helpers
-    const formatTime = (time) => {
-        if (!time) return "0:00";
-        const minutes = Math.floor(time / 60);
-        const seconds = Math.floor(time % 60);
-        return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-    };
+            // Identify Remote Changes
+            const addedRemotely = remoteFiles.filter(rf => !baseFiles.some(bf => bf.id === rf.id));
+            const removedRemotely = baseFiles.filter(bf => !remoteFiles.some(rf => rf.id === bf.id));
 
-    const handleSeek = (e) => {
-        const time = Number(e.target.value);
-        setCurrentTime(time);
-        if (audioRef.current) {
-            audioRef.current.currentTime = time;
-        }
-    };
+            if (addedRemotely.length > 0 || removedRemotely.length > 0) {
+                setFiles(prev => {
+                    let newFiles = [...prev];
 
-    const handlePlayAudio = () => {
-        if (!audioRef.current && audioData) {
-            // Should have been initialized by effect, but fallback just in case
-            // forcing a re-run of effect logic or just alert?
-            // simpler: do nothing or let effect catch up. 
-            // actually if we click fast, effect might not have run? unlikley.
-            // keeping it safe:
+                    // Apply Deletions
+                    if (removedRemotely.length > 0) {
+                        newFiles = newFiles.filter(f => {
+                            // Keep if it's a temp file (no storageData/id yet)
+                            if (!f.storageData?.id && !f.id) return true;
+                            // If it has an ID, check if it was removed remotely
+                            const idToCheck = f.storageData?.id || f.id;
+                            return !removedRemotely.some(rm => rm.id === idToCheck);
+                        });
+                    }
+
+                    // Apply Additions
+                    addedRemotely.forEach(rf => {
+                        // Check if we already have it (avoid dupes)
+                        const exists = newFiles.some(f => (f.storageData?.id === rf.id) || (f.id === rf.id));
+                        if (!exists) {
+                            newFiles.push({
+                                tempId: crypto.randomUUID(),
+                                name: rf.name,
+                                type: rf.type,
+                                status: 'ready',
+                                text: rf.extractedText || '',
+                                storageData: { id: rf.id, url: rf.url, path: rf.path }
+                            });
+                        }
+                    });
+                    return newFiles;
+                });
+                baseFilesRef.current = remoteFiles; // Update Base
+            }
+
+            // 4. Audio Merge (Smart Check)
+            if (remoteNote.audioData) {
+                // If we don't have audio, or if remote changed and we didn't touch it
+                // Simple logic: If we have no audio, take remote.
+                // If we have audio, but it matches base (old), and remote is new, take remote.
+                const currentAudio = audioData;
+                // const baseAudio = baseAudioRef.current; // We need to track this too!
+
+                // For now, if current is null, take remote.
+                if (!currentAudio) {
+                    setAudioData(remoteNote.audioData);
+                }
+            } else if (remoteNote.audioData === null && audioData) {
+                // Remote deleted it?
+                // If we haven't touched it (matches base), delete ours too.
+                // Skipping complex delete sync for audio to prevent accidental loss for now.
+            }
+
+            if (remoteNote.items && noteType === 'shopping') {
+                // Checklist sync is hard. Naive replacement for now if remote changed.
+                // Ideally check diff.
+            }
+
+        });
+
+        return () => {
+            unsubscribe();
+        };
+    }, [isOpen, noteToEdit?.id, content, setContent, noteType, title]);
+
+    // --- INITIALIZATION ---
+    useEffect(() => {
+        // Prevent overwriting local state if we are already editing this note (unless it's a fresh open)
+        // This relies on the Real-time Sync useEffect to handle updates instead of hard-resetting here.
+        if (localId && noteToEdit?.id === localId && !isNew) {
             return;
         }
 
-        if (audioRef.current) {
-            if (isPlaying) {
-                audioRef.current.pause();
-                setIsPlaying(false);
-            } else {
-                audioRef.current.play()
-                    .catch(e => console.error("Play failed", e));
-                setIsPlaying(true);
-            }
-        }
-    };
-
-    // Ensure audio is properly initialized when data loads
-    useEffect(() => {
-        if (audioData) {
-            // Only create if not already created (or recreate if changed)
-            if (!audioRef.current || audioRef.current.src !== audioData) {
-                if (audioRef.current) {
-                    audioRef.current.pause();
-                    audioRef.current = null;
-                }
-
-                const audio = new Audio(audioData);
-                audioRef.current = audio;
-
-                audio.onloadedmetadata = () => {
-                    setDuration(audio.duration);
-                };
-                audio.ontimeupdate = () => {
-                    setCurrentTime(audio.currentTime);
-                };
-                audio.onended = () => {
-                    setIsPlaying(false);
-                    setCurrentTime(0);
-                };
-            }
-        } else {
-            // Cleanup if audioData removed
-            setDuration(0);
-            setCurrentTime(0);
-            if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current = null;
-            }
-        }
-    }, [audioData]);
-
-    const deleteAudio = () => {
-        if (window.confirm("Remove this audio recording?")) {
-            if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current = null;
-            }
-            setAudioData(null);
-            setIsPlaying(false);
-            setCurrentTime(0);
-            setDuration(0);
-        }
-    };
-
-    // --- EFFECT: Initialization & Body Scroll Lock ---
-    useEffect(() => {
-        // Lock scroll on mount
-        document.body.style.overflow = 'hidden';
-        return () => {
-            // Unlock scroll on unmount match stylesheet default
-            document.body.style.overflow = '';
-        };
-    }, []);
-
-    useEffect(() => {
         if (noteToEdit) {
-            setTitle(noteToEdit.title && noteToEdit.title !== 'Untitled Note' && noteToEdit.title !== 'New Note' ? noteToEdit.title : '');
-            setContent(noteToEdit.content || '');
+            setTitle(noteToEdit.title && noteToEdit.title !== 'Untitled Note' ? noteToEdit.title : '');
+
+            const initialContent = noteToEdit.content || '';
+            resetContent(initialContent); // Reset history to this start point
+            baseContentRef.current = initialContent; // Set base
+            baseFilesRef.current = noteToEdit.files || [];
+
             setTags(noteToEdit.tags ? noteToEdit.tags.join(', ') : '');
             setShowTagInput(!!(noteToEdit.tags && noteToEdit.tags.length > 0));
             setFiles(noteToEdit.files || []);
@@ -222,891 +240,426 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
             setItems((noteToEdit.items && noteToEdit.items.length > 0) ? noteToEdit.items.map(i => ({ ...i, id: i.id || crypto.randomUUID() })) : [{ text: '', done: false, id: crypto.randomUUID() }]);
             setAudioData(noteToEdit.audioData || null);
             setIsPinned(!!noteToEdit.isPinned);
+
+            setLocalId(noteToEdit.id);
+            setIsNew(false);
         } else {
+            // New Note
+            resetContent('');
+            baseContentRef.current = '';
+            baseFilesRef.current = [];
             setTitle('');
-            setContent('');
             setTags('');
-            setShowTagInput(false);
             setFiles([]);
-            setNoteType(initialType === 'shopping' ? 'shopping' : 'text');
             setItems([{ text: '', done: false, id: crypto.randomUUID() }]);
-            setAudioData(null);
             setIsPinned(false);
+            setAudioData(null);
+            setLocalId(crypto.randomUUID());
+            setIsNew(true);
         }
-    }, [noteToEdit, isOpen, initialType]);
+    }, [noteToEdit, isOpen, localId, isNew]); // eslint-disable-next-line react-hooks/exhaustive-deps
 
-    // --- EFFECT: Focus & Selection (Search) ---
+
+    // --- DRAG & DROP & AUDIO ---
+    const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
+    const handleDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
+    const handleDrop = (e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files?.length) handleFileUpload({ target: { files: e.dataTransfer.files } }); };
+
+    const { isListening, transcript, startListening, stopListening, isSupported, resetTranscript } = useVoice({ continuous: true });
+    const [audioData, setAudioData] = useState(null);
+    const [recordingStatus, setRecordingStatus] = useState('idle');
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const audioRef = useRef(null);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
+    const streamRef = useRef(null);
+    const textareaRef = useRef(null);
+
+    // Audio Helpers
+    const formatTime = (time) => { if (!time) return "0:00"; const m = Math.floor(time / 60); const s = Math.floor(time % 60); return `${m}:${s < 10 ? '0' : ''}${s}`; };
+    const handleSeek = (e) => { const t = Number(e.target.value); setCurrentTime(t); if (audioRef.current) audioRef.current.currentTime = t; };
+    const handlePlayAudio = () => { if (audioRef.current) { if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); } else { audioRef.current.play().catch(console.error); setIsPlaying(true); } } };
+
     useEffect(() => {
-        if (isOpen && noteType === 'text' && searchQuery && content && textareaRef.current) {
-            const index = content.toLowerCase().indexOf(searchQuery.toLowerCase());
-            if (index !== -1) {
-                setTimeout(() => {
-                    const ta = textareaRef.current;
-                    if (ta) {
-                        ta.focus();
-                        ta.setSelectionRange(index, index + searchQuery.length);
-                        // Center the line
-                        const lineHeight = 24;
-                        const lines = content.substring(0, index).split('\n').length - 1;
-                        ta.scrollTop = lines * lineHeight - (ta.clientHeight / 2);
-                    }
-                }, 300);
+        if (audioData) {
+            if (!audioRef.current || audioRef.current.src !== audioData) {
+                if (audioRef.current) audioRef.current.pause();
+                const a = new Audio(audioData);
+                audioRef.current = a;
+                a.onloadedmetadata = () => setDuration(a.duration);
+                a.ontimeupdate = () => setCurrentTime(a.currentTime);
+                a.onended = () => { setIsPlaying(false); setCurrentTime(0); };
             }
+        } else {
+            setDuration(0); setCurrentTime(0);
+            if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
         }
-    }, [isOpen, noteType, searchQuery, content]);
+    }, [audioData]);
 
-    // --- AUDIO LOGIC ---
-    const MAX_AUDIO_SIZE = 25 * 1024 * 1024; // Increased to 25MB
+    const deleteAudio = () => { if (window.confirm("Remove audio?")) { if (audioRef.current) audioRef.current.pause(); setAudioData(null); setIsPlaying(false); } };
 
-    const startRecordingRobust = React.useCallback(async () => {
+    // Body Lock
+    useEffect(() => { document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = ''; }; }, []);
+
+    // Search Focus
+    useEffect(() => { if (isOpen && noteType === 'text' && searchQuery && content && textareaRef.current) { const idx = content.toLowerCase().indexOf(searchQuery.toLowerCase()); if (idx !== -1) { setTimeout(() => { textareaRef.current?.focus(); textareaRef.current?.setSelectionRange(idx, idx + searchQuery.length); }, 300); } } }, [isOpen, noteType, searchQuery, content]);
+
+    // Audio Recording
+    const MAX_AUDIO_SIZE = 25 * 1024 * 1024;
+    const startRecordingRobust = useCallback(async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
-
-            // Mobile/Browser Compatibility: Detect supported MIME type
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' :
-                MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' :
-                    ''; // Default fallback
-
-            const options = mimeType ? { mimeType } : {};
-            const mediaRecorder = new MediaRecorder(stream, options);
-
-            mediaRecorderRef.current = mediaRecorder;
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+            const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+            mediaRecorderRef.current = recorder;
             audioChunksRef.current = [];
-            let currentSize = 0;
-
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    currentSize += event.data.size;
-                    if (currentSize > MAX_AUDIO_SIZE) {
-                        stopRecordingAsync();
-                        stopListening();
-                        alert("Audio recording exceeded limit. Recording stopped.");
-                        return;
-                    }
-                    audioChunksRef.current.push(event.data);
-                }
-            };
-
-            // onstop is handled in stopRecordingAsync mostly, but we keep a fallback just in case
-            // actually, we will centralize logic in stopRecordingAsync to avoid duplication/race conditions
-
-            mediaRecorder.start();
+            let size = 0;
+            recorder.ondataavailable = (e) => { if (e.data.size > 0) { size += e.data.size; if (size > MAX_AUDIO_SIZE) { stopRecordingAsync(); stopListening(); alert("Limit exceeded"); return; } audioChunksRef.current.push(e.data); } };
+            recorder.start();
             setRecordingStatus('recording');
-        } catch (err) {
-            console.error("Error accessing microphone:", err);
-            stopListening();
-            setRecordingStatus('idle');
-            // Don't alert immediately on mount if auto-start failed silently, but here it's explicit
-            if (!autoStartListening) alert("Could not access microphone.");
-        }
+        } catch (e) { console.error(e); stopListening(); setRecordingStatus('idle'); if (!autoStartListening) alert("Mic error"); }
     }, [stopListening, autoStartListening]);
 
-    const stopRecordingAsync = () => {
-        return new Promise((resolve) => {
-            if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
-                setRecordingStatus('idle');
-                resolve(null);
-                return;
-            }
+    const stopRecordingAsync = () => new Promise(resolve => {
+        if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') { setRecordingStatus('idle'); resolve(null); return; }
+        mediaRecorderRef.current.onstop = () => {
+            const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current.mimeType });
+            if (blob.size > MAX_AUDIO_SIZE) { alert("Limit exceeded"); setAudioData(null); resolve(null); }
+            else { const r = new FileReader(); r.onloadend = () => { setAudioData(r.result); resolve(r.result); }; r.readAsDataURL(blob); }
+            streamRef.current?.getTracks().forEach(t => t.stop());
+            setRecordingStatus('idle');
+        };
+        mediaRecorderRef.current.stop();
+    });
 
-            mediaRecorderRef.current.onstop = () => {
-                const mimeType = mediaRecorderRef.current.mimeType || 'audio/webm'; // Fallback
-                const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+    useEffect(() => { if (isOpen && autoStartListening && isSupported && !noteToEdit) { resetTranscript(); setAudioData(null); startListening(); startRecordingRobust(); } else if (!isOpen) { stopListening(); if (mediaRecorderRef.current?.state === 'recording') stopRecordingAsync(); } }, [isOpen, autoStartListening, noteToEdit, isSupported, resetTranscript, startListening, startRecordingRobust, stopListening]);
 
-                let resultData = null;
-                if (audioBlob.size > MAX_AUDIO_SIZE) {
-                    alert("Audio recording exceeded limit.");
-                    setAudioData(null);
-                } else {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        setAudioData(reader.result);
-                        resolve(reader.result);
-                    };
-                    reader.readAsDataURL(audioBlob);
-                    resultData = true; // Mark as processing
-                }
-
-                // Cleanup tracks
-                if (streamRef.current) {
-                    streamRef.current.getTracks().forEach(track => track.stop());
-                    streamRef.current = null;
-                }
-
-                setRecordingStatus('idle');
-                if (!resultData) resolve(null);
-            };
-
-            mediaRecorderRef.current.stop();
-        });
-    };
-
-    // Auto-start listening if requested
-    useEffect(() => {
-        if (isOpen && autoStartListening && isSupported && !noteToEdit) {
-            resetTranscript();
-            setAudioData(null);
-            startListening();
-            startRecordingRobust();
-        } else if (!isOpen) {
-            stopListening();
-            // Important: If closing and recording, performSave handles it. 
-            // But if just hiding, we stop.
-            if (mediaRecorderRef.current?.state === 'recording') {
-                stopRecordingAsync();
-            }
-        }
-    }, [isOpen, autoStartListening, noteToEdit, isSupported, resetTranscript, startListening, startRecordingRobust]);
-
-    // Transcript handling
+    // Transcript
     useEffect(() => {
         if (!isListening && transcript) {
             if (noteType === 'text') {
-                setContent(prev => (prev ? prev + ' ' : '') + transcript);
+                setContent((content ? content + ' ' : '') + transcript);
             } else {
-                setItems(prev => {
-                    const newItems = [...prev];
-                    const lastIdx = newItems.length - 1;
-                    if (newItems[lastIdx].text === '') {
-                        newItems[lastIdx].text = transcript;
-                    } else {
-                        newItems.push({ text: transcript, done: false });
-                    }
-                    return newItems;
-                });
+                setItems(prev => [...prev, { text: transcript, done: false, id: crypto.randomUUID() }]);
             }
             resetTranscript();
         }
-    }, [isListening, transcript, noteType, resetTranscript]);
+    }, [isListening, transcript, noteType, setContent, resetTranscript]);
 
+    // Handlers
+    const toggleRecording = () => { if (recordingStatus !== 'idle') { stopListening(); stopRecordingAsync(); } else { setAudioData(null); startListening(); startRecordingRobust(); } };
 
-    // --- HANDLERS ---
-
-    const toggleRecording = () => {
-        if (recordingStatus !== 'idle') {
-            stopListening();
-            stopRecordingAsync();
-        } else {
-            setAudioData(null);
-            startListening();
-            startRecordingRobust();
-        }
-    };
-
-
-
-
-
-    const toggleNoteType = () => {
-        if (noteType === 'text') {
-            // Convert to Checklist
-            if (content.trim()) {
-                const newItems = content.split('\n').map(line => {
-                    const isDone = line.trim().toLowerCase().startsWith('[x]');
-                    const text = isDone ? line.replace('[x]', '').trim() : line.trim();
-                    return { text, done: isDone };
-                }).filter(i => i.text);
-                setItems(newItems.length > 0 ? newItems : [{ text: '', done: false }]);
-            } else {
-                setItems([{ text: '', done: false }]);
-            }
-            setNoteType('shopping');
-        } else {
-            // Convert to Text
-            const joinedState = items
-                .filter(i => i.text.trim())
-                .map(i => `${i.done ? '[x] ' : ''}${i.text}`)
-                .join('\n');
-            setContent(joinedState);
-            setNoteType('text');
-        }
-    };
-
-    // File Uploads
+    // File Upload
     const handleFileUpload = async (e) => {
         const selectedFiles = Array.from(e.target.files);
-        if (selectedFiles.length === 0) return;
-
-        const MAX_SIZE = 25 * 1024 * 1024; // 25MB
-        const invalidFiles = selectedFiles.filter(f => f.size > MAX_SIZE);
-        if (invalidFiles.length > 0) {
-            alert(`File(s) too large (Max 25MB):\n${invalidFiles.map(f => f.name).join('\n')}`);
-            return;
-        }
-
-
-
-        const newFileEntries = selectedFiles.map(f => ({
-            tempId: crypto.randomUUID(),
-            file: f,
-            name: f.name,
-            type: f.type,
-            status: 'uploading',
-            progress: 0,
-            text: '',
-            storageData: null
-        }));
-
+        if (!selectedFiles.length) return;
+        const newFileEntries = selectedFiles.map(f => ({ tempId: crypto.randomUUID(), file: f, name: f.name, type: f.type, status: 'uploading', progress: 0, text: '', storageData: null }));
         setFiles(prev => [...prev, ...newFileEntries]);
-
         newFileEntries.forEach(async (entry) => {
             try {
-                const uploadPromise = fileStorage.saveFile(entry.file, (progress) => {
-                    setFiles(prev => prev.map(f => f.tempId === entry.tempId ? { ...f, progress: Math.round(progress) } : f));
-                });
-                const ocrPromise = ocrService.extractText(entry.file);
-                const [storageData, extractedText] = await Promise.all([uploadPromise, ocrPromise]);
-
-                setFiles(prev => prev.map(f => f.tempId === entry.tempId ? { ...f, status: 'ready', progress: 100, text: extractedText || '', storageData } : f));
-            } catch (err) {
-                console.error("Upload failed", err);
-                setFiles(prev => prev.map(f => f.tempId === entry.tempId ? { ...f, status: 'error' } : f));
-            }
+                const up = fileStorage.saveFile(entry.file, p => setFiles(prev => prev.map(f => f.tempId === entry.tempId ? { ...f, progress: Math.round(p) } : f)));
+                const ocr = ocrService.extractText(entry.file);
+                const [sd, txt] = await Promise.all([up, ocr]);
+                setFiles(prev => prev.map(f => f.tempId === entry.tempId ? { ...f, status: 'ready', progress: 100, text: txt || '', storageData: sd } : f));
+            } catch (e) { setFiles(prev => prev.map(f => f.tempId === entry.tempId ? { ...f, status: 'error' } : f)); }
         });
     };
+    const handleRemoveFile = async (idx) => { setFiles(files.filter((_, i) => i !== idx)); };
 
-    const handleRemoveFile = async (index) => {
-        const fileToRemove = files[index];
-        if (fileToRemove.storageData) await fileStorage.deleteFile(fileToRemove.storageData);
-        else if (fileToRemove.id && !fileToRemove.file) await fileStorage.deleteFile(fileToRemove.id);
-        setFiles(files.filter((_, i) => i !== index));
-    };
-
-    // Submit
-    // Auto-save logic
-    // CRITICAL: Pre-generate ID for new notes to prevent duplicates on auto-save race conditions
-    const [localId, setLocalId] = useState(noteToEdit?.id || crypto.randomUUID());
-    const [isNew, setIsNew] = useState(!noteToEdit);
-    const [saveStatus, setSaveStatus] = useState('saved'); // 'saved', 'saving', 'error'
+    // SAVE LOGIC
     const lastSavedData = useRef(null);
-
-    // Initial ID sync (if reopening for different note)
-    useEffect(() => {
-        setLocalId(noteToEdit?.id || crypto.randomUUID());
-        setIsNew(!noteToEdit);
-    }, [noteToEdit]);
-
     const performSave = async (shouldClose = false) => {
-        if (files.some(f => f.status === 'uploading')) {
-            if (shouldClose) alert("Please wait for files to upload.");
-            return;
-        }
-
+        if (files.some(f => f.status === 'uploading')) { if (shouldClose) alert("Wait for upload"); return; }
         setSaveStatus('saving');
 
-        // FORCE STOP RECORDING IF ACTIVE
-        let finalAudioData = audioData;
-        if (recordingStatus === 'recording' || recordingStatus === 'paused') {
-            stopListening();
-            // precise usage: await the promise
-            const recordedData = await stopRecordingAsync();
-            if (recordedData) finalAudioData = recordedData;
-        }
-
-        // CAPTURE PENDING TRANSCRIPT (Fix for "Done" button race condition)
-        // If we are listening, the current transcript hasn't been merged into 'content' state yet via effect.
-        // We must manually merge it for the save payload.
-        let finalContent = content;
-        let finalItems = items;
-
-        if (isListening && transcript) {
-            if (noteType === 'text') {
-                finalContent = (finalContent ? finalContent + ' ' : '') + transcript;
-            } else if (noteType === 'shopping') {
-                // For checklist, we might try to append as a new item if meaningful
-                // But checklist transcript logic is complex (it appends dynamically).
-                // The effect handles checklist updates. 
-                // However, for text note, it's critical.
-            }
-        }
+        let finalAudio = audioData;
+        if (recordingStatus === 'recording') { stopListening(); const rd = await stopRecordingAsync(); if (rd) finalAudio = rd; }
 
         try {
-            // Check for Blank Note
-            const isBlank = !title.trim() &&
-                (!noteType === 'text' || !content.trim()) &&
-                (!noteType === 'shopping' || items.filter(i => i.text.trim()).length === 0) &&
-                files.length === 0 &&
-                !finalAudioData;
+            // Blank check
+            const isBlank = !title.trim() && (!noteType === 'text' || !content.trim()) && (!noteType === 'shopping' || !items.length) && !files.length && !finalAudio;
+            const isShared = (noteToEdit?.sharedWith?.length > 0);
 
-            // Shared Context Check
-            const isShared = (noteToEdit && (noteToEdit.sharedWith?.length > 0 || (noteToEdit.ownerId && noteToEdit.ownerId !== user?.uid)));
-
-            // LOGIC: If Blank AND Not Shared -> Delete/Discard
             if (isBlank && !isShared) {
-                console.warn("Auto-Delete: Note is blank and unshared.");
-                if (shouldClose) alert("Blank note discarded.");
-
-                if (!isNew && localId) {
-                    // Delete existing empty note
-                    await dataService.deleteNote(localId);
-                }
-
+                if (localId && !isNew) await dataService.deleteNote(localId);
                 setSaveStatus('saved');
-                if (shouldClose) {
-                    // Ensure audio is stopped
-                    if (audioRef.current) {
-                        audioRef.current.pause();
-                        setIsPlaying(false);
-                    }
-                    onClose();
-                }
+                if (shouldClose) onClose();
                 return;
             }
 
-            // Derive Title (If not blank, or if shared and blank)
-            let finalTitle = title.trim();
-            if (!finalTitle && (noteType === 'text')) {
-                finalTitle = '';
-            } else if (!finalTitle && noteType === 'shopping') {
-                finalTitle = 'Checklist';
-            }
+            let finalTitle = title.trim() || ((!content && !items.length && !files.length) ? "Untitled Note" : "");
+            if (!finalTitle && noteType === 'shopping') finalTitle = 'Checklist';
 
-            // If we reached here, it's either not blank OR it is blank-but-shared.
-            // If blank-but-shared, we default to Untitled to preserve the container.
-            if (!finalTitle && !finalContent && finalItems.length === 0 && files.length === 0 && !finalAudioData) finalTitle = "Untitled Note";
-
-            const finalFiles = files.map(f => {
-                if (f.storageData) {
-                    return {
-                        id: f.storageData.id,
-                        name: f.name,
-                        type: f.type,
-                        url: f.storageData.url,
-                        storageType: f.storageData.type,
-                        path: f.storageData.path,
-                        extractedText: f.text
-                    };
-                }
-                return f;
-            });
-
-            // FETCH FRESH STATE to avoid overwriting sharedWith with stale prop
-            let currentSharedWith = isNew ? [] : noteToEdit?.sharedWith;
-            if (!isNew && noteToEdit?.id) {
-                const freshNote = dataService?.store?.notes?.find(n => n.id === noteToEdit.id);
-                if (freshNote) {
-                    console.log("Found fresh note state, preserving sharedWith:", freshNote.sharedWith);
-                    currentSharedWith = freshNote.sharedWith;
-                }
-            }
-
-            // CONFLICT CHECK
-            if (!isNew && !isShared && auth.currentUser) {
-                try {
-                    const remote = await dataService.getNote(localId);
-                    if (remote && remote.updatedAt && noteToEdit?.updatedAt) {
-                        const remoteTime = new Date(remote.updatedAt).getTime();
-                        const localBaseTime = new Date(noteToEdit.updatedAt).getTime();
-                        // Tolerance of 2 seconds for clock skew
-                        if (remoteTime > localBaseTime + 2000) {
-                            // If we are auto-saving, just set conflict state and abort
-                            if (!shouldClose) {
-                                setSaveStatus('error');
-                                // setRemoteConflict(true); // TODO: Add UI state for this
-                                console.warn("Conflict detected during auto-save. Aborting.");
-                                return;
-                            }
-
-                            if (!window.confirm("Conflict detected: This note has been updated on another device.\n\nOverwrite remote changes?")) {
-                                return;
-                            }
-                        }
-                    }
-                } catch (e) { console.warn("Conflict check error", e); }
-            }
+            const finalFiles = files.map(f => f.storageData ? { id: f.storageData.id, name: f.name, type: f.type, url: f.storageData.url, path: f.storageData.path, extractedText: f.text } : f);
 
             const dataToSave = {
                 title: finalTitle,
-                content: noteType === 'text' ? finalContent : '',
-                items: noteType === 'shopping' ? finalItems.filter(i => i.text.trim()) : undefined,
+                content: noteType === 'text' ? content : '',
+                items: noteType === 'shopping' ? items : undefined,
                 tags: tags.split(',').map(t => t.trim()).filter(Boolean),
                 type: noteType,
-                date: noteToEdit ? noteToEdit.date : new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' }),
-                updatedAt: new Date().toISOString(), // Add timestamp for conflict detection
-
+                date: noteToEdit ? noteToEdit.date : new Date().toLocaleString(),
+                updatedAt: new Date().toISOString(),
                 files: finalFiles,
-                audioData: finalAudioData,
-                id: localId, // Always present now
-                ownerId: noteToEdit?.ownerId, // Preserve owner
-                sharedWith: currentSharedWith, // Use FRESH sharedWith
-                forceCreate: isNew, // Flag for parent to know this is a first-time save
+                audioData: finalAudio,
+                id: localId,
+                ownerId: noteToEdit?.ownerId,
+                sharedWith: isNew ? [] : noteToEdit?.sharedWith,
                 isPinned: isPinned
             };
 
-            // Simple check to avoid saving unchanged data recursively
-            if (JSON.stringify(dataToSave) === JSON.stringify(lastSavedData.current) && !shouldClose) {
-                setSaveStatus('saved');
-                return;
+            // Optimistically update Base for Sync
+            if (noteType === 'text') {
+                baseContentRef.current = content;
             }
+            baseFilesRef.current = finalFiles;
 
-            const savedNote = await onSave(dataToSave);
-
-            if (savedNote && savedNote.id) {
-                // We shouldn't strictly need to update localId if we pre-genned it, 
-                // but if backend overrides it, we respect that.
-                setLocalId(savedNote.id);
-                dataToSave.id = savedNote.id;
-            }
-
-            // Mark as no longer new after first successful save
+            const saved = await onSave(dataToSave);
+            if (saved?.id) setLocalId(saved.id);
             setIsNew(false);
-
             lastSavedData.current = dataToSave;
             setSaveStatus('saved');
 
-            if (shouldClose) {
-                // Ensure audio is stopped playing
-                if (audioRef.current) {
-                    audioRef.current.pause();
-                    setIsPlaying(false);
-                }
-                onClose();
-            }
+            if (shouldClose) onClose();
 
-        } catch (error) {
-            console.error("Save failed", error);
+        } catch (e) {
+            console.error(e);
             setSaveStatus('error');
-            if (shouldClose) alert("Failed to save. Please try again.");
         }
     };
 
-    // Keep ref updated for Back Button handling
-    useEffect(() => {
-        performSaveRef.current = performSave;
-    }, [performSave]);
+    useEffect(() => { performSaveRef.current = performSave; }, [performSave]);
+    useEffect(() => { if (!isOpen || recordingStatus === 'recording') return; const t = setTimeout(() => performSave(false), 1500); return () => clearTimeout(t); }, [content, items, tags, files, audioData, title, isPinned]);
 
-    // Debounced Auto-save
-    useEffect(() => {
-        if (!isOpen) return;
-
-        // Don't auto-save if recording is active to avoid glitched partial states
-        if (recordingStatus === 'recording') return;
-
-        const timer = setTimeout(() => {
-            performSave(false);
-        }, 1500);
-
-        return () => clearTimeout(timer);
-    }, [content, items, tags, files, audioData, noteType, title, recordingStatus, isPinned]);
-
-    // IMMEDIATE Save on File Upload Completion
-    // This addresses the user requirement: "when attachment is attached, note should explicitly save"
-    // IMPROVEMENT: For existing notes, we only save the 'files' field to avoid overwriting text/title concurrently/redundantly.
-    const prevFilesRef = useRef(files);
-    useEffect(() => {
-        const prevFiles = prevFilesRef.current;
-        const hasNewUpload = files.some(f => f.status === 'ready' && prevFiles.find(pf => pf.tempId === f.tempId)?.status === 'uploading');
-
-        if (hasNewUpload) {
-            console.log("File upload completed.");
-
-            if (isNew) {
-                // New Note: Must do full save to create ID
-                console.log("New Note: Forcing full save.");
-                performSave(false);
-            } else {
-                // Existing Note: Update ONLY files to avoid disturbing other fields
-                console.log("Existing Note: Saving files only.");
-
-                const finalFiles = files.map(f => {
-                    if (f.storageData) {
-                        return {
-                            id: f.storageData.id,
-                            name: f.name,
-                            type: f.type,
-                            url: f.storageData.url,
-                            storageType: f.storageData.type,
-                            path: f.storageData.path,
-                            extractedText: f.text
-                        };
-                    }
-                    return f;
-                });
-
-                // Call save directly with PARTIAL data
-                // onSave handles 'updateNote' which merges this payload
-                onSave({
-                    id: localId,
-                    files: finalFiles
-                }).catch(e => console.error("Partial file save failed", e));
-            }
-        }
-        prevFilesRef.current = files;
-    }, [files, isNew, localId, onSave]); // Added dependencies for safety
-
-    const handleSubmit = (e) => {
-        if (e) e.preventDefault();
-        performSave(true);
-    };
-
-    // Sync Ref for ESC handler
-    useEffect(() => {
-        performSaveRef.current = performSave;
-    });
-
-    // Display Logic
-    const displayContent = noteType === 'text' ? (content + (isListening && transcript ? ' ' + transcript : '')) : content;
+    const displayContent = content + (isListening && transcript ? ' ' + transcript : '');
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 md:p-6 transition-all overflow-hidden">
             <div className="bg-white dark:bg-gray-900 w-full max-w-2xl h-[85vh] md:h-[80vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800 animate-slide-up">
 
-                {/* 1. Header */}
+                {/* Header */}
                 <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md sticky top-0 z-10">
                     <div className="flex items-center gap-3 flex-1 mr-4">
-                        <input
-                            type="text"
-                            placeholder="Title"
-                            className="w-full text-lg font-bold text-gray-800 dark:text-gray-100 bg-transparent outline-none placeholder-gray-400"
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                        />
-                        {saveStatus === 'saving' && <span className="text-xs text-orange-500 animate-pulse font-medium shrink-0">Saving...</span>}
-                        {saveStatus === 'saved' && <span className="text-xs text-green-500 font-medium shrink-0">Saved</span>}
-                        {saveStatus === 'error' && <span className="text-xs text-red-500 font-medium shrink-0">Error saving</span>}
+                        <input type="text" placeholder="Title" className="w-full text-lg font-bold bg-transparent outline-none text-gray-800 dark:text-gray-100" value={title} onChange={e => setTitle(e.target.value)} />
+                        {saveStatus === 'saving' && <Loader2 size={16} className="animate-spin text-orange-500" />}
+                        {saveStatus === 'saved' && <span className="text-xs text-green-500">Saved</span>}
                     </div>
-
                     <div className="flex items-center gap-1">
-                        {/* Pin Button */}
-                        <button
-                            onClick={() => setIsPinned(!isPinned)}
-                            className={`p-2 rounded-full transition-colors ${isPinned ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-                            title={isPinned ? "Unpin Note" : "Pin Note"}
-                        >
-                            <Pin size={20} className={isPinned ? "fill-current" : ""} />
-                        </button>
+                        {/* Undo/Redo */}
+                        <div className="flex items-center mr-2 border-r border-gray-200 dark:border-gray-700 pr-2 gap-1">
+                            <button onClick={undo} disabled={!canUndo} className={`p-2 rounded-full transition-colors ${!canUndo ? 'text-gray-300 dark:text-gray-700' : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'}`}><Undo size={18} /></button>
+                            <button onClick={redo} disabled={!canRedo} className={`p-2 rounded-full transition-colors ${!canRedo ? 'text-gray-300 dark:text-gray-700' : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'}`}><Redo size={18} /></button>
+                        </div>
 
-                        {/* Share Button (Only if saved) */}
-                        {noteToEdit && onShare && (
-                            <button
-                                onClick={() => onShare(noteToEdit)}
-                                className={`p-2 rounded-full transition-colors ${noteToEdit?.sharedWith?.length > 0 ? 'text-green-600 bg-green-50 dark:bg-green-900/20' : 'text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'}`}
-                                title="Share Note"
-                            >
-                                <Share2 size={20} className={noteToEdit?.sharedWith?.length > 0 ? "fill-current" : ""} />
-                            </button>
-                        )}
-
-                        {/* Delete Button (Only if editing existing) */}
-                        {noteToEdit && onDelete && (
-                            <button
-                                onClick={() => {
-                                    if (window.confirm("Are you sure you want to delete this note?")) {
-                                        onDelete(noteToEdit.id);
-                                    }
-                                }}
-                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
-                                title="Delete Note"
-                            >
-                                <Trash2 size={20} />
-                            </button>
-                        )}
-
-                        <button onClick={() => performSave(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-500 shrink-0 ml-2">
-                            <X size={20} />
-                        </button>
+                        <button onClick={() => setIsPinned(!isPinned)} className={`p-2 rounded-full ${isPinned ? 'bg-orange-100 text-orange-600' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}><Pin size={20} className={isPinned ? "fill-current" : ""} /></button>
+                        {/* Share & Delete Logic kept same */}
+                        {noteToEdit && onShare && <button onClick={() => onShare(noteToEdit)} className={`p-2 rounded-full ${noteToEdit.sharedWith?.length ? 'text-green-600 bg-green-50' : 'text-gray-400 hover:text-green-600'}`}><Share2 size={20} /></button>}
+                        {noteToEdit && onDelete && <button onClick={() => window.confirm("Delete?") && onDelete(noteToEdit.id)} className="p-2 text-gray-400 hover:text-red-500 rounded-full"><Trash2 size={20} /></button>}
+                        <button onClick={() => performSave(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-gray-500 ml-2"><X size={20} /></button>
                     </div>
                 </div>
 
-                {/* 2. Main Content Area */}
-                <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    className={`flex-1 overflow-y-auto overflow-x-hidden p-6 custom-scrollbar relative transition-colors ${isDragging ? 'bg-orange-50 dark:bg-orange-900/20 shadow-inner' : ''}`}
-                >
+                {/* Content */}
+                <div onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`flex-1 overflow-y-auto p-6 custom-scrollbar relative transition-colors ${isDragging ? 'bg-orange-50 dark:bg-orange-900/20' : ''}`}>
+                    {isDragging && <div className="absolute inset-0 z-50 flex items-center justify-center bg-orange-100/50 backdrop-blur-sm pointer-events-none text-orange-600 font-bold"><Paperclip size={48} /> Drop Files</div>}
 
-                    {/* Drag Overlay */}
-                    {isDragging && (
-                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-orange-100/50 dark:bg-orange-900/40 backdrop-blur-sm pointer-events-none">
-                            <div className="text-orange-600 dark:text-orange-400 font-bold text-xl flex flex-col items-center gap-2 animate-bounce">
-                                <Paperclip size={48} />
-                                Drop Files to Attach
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Audio Preview */}
                     {audioData && (
-                        <div className="mb-6 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-2xl flex items-center gap-4 border border-orange-100 dark:border-orange-800/50">
-                            <button onClick={handlePlayAudio} className="w-10 h-10 rounded-full bg-orange-500 shadow-lg shadow-orange-500/30 flex items-center justify-center text-white shrink-0 hover:scale-105 transition-transform">
-                                {isPlaying ? <Pause size={18} className="fill-current" /> : <Play size={18} className="fill-current ml-0.5" />}
-                            </button>
-                            <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max={duration || 100}
-                                    value={currentTime}
-                                    onChange={handleSeek}
-                                    className="w-full accent-orange-500 h-1.5 bg-orange-200 dark:bg-orange-800 rounded-lg cursor-pointer"
-                                />
-                                <div className="flex justify-between mt-1">
-                                    <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 font-mono">
-                                        {formatTime(currentTime)}
-                                    </span>
-                                    <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 font-mono">
-                                        {formatTime(duration)}
-                                    </span>
-                                </div>
-                            </div>
-                            <button
-                                onClick={deleteAudio}
-                                className="p-2 text-gray-400 hover:text-red-500 transition-colors hover:bg-white dark:hover:bg-gray-800 rounded-full"
-                                title="Delete Audio"
-                            >
-                                <Trash2 size={18} />
-                            </button>
+                        <div className="mb-6 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-2xl flex items-center gap-4 border border-orange-100">
+                            <button onClick={handlePlayAudio} className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center">{isPlaying ? <Pause size={18} /> : <Play size={18} />}</button>
+                            <div className="flex-1"><input type="range" min="0" max={duration || 100} value={currentTime} onChange={handleSeek} className="w-full accent-orange-500 h-1.5 bg-orange-200 rounded-lg" /></div>
+                            <button onClick={deleteAudio} className="text-gray-400 hover:text-red-500"><Trash2 size={18} /></button>
                         </div>
                     )}
 
-                    {/* Editor */}
                     {noteType === 'text' ? (
-                        <textarea
-                            ref={textareaRef}
-                            className="w-full h-full bg-transparent resize-none outline-none text-lg md:text-xl leading-relaxed text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 font-medium"
-                            placeholder="Start typing..."
-                            value={displayContent}
-                            onChange={(e) => setContent(e.target.value)}
-                            autoFocus={!noteToEdit}
-                        />
+                        <textarea ref={textareaRef} className="w-full h-full bg-transparent resize-none outline-none text-lg leading-relaxed text-gray-800 dark:text-gray-200 placeholder-gray-300" placeholder="Start typing..." value={displayContent} onChange={e => setContent(e.target.value)} autoFocus={!noteToEdit} />
                     ) : (
                         <div className="space-y-3">
                             <Reorder.Group axis="y" values={items} onReorder={setItems} className="space-y-3">
                                 {items.map((item, idx) => (
                                     <Reorder.Item key={item.id || idx} value={item} className="flex items-start gap-3 group bg-white dark:bg-gray-800 rounded-lg">
-                                        <div className="mt-2 text-gray-300 cursor-grab active:cursor-grabbing hover:text-orange-500">
-                                            <GripVertical size={16} />
-                                        </div>
-                                        <button
-                                            onClick={() => {
-                                                const newItems = [...items];
-                                                newItems[idx].done = !newItems[idx].done;
-                                                setItems(newItems);
-                                            }}
-                                            className={`mt-1 w-5 h-5 rounded border flex items-center justify-center transition-colors ${item.done ? 'bg-orange-500 border-orange-500 text-white' : 'border-gray-300 dark:border-gray-600 text-transparent hover:border-orange-400'}`}
-                                        >
-                                            <CheckSquare size={14} className="fill-current" />
-                                        </button>
-                                        <input
-                                            type="text"
-                                            placeholder="List item..."
-                                            className={`flex-1 bg-transparent border-none outline-none text-lg ${item.done ? 'text-gray-400 line-through' : 'text-gray-800 dark:text-gray-200'}`}
-                                            value={item.text}
-                                            onChange={(e) => {
-                                                const newItems = [...items];
-                                                newItems[idx].text = e.target.value;
-                                                setItems(newItems);
-                                            }}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    const newItems = [...items];
-                                                    const newItem = { text: '', done: false, id: crypto.randomUUID() };
-                                                    newItems.splice(idx + 1, 0, newItem);
-                                                    setItems(newItems);
-                                                    setTimeout(() => {
-                                                        const inputs = document.querySelectorAll('input[placeholder="List item..."]');
-                                                        if (inputs[idx + 1]) inputs[idx + 1].focus();
-                                                    }, 0);
-                                                } else if (e.key === 'Backspace' && !item.text && items.length > 1) {
-                                                    e.preventDefault();
-                                                    const newItems = items.filter((_, i) => i !== idx);
-                                                    setItems(newItems);
-                                                    setTimeout(() => {
-                                                        const inputs = document.querySelectorAll('input[placeholder="List item..."]');
-                                                        if (inputs[idx - 1]) inputs[idx - 1].focus();
-                                                    }, 0);
-                                                }
-                                            }}
-                                        />
-                                        <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-opacity">
-                                            <X size={16} />
-                                        </button>
+                                        <div className="mt-2 text-gray-300 cursor-grab hover:text-orange-500"><GripVertical size={16} /></div>
+                                        <input type="checkbox" checked={item.done} onChange={() => { const n = [...items]; n[idx].done = !n[idx].done; setItems(n); }} className="mt-1.5 w-5 h-5 accent-orange-500" />
+                                        <input type="text" value={item.text} onChange={e => { const n = [...items]; n[idx].text = e.target.value; setItems(n); }} className={`flex-1 bg-transparent outline-none text-lg ${item.done ? 'text-gray-400 line-through' : 'text-gray-800 dark:text-gray-200'}`} placeholder="Item..." />
+                                        <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500"><X size={16} /></button>
                                     </Reorder.Item>
                                 ))}
                             </Reorder.Group>
-                            <button onClick={() => setItems([...items, { text: '', done: false, id: crypto.randomUUID() }])} className="text-gray-400 hover:text-orange-500 font-medium text-sm pl-8 transition-colors">
-                                + Add Item
-                            </button>
+                            <button onClick={() => setItems([...items, { text: '', done: false, id: crypto.randomUUID() }])} className="text-gray-400 hover:text-orange-500">+ Add Item</button>
                         </div>
                     )}
 
-
-                    {/* Files List (Inline) */}
                     {files.length > 0 && (
-                        <div className="mt-8 grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <div className="mt-8 flex flex-col gap-2">
                             {files.map((file, idx) => (
-                                <div key={idx} className="relative group bg-gray-50 dark:bg-gray-800 rounded-xl p-3 border border-gray-100 dark:border-gray-700 flex items-center gap-3">
-                                    <div
-                                        onClick={() => window.open(file.url || URL.createObjectURL(file.file), '_blank')}
-                                        className="w-10 h-10 rounded-lg bg-white dark:bg-gray-700 flex items-center justify-center text-gray-500 shrink-0 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                                    >
-                                        {file.type?.includes('image') ? <ImageIcon size={20} /> : <FileText size={20} />}
-                                    </div>
-                                    <div className="min-w-0 flex-1 cursor-pointer" onClick={() => window.open(file.url || URL.createObjectURL(file.file), '_blank')}>
-                                        <p className="text-sm font-medium truncate text-gray-700 dark:text-gray-300 hover:underline">{file.name}</p>
-                                        <div className="text-xs text-gray-400">
-                                            {file.status === 'uploading' ? `${file.progress}%` : (file.status === 'ready' ? 'Attached' : file.status)}
+                                <div key={idx} className={`flex flex-col p-3 mb-2 bg-gray-50 dark:bg-gray-800 border rounded-lg transition-all ${file.status === 'error' ? 'border-red-300 bg-red-50' : (file.status === 'uploading' ? 'border-orange-300 ring-1 ring-orange-100' : 'border-green-200 dark:border-green-900')}`}>
+                                    <div className="flex items-center justify-between mb-2">
+                                        {/* Clickable Area for Preview */}
+                                        <div
+                                            className="flex items-center gap-3 overflow-hidden flex-1 p-2 -ml-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-all"
+                                        >
+                                            {/* Status Icon */}
+                                            {file.status === 'uploading' ? (
+                                                <span className="animate-spin text-orange-500 text-lg">⏳</span>
+                                            ) : file.status === 'error' ? (
+                                                <span className="text-red-500 text-lg">⚠️</span>
+                                            ) : (
+                                                <div className="bg-green-100 dark:bg-green-900/30 p-1.5 rounded-full">
+                                                    <CheckSquare size={16} className="text-green-600 dark:text-green-400" />
+                                                </div>
+                                            )}
+
+                                            <div className="flex flex-col min-w-0 items-start">
+                                                {/* FORCE BUTTON: Semantic button for clickability */}
+                                                <button
+                                                    type="button"
+                                                    className={`text-sm font-medium truncate dark:text-gray-200 hover:underline text-blue-600 dark:text-blue-400 ${file.status === 'error' ? 'text-red-600 dark:text-red-400 decoration-red-600' : ''}`}
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        const url = file.url || file.storageData?.url || (file.file instanceof File ? URL.createObjectURL(file.file) : (file instanceof File ? URL.createObjectURL(file) : null));
+
+                                                        if (!url) {
+                                                            if (file.status === 'uploading') return;
+                                                            alert("Cannot preview: No URL found.");
+                                                            return;
+                                                        }
+
+                                                        let type = file.type;
+                                                        if (!type && file.name) {
+                                                            const ext = file.name.split('.').pop().toLowerCase();
+                                                            if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) type = 'image/' + ext;
+                                                        }
+
+                                                        setPreviewFile({
+                                                            ...file,
+                                                            type: type || 'unknown',
+                                                            url: url,
+                                                            fileObj: file.file
+                                                        });
+                                                    }}
+                                                >
+                                                    {file.name}
+                                                </button>
+                                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                    {file.status === 'uploading' ? 'Uploading...' : file.status === 'error' ? 'Failed' : 'Attached • Click to view'}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                                            <button type="button" onClick={() => handleRemoveFile(idx)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md text-gray-400 hover:text-red-500" title="Remove"><X size={18} /></button>
                                         </div>
                                     </div>
-                                    <button onClick={() => handleRemoveFile(idx)} className="absolute -top-1 -right-1 bg-red-100 dark:bg-red-900 text-red-500 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <X size={12} />
-                                    </button>
+
+                                    {/* Progress Bar */}
+                                    {file.status === 'uploading' && (
+                                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden relative">
+                                            <div
+                                                className="bg-gradient-to-r from-orange-400 to-orange-600 h-full rounded-full transition-all duration-300 relative z-10"
+                                                style={{ width: `${file.progress || 0}%` }}></div>
+                                            <div className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-gray-600 dark:text-gray-300 mix-blend-difference">
+                                                {file.progress || 0}%
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
                     )}
 
-                    {/* Tag Input (Conditional) */}
-                    {showTagInput && (
-                        <div className="mt-6 flex items-center gap-2 animate-fade-in">
-                            <Tag size={16} className="text-gray-400" />
-                            <input
-                                type="text"
-                                placeholder="Add tags (separated by comma)"
-                                className="flex-1 bg-transparent border-none outline-none text-sm text-gray-600 dark:text-gray-400 placeholder-gray-400"
-                                value={tags}
-                                onChange={(e) => setTags(e.target.value)}
-                            />
-                        </div>
-                    )}
+                    {/* Explicit Drag & Drop Box */}
+                    <div className="mt-4">
+                        <label
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                            className={`flex items-center justify-center gap-2 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${isDragging
+                                ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 scale-[1.02]'
+                                : 'border-gray-200 dark:border-gray-700 hover:border-orange-400 dark:hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-gray-500 dark:text-gray-400'
+                                }`}
+                        >
+                            <Paperclip size={18} />
+                            <span className="text-sm">{isDragging ? 'Drop Files Here' : 'Attach File or Drag & Drop'}</span>
+                            <input type="file" multiple className="hidden" onChange={handleFileUpload} />
+                        </label>
+                    </div>
+
+                    {showTagInput && <div className="mt-6 flex items-center gap-2"><Tag size={16} className="text-gray-400" /><input type="text" placeholder="Tags..." className="flex-1 bg-transparent outline-none text-sm text-gray-600 dark:text-gray-400" value={tags} onChange={e => setTags(e.target.value)} /></div>}
                 </div>
 
-                {/* 3. Bottom Toolbar */}
-                <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-md sticky bottom-0 z-20">
-
-                    {/* Recording Status Overlay in Toolbar */}
-                    {recordingStatus !== 'idle' && (
-                        <div className="absolute -top-12 left-0 right-0 flex justify-center px-4">
-                            <div className="bg-red-500 text-white text-sm font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 animate-bounce-slight">
-                                <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
-                                {recordingStatus === 'paused' ? 'Paused' : 'Recording...'}
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="flex items-center justify-between gap-4 h-12">
-                        <div className="flex items-center gap-1 md:gap-2 h-full">
-                            {/* Mic */}
-                            <button
-                                onClick={toggleRecording}
-                                className={`p-2.5 rounded-full transition-all flex items-center justify-center ${recordingStatus !== 'idle' ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                                title="Record Audio"
-                            >
-                                {recordingStatus !== 'idle' ? <MicOff size={22} /> : <Mic size={22} />}
-                            </button>
-
-                            {/* Attach */}
-                            <label className={`p-3 rounded-full transition-all cursor-pointer ${files.some(f => f.status === 'uploading') ? 'opacity-50' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
-                                <input type="file" multiple className="hidden" onChange={handleFileUpload} />
-                                <Paperclip size={22} />
-                            </label>
-
-                            {/* Checklist Toggle */}
-                            <button
-                                onClick={toggleNoteType}
-                                className={`p-3 rounded-full transition-all ${noteType === 'shopping' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                                title="Toggle Checklist"
-                            >
-                                <CheckSquare size={22} />
-                            </button>
-
-                            {/* Tags Toggle */}
-                            <button
-                                onClick={() => setShowTagInput(!showTagInput)}
-                                className={`p-3 rounded-full transition-all ${showTagInput ? 'text-orange-600 dark:text-orange-400' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                            >
-                                <Tag size={22} />
-                            </button>
-                        </div>
-
-                        <button
-                            onClick={handleSubmit}
-                            disabled={saveStatus === 'saving' || files.some(f => f.status === 'uploading')}
-                            className="bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all text-sm md:text-base flex items-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
-                        >
-                            {saveStatus === 'saving' ? (
-                                <>
-                                    <Loader2 size={18} className="animate-spin" /> Saving...
-                                </>
-                            ) : (
-                                'Done'
-                            )}
-                        </button>
+                {/* Toolbar */}
+                <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-md flex justify-between relative">
+                    {recordingStatus !== 'idle' && <div className="absolute -top-10 left-0 right-0 flex justify-center"><div className="bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse">Recording ({formatTime(duration)})...</div></div>}
+                    <div className="flex gap-4">
+                        <button onClick={toggleRecording} className={`p-2.5 rounded-full transition-all ${recordingStatus !== 'idle' ? 'bg-red-100 text-red-600' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'}`}>{recordingStatus !== 'idle' ? <MicOff size={22} /> : <Mic size={22} />}</button>
+                        <label className="p-2.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 cursor-pointer transition-all">
+                            <Paperclip size={22} />
+                            <input type="file" multiple className="hidden" onChange={handleFileUpload} />
+                        </label>
+                        <button onClick={() => setNoteType(noteType === 'text' ? 'shopping' : 'text')} className="p-2.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-all">{noteType === 'text' ? <CheckSquare size={22} /> : <FileText size={22} />}</button>
                     </div>
                 </div>
-
-            </div >
-        </div >
-    );
-};
-
-// Extracted Item for isolated Drag Controls
-const ChecklistItem = ({ item, idx, setItems, items }) => {
-    const dragControls = useDragControls();
-
-    return (
-        <Reorder.Item
-            value={item}
-            id={item.id}
-            dragListener={false}
-            dragControls={dragControls}
-            className="flex items-start gap-3 group bg-white dark:bg-gray-800 rounded-lg"
-        >
-            <div
-                className="mt-2 text-gray-300 cursor-grab active:cursor-grabbing hover:text-orange-500 touch-none"
-                onPointerDown={(e) => dragControls.start(e)}
-            >
-                <GripVertical size={16} />
             </div>
-            <button
-                onClick={() => {
-                    const newItems = [...items];
-                    newItems[idx].done = !newItems[idx].done;
-                    setItems(newItems);
-                }}
-                className={`mt-1 w-5 h-5 rounded border flex items-center justify-center transition-colors ${item.done ? 'bg-orange-500 border-orange-500 text-white' : 'border-gray-300 dark:border-gray-600 text-transparent hover:border-orange-400'}`}
-            >
-                <CheckSquare size={14} className="fill-current" />
-            </button>
-            <input
-                type="text"
-                placeholder="List item..."
-                className={`flex-1 bg-transparent border-none outline-none text-lg ${item.done ? 'text-gray-400 line-through' : 'text-gray-800 dark:text-gray-200'}`}
-                value={item.text}
-                onChange={(e) => {
-                    const newItems = [...items];
-                    newItems[idx].text = e.target.value;
-                    setItems(newItems);
-                }}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const newItems = [...items];
-                        const newItem = { text: '', done: false, id: crypto.randomUUID() };
-                        newItems.splice(idx + 1, 0, newItem);
-                        setItems(newItems);
-                        setTimeout(() => {
-                            const inputs = document.querySelectorAll('input[placeholder="List item..."]');
-                            if (inputs[idx + 1]) inputs[idx + 1].focus();
-                        }, 0);
-                    } else if (e.key === 'Backspace' && !item.text && items.length > 1) {
-                        e.preventDefault();
-                        const newItems = items.filter((_, i) => i !== idx);
-                        setItems(newItems);
-                        setTimeout(() => {
-                            const inputs = document.querySelectorAll('input[placeholder="List item..."]');
-                            if (inputs[idx - 1]) inputs[idx - 1].focus();
-                        }, 0);
-                    }
-                }}
-            />
-            <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-opacity">
-                <X size={16} />
-            </button>
-        </Reorder.Item>
+
+            {/* FULL SCREEN FILE PREVIEW OVERLAY */}
+            {
+                previewFile && (
+                    <div className="fixed inset-0 z-[150] bg-black text-white flex flex-col animate-fade-in">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-md absolute top-0 left-0 right-0">
+                            <span className="truncate font-medium flex-1 mr-4">{previewFile.name}</span>
+                            <div className="flex items-center gap-3">
+                                {/* Download/Open External Button */}
+                                {(previewFile.url) && (
+                                    <button
+                                        type="button"
+                                        onClick={() => window.open(previewFile.url, '_blank')}
+                                        className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition active:scale-95"
+                                        title="Download / Open External"
+                                    >
+                                        <div className="text-white"><Share2 size={20} /></div>
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setPreviewFile(null)}
+                                    className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition active:scale-95"
+                                >
+                                    <X size={20} className="text-white" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+                            {(previewFile.type && previewFile.type.startsWith('image/')) || (previewFile.name && (previewFile.name.toLowerCase().endsWith('.jpg') || previewFile.name.toLowerCase().endsWith('.png') || previewFile.name.toLowerCase().endsWith('.jpeg'))) ? (
+                                <img
+                                    src={previewFile.url || (previewFile.fileObj instanceof File ? URL.createObjectURL(previewFile.fileObj) : (previewFile instanceof File ? URL.createObjectURL(previewFile) : previewFile.data))}
+                                    alt="Preview"
+                                    className="max-w-full max-h-full object-contain"
+                                />
+                            ) : (
+                                <div className="text-center p-8">
+                                    <p className="mb-4 text-gray-400">Preview not available for this file type.</p>
+                                    <a
+                                        href={previewFile.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-6 py-3 bg-orange-500 rounded-xl font-bold text-white inline-block"
+                                        download={previewFile.name}
+                                    >
+                                        Download / Open External
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )
+            }
+        </div>
     );
 };
 

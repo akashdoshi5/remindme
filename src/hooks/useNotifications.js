@@ -282,7 +282,6 @@ export const useNotifications = () => {
                 }
             } else {
                 // ...
-                console.log("Web Scheduling: Browser requires open tab. Relying on useReminders Polling for now.");
             }
 
         } catch (error) {

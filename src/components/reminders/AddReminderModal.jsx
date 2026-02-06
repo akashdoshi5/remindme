@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Clock, Calendar, Bell, Mic, MicOff, Pill, Upload, FileText, Trash2, Sun, Moon, Coffee, Eye } from 'lucide-react';
+import { X, Clock, Calendar, Bell, Mic, MicOff, Pill, Upload, FileText, Trash2, Sun, Moon, Coffee, Eye, Download, Check } from 'lucide-react';
 import { useVoice } from '../../hooks/useVoice';
 import { fileStorage } from '../../services/fileStorage';
 
@@ -26,7 +26,15 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     const [medDuration, setMedDuration] = useState(7);
     const [medFrequencies, setMedFrequencies] = useState(['breakfast']);
     const [medTimes, setMedTimes] = useState({ breakfast: '08:00', lunch: '13:00', dinner: '20:00' });
-    const [startDate, setStartDate] = useState(new Date().toLocaleDateString('en-CA')); // Default to Today
+
+    // Fix: Use explicit local date construction to avoid Timezone shifts (e.g. UTC vs Local)
+    const [startDate, setStartDate] = useState(() => {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    });
     const [durationDays, setDurationDays] = useState(30); // Default to 30 days (1 Month)
     const [files, setFiles] = useState([]);
     // Delete Confirmation State
@@ -57,6 +65,19 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     const [activeField, setActiveField] = useState(null); // 'title' or 'instructions'
     const handleSubmitRef = React.useRef(null); // Ref to access latest submit function
 
+    const [previewFile, setPreviewFile] = useState(null);
+
+    // Register Back Button for Preview
+    useEffect(() => {
+        if (previewFile) {
+            const unregister = BackButtonManager.register(async () => {
+                setPreviewFile(null);
+                return true;
+            });
+            return unregister;
+        }
+    }, [previewFile]);
+
     // Back Button Handling
     useEffect(() => {
         if (!isOpen) return;
@@ -85,9 +106,24 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             setTime(reminderToEdit.displayTime || reminderToEdit.time);
             setInstructions(reminderToEdit.instructions || '');
             setIsImportant(reminderToEdit.isImportant);
-
-            // Files
             setFiles(reminderToEdit.files || []);
+
+            // Instance Scope Logic
+            console.log("AddReminderModal: Init with reminder:", reminderToEdit.title, "InstanceKey:", reminderToEdit.instanceKey);
+            if (reminderToEdit.instanceKey) {
+                setEditScope('this');
+            } else {
+                setEditScope('all');
+            }
+
+            setDurationDays(reminderToEdit.schedule?.durationDays || 30);
+
+            // Initial Start Date (Precedence: Instance Key -> Schedule -> Date -> Today)
+            if (reminderToEdit.instanceKey) {
+                setStartDate(reminderToEdit.instanceKey.split('_')[0]);
+            } else {
+                setStartDate(reminderToEdit.schedule?.startDate || reminderToEdit.date || new Date().toISOString().split('T')[0]);
+            }
 
             // Handle Course Schedule
             if (reminderToEdit.schedule && reminderToEdit.schedule.type === 'recurring') {
@@ -96,20 +132,16 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                 setMedTimes({ ...medTimes, ...reminderToEdit.schedule.times });
                 setMedDuration(reminderToEdit.schedule.durationDays || 7);
                 setType('Medication');
-
+            } else if (reminderToEdit.type === 'Medication') {
+                setIsCourse(false);
                 // Detect Period for Single Instance Edit if not explicit
                 if (!reminderToEdit.period && reminderToEdit.time) {
                     const [h, m] = reminderToEdit.time.split(':').map(Number);
                     const mins = h * 60 + m;
-                    // Bfast: 7:00 (420) - 10:30 (630)
-                    // Lunch: 11:00 (660) - 15:00 (900)
-                    // Dinner: 18:00 (1080) - 22:00 (1320)
                     if (mins >= 420 && mins <= 630) reminderToEdit.period = 'breakfast';
                     else if (mins >= 660 && mins <= 900) reminderToEdit.period = 'lunch';
                     else if (mins >= 1080 && mins <= 1320) reminderToEdit.period = 'dinner';
                 }
-            } else if (reminderToEdit.type === 'Medication') {
-                setIsCourse(false); // Single med instance (converted/legacy)
             } else {
                 setIsCourse(false);
                 const freq = reminderToEdit.frequency || 'Daily';
@@ -120,39 +152,23 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                 } else {
                     setFrequency('Custom');
                     setShowCustomDays(true);
-                    if (freq.includes(',') || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].some(d => freq.includes(d))) {
+                    if (freq && (freq.includes(',') || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].some(d => freq.includes(d)))) {
                         setCustomDays(freq.split(', '));
                     } else {
                         setCustomDays([]);
                     }
                 }
             }
+        } else if (isOpen) {
+            // NEW REMINDER: Reset All State
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            setStartDate(`${y}-${m}-${d}`);
 
-            // CRITICAL FIX V5.5: Validate Instance Key presence
-            console.log("AddReminderModal: Init with reminder:", reminderToEdit.title, "InstanceKey:", reminderToEdit.instanceKey);
-
-            // If it has an instanceKey, it IS an instance, so default scope MUST be 'this'
-            if (reminderToEdit.instanceKey) {
-                console.log("-> Scope set to THIS");
-                setEditScope('this');
-            } else {
-                console.log("-> Scope set to ALL");
-                setEditScope('all');
-            }
-
-            setDurationDays(reminderToEdit.schedule?.durationDays || 30);
-
-            // Universal Start Date Initialization
-            if (reminderToEdit.instanceKey && editScope === 'this') {
-                setStartDate(reminderToEdit.instanceKey.split('_')[0]);
-            } else {
-                setStartDate(reminderToEdit.schedule?.startDate || reminderToEdit.date || new Date().toISOString().split('T')[0]);
-            }
-        } else {
-            // Reset for new
             setTitle('');
             setType('Other');
-            const now = new Date();
             const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
             setTime(timeStr);
             setFrequency('Once');
@@ -165,7 +181,6 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             setMedDuration(7);
             setFiles([]);
             setEditScope('all');
-            setStartDate(new Date().toISOString().split('T')[0]);
             setDurationDays(30);
         }
     }, [reminderToEdit, isOpen]);
@@ -304,22 +319,57 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             return;
         }
 
+        // OPTIMISTIC UI: Add placeholders immediately
+        const newPlaceholders = validFiles.map(f => ({
+            name: f.name,
+            type: f.type,
+            size: f.size,
+            isUploading: true, // Marker for UI
+            progress: 0, // V11: Progress Value
+            tempId: Math.random().toString(36).substr(2, 9),
+            fileObj: f
+        }));
+
+        setFiles(prev => [...prev, ...newPlaceholders]);
+
         try {
-            const processed = await Promise.all(validFiles.map(async (file) => {
-                const storageData = await fileStorage.saveFile(file);
-                return {
-                    id: storageData.id,
-                    storageData: storageData,
-                    name: file.name,
-                    type: file.type,
-                    size: file.size,
-                    extractedText: ''
-                };
+            // Process uploads
+            const results = await Promise.all(newPlaceholders.map(async (placeholder) => {
+                try {
+                    // V11: Pass onProgress callback
+                    const storageData = await fileStorage.saveFile(placeholder.fileObj, (percent) => {
+                        setFiles(currentFiles => currentFiles.map(f => {
+                            if (f.tempId === placeholder.tempId) {
+                                return { ...f, progress: percent };
+                            }
+                            return f;
+                        }));
+                    });
+
+                    return {
+                        ...placeholder,
+                        id: storageData.id,
+                        storageData: storageData,
+                        extractedText: '',
+                        isUploading: false, // Done
+                        progress: 100,
+                        url: storageData.url // Ensure URL is available top-level
+                    };
+                } catch (err) {
+                    console.error("Single file upload failed", placeholder.name, err);
+                    return { ...placeholder, isError: true, isUploading: false };
+                }
             }));
-            setFiles(prev => [...prev, ...processed]);
+
+            // Replace placeholders with real data
+            setFiles(prev => prev.map(f => {
+                const match = results.find(r => r.tempId === f.tempId);
+                return match || f;
+            }));
+
         } catch (error) {
-            console.error("Upload failed", error);
-            alert("Failed to upload file.");
+            console.error("Upload batch failed", error);
+            alert("Failed to upload some files.");
         } finally {
             setIsUploading(false);
         }
@@ -840,33 +890,115 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Attachments</label>
                             <div className="flex flex-col gap-2">
                                 {files.map((file, idx) => (
-                                    <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded">
-                                        <span className="text-xs truncate max-w-[150px] dark:text-gray-300">{file.name}</span>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    // Handle Preview
-                                                    if (file.url) {
-                                                        // Existing storage URL
-                                                        window.open(file.url, '_blank');
-                                                    } else if (file instanceof File) {
-                                                        // New local file
-                                                        const url = URL.createObjectURL(file);
-                                                        window.open(url, '_blank');
-                                                    } else if (file.data) {
-                                                        // Base64 or Blob data if stored that way
-                                                        const win = window.open();
-                                                        win.document.write('<iframe src="' + file.data + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
-                                                    }
-                                                }}
-                                                className="text-orange-500 hover:text-orange-600 dark:text-orange-400"
-                                                title="Preview File"
+                                    <div key={idx} className={`flex flex-col p-3 mb-2 bg-gray-50 dark:bg-gray-800 border rounded-lg transition-all ${file.isError ? 'border-red-300 bg-red-50' : (file.isUploading ? 'border-orange-300 ring-1 ring-orange-100' : 'border-green-200 dark:border-green-900')}`}>
+                                        <div className="flex items-center justify-between mb-2">
+                                            {/* Clickable Area for Preview */}
+                                            <div
+                                                className="flex items-center gap-3 overflow-hidden flex-1 p-2 -ml-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-all"
                                             >
-                                                <Eye size={14} />
-                                            </button>
-                                            <button type="button" onClick={() => setFiles(files.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-400"><Trash2 size={14} /></button>
+                                                {/* Status Icon */}
+                                                {file.isUploading ? (
+                                                    <span className="animate-spin text-orange-500 text-lg">⏳</span>
+                                                ) : file.isError ? (
+                                                    <span className="text-red-500 text-lg">⚠️</span>
+                                                ) : (
+                                                    <div className="bg-green-100 dark:bg-green-900/30 p-1.5 rounded-full">
+                                                        <Check size={16} className="text-green-600 dark:text-green-400" />
+                                                    </div>
+                                                )}
+
+                                                <div className="flex flex-col min-w-0 items-start">
+                                                    {/* FORCE BUTTON: Semantic button for clickability */}
+                                                    <button
+                                                        type="button"
+                                                        className={`text-sm font-medium truncate dark:text-gray-200 hover:underline text-blue-600 dark:text-blue-400 ${file.isError ? 'text-red-600 dark:text-red-400 decoration-red-600' : ''}`}
+                                                        onClick={(e) => {
+                                                            e.preventDefault(); // Stop bubbling if needed
+                                                            // FIXED: Check file.fileObj for local previews
+                                                            const url = file.url || file.storageData?.url || (file.fileObj instanceof File ? URL.createObjectURL(file.fileObj) : (file instanceof File ? URL.createObjectURL(file) : file.data));
+
+                                                            if (!url) {
+                                                                console.error("No URL found for file:", file);
+                                                                if (file.isUploading) return;
+                                                                alert("Cannot preview: No URL found.");
+                                                                return;
+                                                            }
+
+                                                            let type = file.type;
+                                                            if (!type && file.name) {
+                                                                const ext = file.name.split('.').pop().toLowerCase();
+                                                                if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) type = 'image/' + ext;
+                                                            }
+
+                                                            setPreviewFile({
+                                                                ...file,
+                                                                type: type || 'unknown',
+                                                                url: url
+                                                            });
+                                                        }}
+                                                    >
+                                                        {file.name}
+                                                    </button>
+                                                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                        {file.isUploading ? 'Uploading...' : file.isError ? 'Failed' : 'Attached • Click to view'}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1 shrink-0 ml-2">
+                                                {/* ALWAYS Show Preview/Delete if not actively broken, even if "uploading" state is stuck */}
+                                                {!file.isError && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const url = file.url || file.storageData?.url || (file instanceof File ? URL.createObjectURL(file) : file.data);
+                                                                if (!url) return;
+
+                                                                let type = file.type;
+                                                                if (!type && file.name) {
+                                                                    const ext = file.name.split('.').pop().toLowerCase();
+                                                                    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) type = 'image/' + ext;
+                                                                }
+
+                                                                setPreviewFile({
+                                                                    ...file,
+                                                                    type: type || 'unknown',
+                                                                    url: url
+                                                                });
+                                                            }}
+                                                            className="p-1.5 hover:bg-orange-100 dark:hover:bg-gray-700 rounded-md text-orange-500 transition-colors"
+                                                            title="Preview File"
+                                                        >
+                                                            <Eye size={18} />
+                                                        </button>
+                                                        <button type="button" onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setFiles(files.filter((_, i) => i !== idx));
+                                                        }} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-md text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={18} /></button>
+                                                    </>
+                                                )}
+                                                {/* Only show pure X if definitely error */}
+                                                {(file.isError) && (
+                                                    <button type="button" onClick={() => setFiles(files.filter((_, i) => i !== idx))} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md text-gray-400 hover:text-red-500" title="Remove"><X size={18} /></button>
+                                                )}
+                                            </div>
                                         </div>
+
+                                        {/* Progress Bar - Larger and clearer */}
+                                        {file.isUploading && (
+                                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden relative">
+                                                <div
+                                                    className="bg-gradient-to-r from-orange-400 to-orange-600 h-full rounded-full transition-all duration-300 relative z-10"
+                                                    style={{ width: `${file.progress || 0}%` }}
+                                                ></div>
+                                                <div className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-gray-600 dark:text-gray-300 mix-blend-difference">
+                                                    {file.progress || 0}%
+                                                </div>
+                                            </div>
+                                        )}
+                                        {file.isError && <div className="text-xs text-red-600 font-medium mt-1">Upload failed. Please delete and try again.</div>}
                                     </div>
                                 ))}
 
@@ -934,6 +1066,62 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                     </div>
                 </form>
             </div >
+
+            {/* FULL SCREEN FILE PREVIEW OVERLAY */}
+            {
+                previewFile && (
+                    <div className="fixed inset-0 z-[150] bg-black text-white flex flex-col animate-fade-in">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-md absolute top-0 left-0 right-0">
+                            <span className="truncate font-medium flex-1 mr-4">{previewFile.name}</span>
+                            <div className="flex items-center gap-3">
+                                {/* Download/Open External Button */}
+                                {previewFile.url && (
+                                    <button
+                                        type="button"
+                                        onClick={() => window.open(previewFile.url, '_blank')}
+                                        className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition active:scale-95"
+                                        title="Download / Open External"
+                                    >
+                                        <Download size={20} className="text-white" />
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setPreviewFile(null)}
+                                    className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition active:scale-95"
+                                >
+                                    <X size={20} className="text-white" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+                            {(previewFile.type && previewFile.type.startsWith('image/')) || (previewFile.name && (previewFile.name.toLowerCase().endsWith('.jpg') || previewFile.name.toLowerCase().endsWith('.png') || previewFile.name.toLowerCase().endsWith('.jpeg'))) ? (
+                                <img
+                                    src={previewFile.url || (previewFile.fileObj instanceof File ? URL.createObjectURL(previewFile.fileObj) : (previewFile instanceof File ? URL.createObjectURL(previewFile) : previewFile.data))}
+                                    alt="Preview"
+                                    className="max-w-full max-h-full object-contain"
+                                />
+                            ) : (
+                                <div className="text-center p-8">
+                                    <p className="mb-4 text-gray-400">Preview not available for this file type.</p>
+                                    <a
+                                        href={previewFile.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-6 py-3 bg-orange-500 rounded-xl font-bold text-white inline-block"
+                                        download={previewFile.name}
+                                    >
+                                        Download / Open External
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )
+            }
         </div >
     );
 };

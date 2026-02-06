@@ -1,6 +1,6 @@
-// Simple in-memory store for the session (and local storage persistence)
 import { auth } from './firebase';
 import { firestoreService } from './firestoreService';
+import { deleteField } from 'firebase/firestore';
 
 const BASE_STORAGE_KEY = 'remindme_buddy_db';
 let currentUserId = null;
@@ -269,6 +269,38 @@ export const dataService = {
         notifyListeners();
     },
 
+    // MANUAL SYNC (User Requested)
+    forceSync: async () => {
+        if (!auth.currentUser) return;
+        console.log("🔄 Force Sync Initiated...");
+        try {
+            const [reminders, notesOwned, notesShared, caregivers, settings] = await Promise.all([
+                firestoreService.fetchReminders(),
+                firestoreService.fetchNotesOwned(),
+                firestoreService.fetchNotesShared(),
+                firestoreService.fetchCaregivers(),
+                firestoreService.fetchSettings()
+            ]);
+
+            dataService.syncFromCloud('reminders', reminders);
+
+            // Combine Notes
+            const map = new Map();
+            notesOwned.forEach(n => map.set(n.id, n));
+            notesShared.forEach(n => map.set(n.id, n));
+            dataService.syncFromCloud('notes', Array.from(map.values()));
+
+            dataService.syncFromCloud('caregivers', caregivers);
+            dataService.syncFromCloud('settings', settings);
+
+            console.log("✅ Force Sync Complete");
+            return true;
+        } catch (e) {
+            console.error("Force Sync Failed:", e);
+            return false;
+        }
+    },
+
     // Export store access for migration
     getLocalStore: () => store,
 
@@ -376,8 +408,11 @@ export const dataService = {
                     Object.entries(times).forEach(([period, time]) => {
                         if (!r.schedule.frequency.includes(period)) return;
 
-                        const instanceKey = `${dateString}_${period}`;
+                        const instanceKey = `${dateString}_period_${period}`; // Unique key per period
+
                         const log = (r.logs || {})[instanceKey];
+
+                        // Check for EXCEPTION (Edit Instance)
                         const exception = (r.exceptions || {})[instanceKey];
 
                         // Exception: Cancelled/Hidden
@@ -685,6 +720,16 @@ export const dataService = {
                         dObj.setHours(0, 0, 0, 0);
                         if (dObj > today && status === 'missed') status = 'upcoming';
 
+                        // V10.24 FIX: Override displayTime with takenAt if status is taken
+                        // This ensures the custom time is shown in the UI
+                        let takenAt = log ? log.takenAt : null;
+                        if (status === 'taken' && takenAt) {
+                            const d = new Date(takenAt);
+                            const h = String(d.getHours()).padStart(2, '0');
+                            const m = String(d.getMinutes()).padStart(2, '0');
+                            displayTime = `${h}:${m}`;
+                        }
+
                         expanded.push({
                             ...r,
                             ...exception, // OVERRIDE with exception data (instructions, files, etc)
@@ -750,6 +795,16 @@ export const dataService = {
                         dObj.setHours(0, 0, 0, 0);
                         if (dObj > today && status === 'missed') status = 'upcoming';
 
+                        // Merge log data (takenAt, custom time) into the expanded object.
+                        // Prioritize log.takenAt for display time if status is taken.
+                        let takenAt = log ? log.takenAt : null;
+                        if (status === 'taken' && takenAt) {
+                            const d = new Date(takenAt);
+                            const h = String(d.getHours()).padStart(2, '0');
+                            const m = String(d.getMinutes()).padStart(2, '0');
+                            displayTime = `${h}:${m}`;
+                        }
+
                         expanded.push({
                             ...r,
                             ...ex, // Apply Exception Data (Title, Notes, etc)
@@ -758,7 +813,7 @@ export const dataService = {
                             instanceKey: key,
                             displayTime: displayTime,
                             status: status,
-                            takenAt: log ? log.takenAt : null,
+                            takenAt: takenAt,
                             isVirtual: true,
                             isMovedIn: true,
                             targetDate: dateString // EXPLICIT TARGET DATE
@@ -786,7 +841,6 @@ export const dataService = {
     getUpcomingReminders: (days = 7) => {
         const allUpcoming = [];
         const today = new Date();
-        console.log('📆 getUpcomingReminders(): Starting from', today.toLocaleDateString('en-CA'), 'for next', days, 'days');
 
         for (let i = 0; i < days; i++) {
             const date = new Date(today);
@@ -799,16 +853,13 @@ export const dataService = {
             const dateStr = `${year}-${month}-${day}`;
 
             const reminders = dataService.getRemindersForDate(dateStr);
-            console.log(`  Day ${i} (${dateStr}): Found ${reminders.length} total reminders`);
 
             // Filter only valid upcoming ones (not taken, not missed/past - unless snoozed active)
             const active = reminders.filter(r =>
                 r.status === 'upcoming' || r.status === 'snoozed'
             );
-            console.log(`  Day ${i} (${dateStr}): ${active.length} active (upcoming/snoozed) reminders`);
             allUpcoming.push(...active);
         }
-        console.log('📆 getUpcomingReminders(): Returning', allUpcoming.length, 'total reminders');
         return allUpcoming;
     },
 
@@ -964,7 +1015,50 @@ export const dataService = {
                         ...updates,
                         isException: true
                     };
-                    return { ...r, exceptions };
+
+                    // V10.24 FIX: If Time or Date is updated, we check if we should PRESERVE the 'taken' status
+                    // instead of blindly clearing the log (which reverts it to upcoming/missed).
+                    let logs = r.logs || {};
+                    if ((updates.time || updates.date) && logs[instanceKey]) {
+                        const oldLog = logs[instanceKey];
+                        if (oldLog.status === 'taken') {
+                            console.log("DataService: Preserving 'taken' status for updated exception:", instanceKey);
+
+                            // Calculate new takenAt time to align with the new schedule
+                            // (Assumption: User is correcting the record)
+                            let newTakenAt = oldLog.takenAt || new Date().toISOString();
+
+                            try {
+                                const datePart = updates.date || instanceKey.split('_')[0];
+                                const timePart = updates.time || (r.time || '09:00'); // Fallback if time not in updates?
+
+                                // Only update time if we have valid parts
+                                if (datePart && timePart.includes(':')) {
+                                    const [h, m] = timePart.split(':').map(Number);
+                                    const d = new Date(datePart);
+                                    d.setHours(h, m, 0, 0);
+                                    newTakenAt = d.toISOString();
+                                }
+                            } catch (err) {
+                                console.warn("Could not recalculate takenAt, keeping original", err);
+                            }
+
+                            logs = { ...logs };
+                            logs[instanceKey] = {
+                                ...oldLog,
+                                takenAt: newTakenAt,
+                                updatedAt: new Date().toISOString()
+                            };
+                        } else {
+                            // If 'snoozed' or 'missed', it's safe to reset if user reschedules.
+                            // e.g. "I missed it, so I'll move it to later" -> Becomes Upcoming.
+                            console.log("DataService: Clearing sticky log for updated exception:", instanceKey);
+                            logs = { ...logs };
+                            delete logs[instanceKey];
+                        }
+                    }
+
+                    return { ...r, exceptions, logs };
                 }
                 return r;
             });
@@ -976,6 +1070,22 @@ export const dataService = {
                     payload[`exceptions.${instanceKey}.${k}`] = updates[k];
                 });
                 payload[`exceptions.${instanceKey}.isException`] = true;
+
+                // Also delete log field if time changed (unless we decided to keep it locally!)
+                if (updates.time || updates.date) {
+                    // Check LOCAL store to see if we kept it (Optimistic check)
+                    const tempR = store.reminders.find(r => String(r.id) === String(id));
+                    const preservedLog = tempR?.logs?.[instanceKey];
+
+                    if (preservedLog && preservedLog.status === 'taken') {
+                        // Update the log in Firestore instead of deleting
+                        payload[`logs.${instanceKey}`] = preservedLog;
+                    } else {
+                        // Delete as usual
+                        payload[`logs.${instanceKey}`] = deleteField();
+                    }
+                }
+
                 await firestoreService.updateReminder(id, payload);
             }
         } else {
@@ -1400,6 +1510,7 @@ export const dataService = {
                     newLogs[instanceKey] = {
                         status: 'snoozed',
                         snoozedUntil: newTime,
+                        updatedAt: now.toISOString(), // Fix for Sync Reversion (was missing)
                         timestamp: now.toISOString()
                     };
                     return { ...r, logs: newLogs };
@@ -1408,9 +1519,21 @@ export const dataService = {
             });
         } else {
             const hhmm = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-            store.reminders = (store.reminders || []).map(r =>
-                String(r.id) === String(id) ? { ...r, time: hhmm, status: 'upcoming' } : r
-            );
+            const yyyy_mm_dd = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
+
+            store.reminders = (store.reminders || []).map(r => {
+                if (String(r.id) === String(id)) {
+                    // Update Date AND Time for single events to prevent "past" jump
+                    return {
+                        ...r,
+                        time: hhmm,
+                        startDate: yyyy_mm_dd,
+                        date: yyyy_mm_dd, // Legacy support
+                        status: 'upcoming'
+                    };
+                }
+                return r;
+            });
         }
 
         save();
@@ -1434,13 +1557,20 @@ export const dataService = {
                         [key]: {
                             status: 'snoozed',
                             snoozedUntil: newTime,
+                            updatedAt: now.toISOString(),
                             timestamp: now.toISOString()
                         }
                     };
                     await firestoreService.updateReminder(id, payload);
                 } else {
                     const hhmm = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-                    await firestoreService.updateReminder(id, { time: hhmm, status: 'upcoming' });
+                    const yyyy_mm_dd = now.toLocaleDateString('en-CA');
+                    await firestoreService.updateReminder(id, {
+                        time: hhmm,
+                        startDate: yyyy_mm_dd,
+                        date: yyyy_mm_dd,
+                        status: 'upcoming'
+                    });
                 }
             } catch (e) {
                 console.error("Firestore snooze failed:", e);
@@ -1705,6 +1835,11 @@ export const dataService = {
             return await firestoreService.getNote(id);
         }
         return store.notes.find(n => String(n.id) === String(id)) || null;
+    },
+
+    getNoteRealtime: (id, callback) => {
+        if (!auth.currentUser) return () => { };
+        return firestoreService.getNoteRealtime(id, callback);
     },
 
     convertReminderToNote: (reminder) => {

@@ -11,11 +11,9 @@ export const useReminders = (setActiveAlarm) => {
     // 1. Initial Load & Sync
     useEffect(() => {
         const loadReminders = () => {
-            console.log('🔄 loadReminders triggered (initial load or storage-update event)');
             const todayStr = new Date().toLocaleDateString('en-CA');
             // FIX: Schedule next 7 days of reminders to ensure background reliability
             const allFuture = dataService.getUpcomingReminders(7);
-            console.log('📋 Found', allFuture.length, 'upcoming reminders to schedule');
             // const all = dataService.getRemindersForDate(todayStr); 
             setReminders(allFuture);
             scheduleReminders(allFuture);
@@ -75,9 +73,6 @@ export const useReminders = (setActiveAlarm) => {
                     setActiveAlarm(prev => (prev?.id === active.id ? prev : { ...active, instanceKey }));
 
                     // Trigger Web Notification (Debounced)
-                    // On NATIVE, the local-notification schedule handles this. 
-                    // Only trigger here for Web/PWA regular usage to ensure visual alert if simple schedule failed?
-                    // actually, duplicate is bad.
                     if (!Capacitor.isNativePlatform()) {
                         if (!notifiedRef.current.has(instanceKey)) {
                             notifiedRef.current.add(instanceKey);
@@ -88,6 +83,16 @@ export const useReminders = (setActiveAlarm) => {
                         }
                     }
                 }
+            } else {
+                // Fix for "Stuck" Alarm:
+                // If the currently showing alarm is no longer "active" (e.g. Snoozed remotely, time passed), close it.
+                // We perform a safe check to ensure we don't close it instantly if it just missed the 2-min window but user is interacting?
+                // Actually, if it missed the window, it's missed. It should close.
+                // If it was Snoozed (time changed), it definitely should close.
+                setActiveAlarm(prev => {
+                    if (prev) { }
+                    return null;
+                });
             }
         };
 
@@ -103,7 +108,6 @@ export const useReminders = (setActiveAlarm) => {
         const handleClearRef = (event) => {
             const { instanceKey } = event.detail;
             if (instanceKey && notifiedRef.current.has(instanceKey)) {
-                console.log(`🔔 Clearing Notification Ref for: ${instanceKey} (Snoozed/Done)`);
                 notifiedRef.current.delete(instanceKey);
             }
         };

@@ -64,7 +64,10 @@ export const fileStorage = {
 
         const user = auth.currentUser;
 
-        const id = crypto.randomUUID();
+        // V12: Safe ID gen for older Android WebViews
+        const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         // Cloud Storage (Firebase)
         if (user) {
@@ -75,30 +78,45 @@ export const fileStorage = {
             const storageRef = ref(storage, `gs://remindme-app-9988.firebasestorage.app/users/${user.uid}/files/${id}`);
 
             try {
-                // TRY MINIMAL UPLOAD FIRST (No metadata to avoid potential header/character issues)
-                const snapshot = await uploadBytes(storageRef, fileBlob);
-                console.log("Upload snapshot received:", snapshot);
+                // V11: Use uploadBytesResumable for Progress Events
+                return new Promise((resolve, reject) => {
+                    const uploadTask = uploadBytesResumable(storageRef, fileBlob);
 
-                const downloadURL = await getDownloadURL(snapshot.ref);
-
-                if (onProgress) onProgress(100);
-
-                return {
-                    id: id,
-                    url: downloadURL,
-                    path: snapshot.ref.fullPath,
-                    type: 'cloud',
-                    name: fileBlob.name,
-                    mimeType: fileBlob.type
-                };
+                    uploadTask.on('state_changed',
+                        (snapshot) => {
+                            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                            if (onProgress) onProgress(Math.round(progress));
+                        },
+                        (error) => {
+                            // Handle Error
+                            console.group("CRITICAL STORAGE UPLOAD ERROR");
+                            console.error("Code:", error.code);
+                            console.error("Message:", error.message);
+                            console.error("Full Error Object:", error);
+                            console.groupEnd();
+                            reject(error);
+                        },
+                        async () => {
+                            // Handle Success
+                            try {
+                                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                                resolve({
+                                    id: id,
+                                    url: downloadURL,
+                                    path: uploadTask.snapshot.ref.fullPath,
+                                    type: 'cloud',
+                                    name: fileBlob.name,
+                                    mimeType: fileBlob.type
+                                });
+                            } catch (e) {
+                                reject(e);
+                            }
+                        }
+                    );
+                });
             } catch (error) {
-                // AGGRESSIVE LOGGING
-                console.group("CRITICAL STORAGE UPLOAD ERROR");
-                console.error("Code:", error.code);
-                console.error("Message:", error.message);
-                console.error("Server Response:", error.serverResponse);
-                console.error("Full Error Object:", error);
-                console.groupEnd();
+                // Should be caught by downloadURL failure or init failure, but safety net
+                console.error("Upload init error", error);
                 throw error;
             }
         }

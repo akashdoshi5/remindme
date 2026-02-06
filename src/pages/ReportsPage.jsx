@@ -28,6 +28,9 @@ const ReportsPage = () => {
     // Day Details State
     const [dayEvents, setDayEvents] = useState([]);
 
+    // V10.26 Fix: Temporary Overrides preventing "Revert" flicker
+    const [temporaryOverrides, setTemporaryOverrides] = useState({}); // { uniqueId: { status, takenAt, displayTime } }
+
     // Edit Modal State
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState(null);
@@ -250,111 +253,70 @@ const ReportsPage = () => {
         // USE GENERIC EXPANSION
         const events = dataService.expandRemindersForDate(dateStr, activeReminders);
 
-        // Get current time for comparison
-        const now = new Date();
-        const currentHour = now.getHours();
-        const currentMinute = now.getMinutes();
-        const currentTimeMinutes = currentHour * 60 + currentMinute;
-
-        const processedEvents = events.map(event => {
-            const eventTime = event.displayTime || '';
-
-            // Parse event time to minutes
-            let eventTimeMinutes = 0;
-            if (eventTime && eventTime.includes(':')) {
-                const [hours, mins] = eventTime.split(':').map(Number);
-                eventTimeMinutes = hours * 60 + mins;
+        // V10.26 Fix: Merge Temporary Overrides
+        const mergedEvents = events.map(e => {
+            const override = temporaryOverrides[e.uniqueId || e.id];
+            if (override) {
+                return { ...e, ...override };
             }
-
-            // Determine if this specific event is in the past
-            let isPast = false;
-
-            // Create event date object for comparison
-            const eventDateObj = new Date(year, month, day);
-            eventDateObj.setHours(0, 0, 0, 0);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            if (eventDateObj < today) {
-                isPast = true;
-            } else if (eventDateObj.getTime() === today.getTime() && eventTime && eventTimeMinutes < currentTimeMinutes) {
-                isPast = true;
-            }
-
-            // Mark as missed if it's past and still upcoming
-            if (isPast && event.status === 'upcoming') {
-                return { ...event, status: 'missed' };
-            }
-            return event;
+            return e;
         });
 
+        // Filter events for the selected day and determine status
+        const filteredEvents = mergedEvents
+            .filter(event => {
+                const globalStart = event.schedule?.startDate || event.date;
+                if (globalStart && dateStr < globalStart) return false;
+                if (event.schedule?.endDate && dateStr > event.schedule.endDate) return false;
+                return true;
+            });
+
         // Sort by time
-        processedEvents.sort((a, b) => (a.displayTime || '').localeCompare(b.displayTime || ''));
-        setDayEvents(processedEvents);
+        const sorted = filteredEvents.sort((a, b) => {
+            const [h1, m1] = (a.displayTime || '00:00').split(':').map(Number);
+            const [h2, m2] = (b.displayTime || '00:00').split(':').map(Number);
+            return (h1 * 60 + m1) - (h2 * 60 + m2);
+        });
+
+        setDayEvents(sorted);
     };
 
     const handleStatusUpdate = (status) => {
-        if (!selectedEvent || isReadOnly) return; // Guard for read-only
+        // Custom Logic for Reports: Always precise timing
+        if (status === 'taken') {
+            // STRICT 2-HOUR WINDOW CHECK (Optional, simplified for now)
+            try {
+                // Determine time to save
+                // If user entered time, use it. Else use Scheduled Time. NOT 'Now'.
+                const finalTime = takenTime || selectedEvent.displayTime || '09:00';
 
-        // For taken status, use the custom time if provided
-        if (status === 'taken' && takenTime) {
-            // STRICT 2-HOUR WINDOW ADHERENCE RULE
-            if (activeReminders && selectedEvent) {
-                // 1. Get Scheduled Time
-                const schedStr = selectedEvent.displayTime;
-                if (schedStr && schedStr.includes(':')) {
-                    const [sH, sM] = schedStr.split(':').map(Number);
-                    const scheduledDate = new Date();
-                    scheduledDate.setHours(sH, sM, 0, 0);
+                // Construct ISO for the *selected date* securely
+                const targetDate = new Date(year, month, selectedDate);
+                const [h, m] = finalTime.split(':').map(Number);
+                if (isNaN(h) || isNaN(m)) throw new Error("Invalid Time Format");
 
-                    // 2. Get Actual Taken Time (from User Input)
-                    const [tH, tM] = takenTime.split(':').map(Number);
-                    const actualDate = new Date();
-                    actualDate.setHours(tH, tM, 0, 0);
+                targetDate.setHours(h, m, 0, 0); // Set to Local Time
 
-                    // 3. Calculate Difference in Minutes
-                    const diffMs = actualDate - scheduledDate;
-                    const diffMinutes = diffMs / (1000 * 60);
+                const customTimestamp = targetDate.toISOString();
 
-                    // 4. Validate Window
-                    // Allow early taking? Yes, but warn if > 2 hours?
-                    // "It is too early" logic:
-                    /*
-                    if (diffMinutes < -120) {
-                         alert("It is too early...");
-                         return;
-                    }
-                    */
-
-                    if (diffMinutes > 120) {
-                        const confirmLate = window.confirm("You are more than 2 hours late. Strictly speaking, this counts as a 'Missed' dose for adherence tracking.\n\nClick OK to record as MISSED, or Cancel to correct the time.");
-                        if (confirmLate) {
-                            handleStatusUpdate('missed');
-                            return;
-                        } else {
-                            return;
-                        }
-                    }
-                }
+                dataService.logReminderStatusWithTime(selectedEvent.id, selectedEvent.instanceKey, status, customTimestamp);
+            } catch (err) {
+                console.error("Error saving custom time:", err);
+                alert("Invalid Time entered. Please check format.");
+                return;
             }
-
-            // Valid Time Window -> Proceed to Save
-            const finalTime = takenTime || selectedEvent.displayTime || '09:00';
-            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`;
-            const customTimestamp = new Date(`${dateStr}T${finalTime}:00`).toISOString();
-
-            dataService.logReminderStatusWithTime(selectedEvent.id, selectedEvent.instanceKey, status, customTimestamp);
+        } else if (status === 'reset') {
+            // V10.24 NEW: Undo/Reset Status (Clear Log)
+            console.log("Resetting status for:", selectedEvent.instanceKey);
+            // logic to set back to upcoming (effectively clearing strict taken/missed state if logical)
+            dataService.logReminderStatus(selectedEvent.id, selectedEvent.instanceKey, 'upcoming');
         } else {
-            // Missed / Snoozed / Etc
+            // Missed/Skipped
             dataService.logReminderStatus(selectedEvent.id, selectedEvent.instanceKey, status);
         }
 
         setEditModalOpen(false);
         setTakenTime('');
-        if (!viewingProfile) {
-            loadDayEvents(selectedDate);
-            calculateMonthStats();
-        }
     };
 
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -449,20 +411,54 @@ const ReportsPage = () => {
                                     <div className="w-8 h-8 rounded-full bg-green-200 dark:bg-green-800 flex items-center justify-center"><CheckCircle size={18} /></div>
                                     Mark as Taken
                                 </button>
-                                <button
-                                    onClick={() => handleStatusUpdate('missed')}
-                                    className="w-full p-4 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold flex items-center gap-3 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
-                                >
-                                    <div className="w-8 h-8 rounded-full bg-red-200 dark:bg-red-800 flex items-center justify-center"><AlertCircle size={18} /></div>
-                                    Mark as Missed
-                                </button>
+
+                                {(() => {
+                                    // V10.23 FIX: Prevent marking FUTURE events as Missed
+                                    // Custom Logic for Reports: Allow if date is past/today
+                                    let isFuture = false;
+                                    if (selectedEvent && selectedDate) {
+                                        const eventDate = new Date(year, month, selectedDate);
+                                        const today = new Date();
+                                        today.setHours(0, 0, 0, 0);
+
+                                        if (eventDate > today) isFuture = true;
+                                        else if (eventDate.getTime() === today.getTime()) {
+                                            if (selectedEvent.displayTime) {
+                                                const [h, m] = selectedEvent.displayTime.split(':').map(Number);
+                                                const eventTime = new Date();
+                                                eventTime.setHours(h, m, 0, 0);
+                                                if (eventTime > new Date()) isFuture = true;
+                                            }
+                                        }
+                                    }
+
+                                    if (isFuture) return null; // Don't show Missed button for future events
+
+                                    return (
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <button
+                                                onClick={() => handleStatusUpdate('missed')}
+                                                className="p-4 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold flex items-center justify-center gap-2 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
+                                            >
+                                                <AlertCircle size={18} />
+                                                Missed
+                                            </button>
+                                            <button
+                                                onClick={() => handleStatusUpdate('reset')}
+                                                className="p-4 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 font-bold flex items-center justify-center gap-2 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                                            >
+                                                {/* TrendingUp acts as a Reset/Restore icon here */}
+                                                <TrendingUp size={18} />
+                                                Reset
+                                            </button>
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </motion.div>
                     </div>
                 )}
             </AnimatePresence>
-
-
 
             <div className="grid md:grid-cols-3 gap-6 mb-8">
                 {/* Score Card */}
@@ -660,7 +656,24 @@ const ReportsPage = () => {
                                                 return;
                                             }
 
-                                            // Block Future
+                                            // V10.22 FIX: Block Future > 2 Hours for Today (Match Dashboard)
+                                            if (diffDays === 0) { // Today
+                                                if (event.displayTime) {
+                                                    const [h, m] = event.displayTime.split(':').map(Number);
+                                                    const eventTime = new Date();
+                                                    eventTime.setHours(h, m, 0, 0);
+                                                    const now = new Date();
+                                                    const diffMs = now.getTime() - eventTime.getTime();
+                                                    const hoursDiff = diffMs / (1000 * 60 * 60);
+
+                                                    if (hoursDiff < -2) {
+                                                        alert("It is too earlier to update this reminder (more than 2 hours ahead).");
+                                                        return;
+                                                    }
+                                                }
+                                            }
+
+                                            // Block Future Days (Tomorrow+)
                                             if (eventDate > today) return;
 
                                             // Construct safe time
@@ -673,9 +686,15 @@ const ReportsPage = () => {
                                                 dateStr: `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`
                                             });
                                             // Set default time in modal (Fix: ensure fallback to scheduled time)
-                                            setTakenTime(event.takenAt
-                                                ? new Date(event.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-                                                : safeTime);
+                                            // V10.24 FIX: Use strict HH:MM parsing for Input Value to avoid Locale issues
+                                            let initialTime = safeTime;
+                                            if (event.takenAt) {
+                                                const d = new Date(event.takenAt);
+                                                const h = String(d.getHours()).padStart(2, '0');
+                                                const m = String(d.getMinutes()).padStart(2, '0');
+                                                initialTime = `${h}:${m}`;
+                                            }
+                                            setTakenTime(initialTime);
                                             setEditModalOpen(true);
                                         }}
                                     >
@@ -693,11 +712,28 @@ const ReportsPage = () => {
                                             <div className="flex justify-between items-start">
                                                 <h4 className="font-bold text-gray-900 dark:text-gray-100 leading-tight">{event.title}</h4>
                                                 <div className="flex flex-col items-end gap-1">
-                                                    <span className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-opacity group-hover:opacity-0 ${event.status === 'taken' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-900' : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-100 dark:border-gray-600'}`}>
+                                                    <span className={`px-2 py-1 rounded-md text-xs font-bold ${event.status === 'taken' ? 'bg-green-100 text-green-700' :
+                                                        event.status === 'missed' ? 'bg-red-100 text-red-700' :
+                                                            'bg-gray-100 text-gray-600'
+                                                        }`}>
                                                         {event.status === 'taken'
                                                             ? (event.takenAt
-                                                                ? new Date(event.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                                                : new Date().setHours(event.displayTime.split(':')[0], event.displayTime.split(':')[1]) && new Date(new Date().setHours(event.displayTime.split(':')[0], event.displayTime.split(':')[1])).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+                                                                ? (() => {
+                                                                    const d = new Date(event.takenAt);
+                                                                    const h = String(d.getHours()).padStart(2, '0');
+                                                                    const m = String(d.getMinutes()).padStart(2, '0');
+                                                                    return `${h}:${m}`;
+                                                                })()
+                                                                : (() => {
+                                                                    // Fallback: Check deep logs if top-level prop missing
+                                                                    if (event.logs && event.instanceKey && event.logs[event.instanceKey]?.takenAt) {
+                                                                        const d = new Date(event.logs[event.instanceKey].takenAt);
+                                                                        const h = String(d.getHours()).padStart(2, '0');
+                                                                        const m = String(d.getMinutes()).padStart(2, '0');
+                                                                        return `${h}:${m}`;
+                                                                    }
+                                                                    return event.displayTime;
+                                                                })())
                                                             : event.displayTime
                                                         }
                                                     </span>
@@ -730,7 +766,7 @@ const ReportsPage = () => {
                     </motion.div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 

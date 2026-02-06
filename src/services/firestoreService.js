@@ -178,6 +178,49 @@ export const firestoreService = {
 
     // --- REMINDERS ---
 
+    // --- MANUAL FETCH (For Pull-to-Refresh) ---
+    fetchReminders: async () => {
+        const user = auth.currentUser;
+        if (!user) return [];
+        const q = collection(db, 'users', user.uid, 'reminders');
+        const snap = await getDocs(q);
+        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    },
+
+    fetchNotesOwned: async () => {
+        const user = auth.currentUser;
+        if (!user) return [];
+        const q = query(collection(db, 'notes'), where('ownerId', '==', user.uid));
+        const snap = await getDocs(q);
+        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    },
+
+    fetchNotesShared: async () => {
+        const user = auth.currentUser;
+        if (!user) return [];
+        const q = query(collection(db, 'notes'), where('sharedWith', 'array-contains', user.email));
+        const snap = await getDocs(q);
+        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    },
+
+    fetchCaregivers: async () => {
+        const user = auth.currentUser;
+        if (!user) return [];
+        const q = collection(db, 'users', user.uid, 'caregivers');
+        const snap = await getDocs(q);
+        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    },
+
+    fetchSettings: async () => {
+        const user = auth.currentUser;
+        if (!user) return {};
+        const userRef = doc(db, 'users', user.uid);
+        const snap = await getDoc(userRef);
+        return (snap.exists() && snap.data().settings) ? snap.data().settings : {};
+    },
+
+    // --- REMINDERS ---
+
     getRemindersRealtime: (callback) => {
         const user = auth.currentUser;
         if (!user) return () => { };
@@ -239,6 +282,22 @@ export const firestoreService = {
     },
 
     // --- NOTES (Shared) ---
+
+    getNoteRealtime: (noteId, callback) => {
+        const user = auth.currentUser;
+        if (!user || !noteId) return () => { };
+        try {
+            const noteRef = doc(db, 'notes', String(noteId));
+            return onSnapshot(noteRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    callback({ id: docSnap.id, ...docSnap.data() });
+                }
+            });
+        } catch (e) {
+            console.error("Error setting up note listener:", e);
+            return () => { };
+        }
+    },
 
     getNotesRealtime: (callback) => {
         const user = auth.currentUser;
