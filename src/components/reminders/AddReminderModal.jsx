@@ -474,10 +474,26 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             }
             if (editScope !== 'this') {
                 data.frequency = finalFrequency;
+                // V10.30: Calculate Strict End Date to prevent 30-day drift
+                const d = new Date(startDate || new Date().toISOString().split('T')[0]);
+                const dur = parseInt(durationDays || 30);
+                if (dur === 30) d.setMonth(d.getMonth() + 1);
+                else if (dur === 60) d.setMonth(d.getMonth() + 2);
+                else if (dur === 90) d.setMonth(d.getMonth() + 3);
+                else if (dur === 180) d.setMonth(d.getMonth() + 6);
+                else if (dur === 365) d.setFullYear(d.getFullYear() + 1);
+                else if (dur === 3650) d.setFullYear(d.getFullYear() + 10);
+                else d.setDate(d.getDate() + (dur - 1));
+
+                // If "Monthly", ensure we cover the target date (don't subtract 1). If "Weekly", maybe?
+                // Safest: Use the calculated date as the Inclusive End Cap.
+                const endDateStr = d.toISOString().split('T')[0];
+
                 data.schedule = {
                     type: 'basic',
                     startDate: startDate || new Date().toISOString().split('T')[0],
                     durationDays: durationDays,
+                    endDate: endDateStr, // Explicit End Date
                     times: { default: time }
                 };
             }
@@ -836,7 +852,25 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                                             <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
                                                                 Until {(() => {
                                                                     const d = new Date(startDate);
-                                                                    d.setDate(d.getDate() + (parseInt(durationDays || 30) - 1));
+                                                                    const dur = parseInt(durationDays || 30);
+
+                                                                    // V10.30: Calendar-aware calculation
+                                                                    if (dur === 30) d.setMonth(d.getMonth() + 1);
+                                                                    else if (dur === 60) d.setMonth(d.getMonth() + 2);
+                                                                    else if (dur === 90) d.setMonth(d.getMonth() + 3);
+                                                                    else if (dur === 180) d.setMonth(d.getMonth() + 6);
+                                                                    else if (dur === 365) d.setFullYear(d.getFullYear() + 1);
+                                                                    else if (dur === 3650) d.setFullYear(d.getFullYear() + 10);
+                                                                    else d.setDate(d.getDate() + (dur - 1));
+
+                                                                    // Adjust for "Exclusive" vs "Inclusive"? 
+                                                                    // If I say "1 Month" (Jan 1 -> Feb 1), usually it includes Feb 1? 
+                                                                    // Or ends Jan 31? 
+                                                                    // Let's stick to Exact Date (-1 day if we want inclusive of the span, but "Until" usually implies the limit).
+                                                                    // Let's NOT subtract 1 day for Calendar months to be safe (cover the target date).
+                                                                    // Actually, if Monthly (Jan 1), +1 Month = Feb 1. 
+                                                                    // Feb 1 IS the date. So we need it to be >= Feb 1.
+
                                                                     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
                                                                 })()}
                                                             </span>

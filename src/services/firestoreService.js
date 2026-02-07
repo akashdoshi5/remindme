@@ -45,7 +45,7 @@ export const firestoreService = {
                     // Use ID as doc ID for consistency or auto-id?
                     // Let's use stringified ID to prevent dupes if rerunning
                     const rDoc = doc(remindersRef, String(r.id));
-                    await setDoc(rDoc, r);
+                    await setDoc(rDoc, r, { merge: true }); // V10.29 FIX: Merge to avoid wiping logs
                 }
             }
 
@@ -71,7 +71,7 @@ export const firestoreService = {
                 const cgRef = collection(db, 'users', user.uid, 'caregivers');
                 for (const c of localData.caregivers) {
                     const cDoc = doc(cgRef, String(c.id));
-                    await setDoc(cDoc, c);
+                    await setDoc(cDoc, c, { merge: true });
                 }
             }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Mic, MicOff, Image as ImageIcon, Trash2, FileText, Paperclip, Loader2, CheckSquare, Tag, Play, Pause, GripVertical, Share2, Pin, Undo, Redo } from 'lucide-react';
+import { X, Mic, MicOff, Image as ImageIcon, Trash2, FileText, Paperclip, Loader2, CheckSquare, Tag, Play, Pause, GripVertical, Share2, Pin, Undo, Redo, Download } from 'lucide-react';
 import { Reorder } from 'framer-motion';
 import { useVoice } from '../../hooks/useVoice';
 import { fileStorage } from '../../services/fileStorage';
@@ -219,17 +219,28 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
 
     // --- INITIALIZATION ---
     useEffect(() => {
-        // Prevent overwriting local state if we are already editing this note (unless it's a fresh open)
-        // This relies on the Real-time Sync useEffect to handle updates instead of hard-resetting here.
-        if (localId && noteToEdit?.id === localId && !isNew) {
-            return;
-        }
+        // FIX: Allow re-initialization if noteToEdit changes, even if ID matches (e.g. slight updates)
+        // verify if we are truly switching context or just receiving a background update
+        // actually, we should just trust noteToEdit if it exists and is different from current state?
+        // Simpler: Just rely on local state unless noteToEdit ID changes OR if we are opening fresh.
+
+        // If we are already editing this note, we still might want to refresh if it was re-opened
+        // The previous check was: if (localId && noteToEdit?.id === localId && !isNew) return;
+        // This blocked "re-opening" the same note from the list if the modal wasn't fully unmounted or state wasn't cleared.
+        // We will remove it to ensure we always load the latest props when the modal opens/note changes.
 
         if (noteToEdit) {
             setTitle(noteToEdit.title && noteToEdit.title !== 'Untitled Note' ? noteToEdit.title : '');
 
             const initialContent = noteToEdit.content || '';
-            resetContent(initialContent); // Reset history to this start point
+            // Only reset history if we are genuinely switching notes
+            if (localId !== noteToEdit.id) {
+                resetContent(initialContent);
+            } else if (content === '') {
+                // specific case: if local is empty but remote has content (initial load)
+                setContent(initialContent);
+            }
+
             baseContentRef.current = initialContent; // Set base
             baseFilesRef.current = noteToEdit.files || [];
 
@@ -237,7 +248,13 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
             setShowTagInput(!!(noteToEdit.tags && noteToEdit.tags.length > 0));
             setFiles(noteToEdit.files || []);
             setNoteType(noteToEdit.type === 'shopping' ? 'shopping' : 'text');
-            setItems((noteToEdit.items && noteToEdit.items.length > 0) ? noteToEdit.items.map(i => ({ ...i, id: i.id || crypto.randomUUID() })) : [{ text: '', done: false, id: crypto.randomUUID() }]);
+
+            // Fix: Ensure items are mapped correctly
+            const initialItems = (noteToEdit.items && noteToEdit.items.length > 0)
+                ? noteToEdit.items.map(i => ({ ...i, id: i.id || crypto.randomUUID() }))
+                : [{ text: '', done: false, id: crypto.randomUUID() }];
+            setItems(initialItems);
+
             setAudioData(noteToEdit.audioData || null);
             setIsPinned(!!noteToEdit.isPinned);
 
@@ -245,19 +262,25 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
             setIsNew(false);
         } else {
             // New Note
-            resetContent('');
-            baseContentRef.current = '';
-            baseFilesRef.current = [];
-            setTitle('');
-            setTags('');
-            setFiles([]);
-            setItems([{ text: '', done: false, id: crypto.randomUUID() }]);
-            setIsPinned(false);
-            setAudioData(null);
-            setLocalId(crypto.randomUUID());
-            setIsNew(true);
+            if (!isNew) { // Only reset if we weren't already in "New" mode
+                resetContent('');
+                baseContentRef.current = '';
+                baseFilesRef.current = [];
+                setTitle('');
+                setTags('');
+                setFiles([]);
+                setItems([{ text: '', done: false, id: crypto.randomUUID() }]);
+                setIsPinned(false);
+                setAudioData(null);
+                setLocalId(crypto.randomUUID());
+                setIsNew(true);
+            }
         }
-    }, [noteToEdit, isOpen, localId, isNew]); // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [noteToEdit, isOpen]); // Removed localId/isNew from dependencies to prevent loops, added isOpen to refresh on open
+
+
+
+
 
 
     // --- DRAG & DROP & AUDIO ---
@@ -610,19 +633,88 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                     <div className="fixed inset-0 z-[150] bg-black text-white flex flex-col animate-fade-in">
                         {/* Header */}
                         <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-md absolute top-0 left-0 right-0">
-                            <span className="truncate font-medium flex-1 mr-4">{previewFile.name}</span>
+                            <span className="truncate font-medium flex-1 mr-4">{previewFile?.name || 'Preview'}</span>
                             <div className="flex items-center gap-3">
-                                {/* Download/Open External Button */}
-                                {(previewFile.url) && (
+                                {/* Download Button */}
+                                {(previewFile.url || previewFile.fileObj) && (
                                     <button
                                         type="button"
-                                        onClick={() => window.open(previewFile.url, '_blank')}
+                                        onClick={async () => {
+                                            try {
+                                                const url = previewFile?.url;
+                                                const filename = previewFile?.name || 'download';
+
+                                                // If it's a blob URL or local file, direct download
+                                                if (url && (url.startsWith('blob:') || previewFile.fileObj)) {
+                                                    const a = document.createElement('a');
+                                                    a.href = url;
+                                                    a.download = filename;
+                                                    document.body.appendChild(a);
+                                                    a.click();
+                                                    document.body.removeChild(a);
+                                                } else {
+                                                    // Remote URL - try fetch to force download instead of open
+                                                    const response = await fetch(url);
+                                                    const blob = await response.blob();
+                                                    const blobUrl = URL.createObjectURL(blob);
+                                                    const a = document.createElement('a');
+                                                    a.href = blobUrl;
+                                                    a.download = filename;
+                                                    document.body.appendChild(a);
+                                                    a.click();
+                                                    document.body.removeChild(a);
+                                                    URL.revokeObjectURL(blobUrl);
+                                                }
+                                            } catch (e) {
+                                                console.error("Download failed", e);
+                                                window.open(previewFile.url, '_blank');
+                                            }
+                                        }}
                                         className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition active:scale-95"
-                                        title="Download / Open External"
+                                        title="Download File"
                                     >
-                                        <div className="text-white"><Share2 size={20} /></div>
+                                        <div className="text-white"><Download size={20} /></div>
                                     </button>
                                 )}
+                                {/* Share Button */}
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        if (navigator.share) {
+                                            try {
+                                                const file = previewFile.fileObj || await (await fetch(previewFile.url)).blob();
+                                                // Create a file object with correct type
+                                                const fileArray = [new File([file], previewFile.name, { type: previewFile.type || 'application/octet-stream' })];
+
+                                                const shareData = {
+                                                    title: previewFile.name,
+                                                    files: fileArray
+                                                };
+
+                                                if (navigator.canShare && navigator.canShare(shareData)) {
+                                                    await navigator.share(shareData);
+                                                } else {
+                                                    // Fallback for text share if files not supported or blocked
+                                                    await navigator.share({
+                                                        title: previewFile.name,
+                                                        text: `Sharing ${previewFile.name}`,
+                                                        url: previewFile.url
+                                                    });
+                                                }
+                                            } catch (e) {
+                                                console.error("Share failed", e);
+                                                // If native share fails (e.g. abort), fallback to opening
+                                                if (e.name !== 'AbortError') window.open(previewFile.url, '_blank');
+                                            }
+                                        } else {
+                                            window.open(previewFile.url, '_blank');
+                                        }
+                                    }}
+                                    className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition active:scale-95"
+                                    title="Share File"
+                                >
+                                    <div className="text-white"><Share2 size={20} /></div>
+                                </button>
                                 <button
                                     type="button"
                                     onClick={() => setPreviewFile(null)}
@@ -635,7 +727,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
 
                         {/* Content */}
                         <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
-                            {(previewFile.type && previewFile.type.startsWith('image/')) || (previewFile.name && (previewFile.name.toLowerCase().endsWith('.jpg') || previewFile.name.toLowerCase().endsWith('.png') || previewFile.name.toLowerCase().endsWith('.jpeg'))) ? (
+                            {(previewFile?.type && previewFile.type.startsWith('image/')) || (previewFile?.name && (previewFile.name.toLowerCase().endsWith('.jpg') || previewFile.name.toLowerCase().endsWith('.png') || previewFile.name.toLowerCase().endsWith('.jpeg'))) ? (
                                 <img
                                     src={previewFile.url || (previewFile.fileObj instanceof File ? URL.createObjectURL(previewFile.fileObj) : (previewFile instanceof File ? URL.createObjectURL(previewFile) : previewFile.data))}
                                     alt="Preview"
@@ -645,11 +737,11 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                                 <div className="text-center p-8">
                                     <p className="mb-4 text-gray-400">Preview not available for this file type.</p>
                                     <a
-                                        href={previewFile.url}
+                                        href={previewFile?.url}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="px-6 py-3 bg-orange-500 rounded-xl font-bold text-white inline-block"
-                                        download={previewFile.name}
+                                        download={previewFile?.name || 'download'}
                                     >
                                         Download / Open External
                                     </a>

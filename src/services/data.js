@@ -7,6 +7,15 @@ let currentUserId = null;
 
 const getStorageKey = () => currentUserId ? `${BASE_STORAGE_KEY}_${currentUserId}` : `${BASE_STORAGE_KEY}_guest`;
 
+// V10.29: Robust Date Key Generation (Avoid Locale issues)
+export const getTodayString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const defaultData = {
     reminders: [],
     notes: [],
@@ -489,75 +498,146 @@ export const dataService = {
                 if (r.frequency?.startsWith('Every')) {
                     // Hourly / Interval Logic
                     // Format: "Every X Hours"
-                    const intervalMatch = r.frequency.match(/Every (\d+) Hour/);
-                    if (intervalMatch) {
-                        const intervalHours = parseInt(intervalMatch[1]);
+                    const match = r.frequency.match(/Every\s+(\d+)\s*(h|hour|hours)?/i);
+                    const intervalHours = match ? parseInt(match[1]) : NaN;
 
-                        // Parse Start/End times (Default 8am - 10pm if missing)
-                        const startHour = r.startTime ? parseInt(r.startTime.split(':')[0]) : 8;
-                        const endHour = r.endTime ? parseInt(r.endTime.split(':')[0]) : 22;
+                    if (!isNaN(intervalHours)) {
+                        let startH, startM;
+                        const startDateStr = r.schedule?.startDate || r.date;
+                        const isStratDate = startDateStr === dateString;
 
-                        // Create instances
-                        let currentH = startHour;
-                        while (currentH < endHour) {
-                            const timeStr = `${String(currentH).padStart(2, '0')}:00`;
-                            // Standardize Key (V5.5 Match Writer)
-                            let instanceKey = `${dateString}_time_${timeStr}`;
+                        // 1. Determine Start Time for THIS DAY
+                        // If it is the Start Date, we MUST start at the User's Time (e.g. 17:00).
+                        // If it is a subsequent day, we start at Sleep End (e.g. 08:00) OR User's Window Start.
+                        if (isStratDate && r.time) {
+                            [startH, startM] = r.time.split(':').map(Number);
+                        } else if (r.startTime) {
+                            [startH, startM] = r.startTime.split(':').map(Number);
+                        } else {
+                            [startH, startM] = sleepEnd.split(':').map(Number);
+                        }
 
-                            // Check for Exception Override
-                            // Writer (AddReminderModal) saves keys as `${date}_time_${time}` or `${date}_${time}`
-                            // We should check both to be robust.
-                            const altKey = `${dateString}_${timeStr}`;
+                        // 2. Determine End Limit (Sleep Start or Window End)
+                        const [limitH, limitM] = r.endTime ? r.endTime.split(':').map(Number) : sleepStart.split(':').map(Number);
 
-                            const log = (r.logs || {})[instanceKey] || (r.logs || {})[altKey];
-                            const exception = (r.exceptions || {})[instanceKey] || (r.exceptions || {})[altKey];
+                        let currentMinutes = startH * 60 + startM;
+                        let limitMinutes = limitH * 60 + limitM;
 
-                            if (exception && exception.status === 'cancelled') {
-                                currentH += intervalHours;
-                                continue;
+                        // Handle crossing midnight (e.g. Start 22:00, End 02:00)
+                        if (limitMinutes < currentMinutes) {
+                            limitMinutes += 24 * 60;
+                        }
+
+                        // Safety: Cap to 24h
+                        if (limitMinutes - currentMinutes > 24 * 60) {
+                            limitMinutes = currentMinutes + 24 * 60;
+                        }
+
+                        // 3. Generate Intervals
+                        const step = intervalHours * 60;
+                        const times = [];
+
+                        if (step > 0) {
+                            // Loop
+                            while (currentMinutes <= limitMinutes) {
+                                // Formatting
+                                let h = Math.floor(currentMinutes / 60);
+                                const m = currentMinutes % 60;
+
+                                // Normalize 24h+ to 0-23
+                                if (h >= 24) h -= 24;
+
+                                const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                                times.push(timeStr);
+
+                                currentMinutes += step;
+                            }
+                        }
+
+                        // Process the generated times
+                        times.forEach(time => {
+                            // ... (Standard Instance Generation Logic) ...
+                            // RE-USE the logic below by pushing to a temporary list or refactoring?
+                            // To minimize code duplication, we can just push to 'times' array and let the shared loop handle it?
+                            // No, the existing code structure has 'times' processing inside the `if (match)`.
+                            // Let's execute the instance creation here directly.
+
+                            let instanceKey = `${dateString}_${time}`;
+                            // Legacy key check for backward compatibility
+                            const legacyKey = `${dateString}_time_${time}`;
+                            if ((r.logs || {})[legacyKey] || (r.exceptions || {})[legacyKey]) {
+                                instanceKey = legacyKey;
                             }
 
-                            // Determine Display Time (Override if exception has time)
-                            let displayTime = exception?.time || timeStr;
+                            let log = (r.logs || {})[instanceKey];
+                            let exception = (r.exceptions || {})[instanceKey];
 
-                            // Status Check
+                            if (exception && exception.status === 'cancelled') return;
+                            if (exception && exception.date && exception.date !== dateString) return;
+
+                            let displayTime = exception?.time || time;
+                            let checkDateTime = new Date(dateString);
+
+                            if (displayTime) {
+                                const [th, tm] = displayTime.split(':').map(Number);
+                                checkDateTime.setHours(th, tm, 0, 0);
+                            } else {
+                                checkDateTime.setHours(23, 59, 0, 0);
+                            }
+
+                            if (log && log.snoozedUntil && log.status === 'snoozed') {
+                                if (log.snoozedUntil.includes('T')) {
+                                    checkDateTime = new Date(log.snoozedUntil);
+                                    displayTime = checkDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                } else {
+                                    displayTime = log.snoozedUntil;
+                                    const [sth, stm] = displayTime.split(':').map(Number);
+                                    checkDateTime.setHours(sth, stm, 0, 0);
+                                }
+                            }
+
                             let status = 'upcoming';
-                            let checkTime = displayTime;
+                            const now = new Date();
+                            const twoHoursMs = 2 * 60 * 60 * 1000;
+                            const diff = now.getTime() - checkDateTime.getTime();
 
-                            // Parse checkTime for status logic
-                            const [ch, cm] = checkTime.split(':').map(Number);
-                            const iDate = new Date(dateString);
-                            iDate.setHours(ch, cm, 0, 0);
+                            if (log && log.status === 'taken') status = 'taken';
+                            else if (log && log.status === 'missed') status = 'missed';
+                            else if (log && log.status === 'snoozed' && diff < twoHoursMs) status = 'snoozed';
+                            else if (diff > twoHoursMs) status = 'missed';
+                            else status = 'upcoming';
 
-                            if (log) status = log.status;
-                            else if (exception && exception.status) status = exception.status;
-                            else if (iDate < now) status = 'missed'; // Auto miss if past
+                            // Future safety
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            const dObj = new Date(dateString);
+                            dObj.setHours(0, 0, 0, 0);
+                            if (dObj > today && status === 'missed') status = 'upcoming';
+
+                            let takenAt = log ? log.takenAt : null;
+                            if (status === 'taken' && takenAt) {
+                                const d = new Date(takenAt);
+                                displayTime = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                            }
 
                             expanded.push({
                                 ...r,
-                                ...exception, // Merge exception data (instructions, etc)
+                                ...exception,
                                 files: (exception && exception.files && exception.files.length > 0) ? exception.files : (r.files || []),
                                 uniqueId: `${r.id}_${instanceKey}`,
-                                instanceKey: exception ? (r.exceptions[instanceKey] ? instanceKey : altKey) : instanceKey,
+                                instanceKey: instanceKey,
                                 displayTime: displayTime,
-                                status,
+                                status: status,
+                                takenAt: takenAt,
+                                isVirtual: true,
                                 isInterval: true,
                                 targetDate: dateString,
-                                time: displayTime // Ensure UI sees the updated time
+                                time: displayTime
                             });
-
-                            currentH += intervalHours;
-                        }
+                        });
                         return; // Done with this reminder
                     }
                 }
-
-                // 2. Standard Frequencies (Daily, Weekly, etc)
-                let show = false;
-                if (r.frequency && r.frequency.startsWith('Every')) show = true; // Always show interval items (filtered by date start/end globally)
-                else if (r.frequency === 'Daily') show = true;
-                else if (r.frequency === 'Today') show = (r.date === dateString || (!r.date && dateString === todayStr));
-                else if (r.date === dateString) show = true;
                 else if (r.frequency === 'Monthly') {
                     // Monthly Logic: Same day of month
                     const start = new Date(r.schedule?.startDate || r.date || '2000-01-01');
@@ -1220,7 +1300,7 @@ export const dataService = {
                         try {
                             const startStr = reminder.schedule?.startDate;
                             if (startStr) {
-                                const todayStr = new Date().toLocaleDateString('en-CA');
+                                const todayStr = getTodayString();
                                 const now = new Date();
                                 const logs = {};
                                 let hasUpdates = false;

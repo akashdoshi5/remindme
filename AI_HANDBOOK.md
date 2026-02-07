@@ -150,13 +150,59 @@ The modal shows a **live preview** of the series schedule:
 -   **Collections**: `users/{uid}/caregivers` (People watching me) and `users/{uid}/patients` (People I watch).
 -   **Security**: Firestore Rules enforce `read` access only for accepted caregivers.
 
-## 4. AI Prompt for Future Sessions
+## 5. V10.30 Architecture Standards (Persistence & Dates)
+
+### A. Date & Time Standardization (CRITICAL)
+**Problem**: JS `toLocaleDateString()` varies by device/locale (e.g., `2/6/2026` vs `2026-02-06`), causing key mismatches and data loss.
+**Solution**: ALWAYS use the ISO-based helper `getTodayString()`.
+
+1.  **Helper Implementation**:
+    ```javascript
+    export const getTodayString = () => {
+        const d = new Date();
+        // Returns "YYYY-MM-DD" strictly based on local methods, PAD-0
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    ```
+2.  **Usage Rule**: NEVER use `toLocaleDateString` for generating keys or comparing dates. Use `getTodayString()` or manual ISO formatting.
+
+### B. Persistence & Sync Safety
+**Problem**: Fresh installs or re-auths were overwriting cloud data with empty local state.
+**Solution**:
+1.  **Migration**: `migrateLocalData` MUST use `{ merge: true }`.
+    ```javascript
+    await setDoc(docRef, data, { merge: true }); // PRESERVES existing cloud logs
+    ```
+2.  **Smart Merge (Sync)**:
+    -   When `syncFromCloud` runs, it compares `updatedAt` timestamps of logs.
+    -   **Rule**: Local action wins if `local.updatedAt > cloud.updatedAt`.
+    -   **Tie-Breaker**: Positive status (`taken`) wins over negative (`missed`).
+
+### C. Status & Logic Rules
+1.  **Missed Status**:
+    -   A reminder is "Missed" ONLY if:
+        -   `now > time + 2 hours` AND
+        -   Status is NOT `taken` or `snoozed`.
+    -   **Undo Window**: "Missed" status can be reverted by the user manually, or if they "Take" it late (Deep Lookup will find the `takenAt` time).
+
+2.  **Reset / Undo**:
+    -   Marking as "Upcoming" clears the log for that instance.
+    -   **Caution**: If `syncFromCloud` runs, ensure the "clear" action has a newer timestamp (or delete the log key) to propagate.
+
+3.  **Reports Page**:
+    -   **Deep Lookup**: When displaying time for a "Taken" event, **NEVER** trust the scheduled time. look for `log.takenAt` inside the instance log.
+    -   **Temporary Overrides**: The Reports UI has local state to show changes *instantly* before the slow Firestore sync round-trip completes.
+
+### D. Coding Standards (React)
+1.  **Hooks**: NEVER define a `useCallback` or function *inside* a `useEffect`. It violates React rules and causes crashes (Error #321).
+    -   *Correct*: Define `const load = useCallback(...)` at top level -> `useEffect(() => { load() }, [load])`.
+
+## 6. AI Prompt for Future Sessions
 *Copy this prompt when starting a new session to ensure context:*
 
-> "I am working on RemindMeBuddy, a critical health-focused reminder app.
+> "I am working on RemindMeBuddy V10.30.
 > **Constraint**: You must NOT break existing functionality:
-> 1. Notifications must trigger reliably.
-> 2. Shared Notes must remain shared after edits.
-> 3. Search must be accessible from Home.
-> 4. Caregiver view must be read-only for data.
-> Check `AI_HANDBOOK.md` for specific implementation rules before proposing code."
+> 1. Dates: ALWAYS use `getTodayString()` (YYYY-MM-DD). NO `toLocaleDateString`.
+> 2. Persistence: ALWAYS use `merge: true` for saves.
+> 3. Notifications: Maintain 2-hour 'Missed' window.
+> 4. Check `AI_HANDBOOK.md` for specific implementation rules before proposing code."

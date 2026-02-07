@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { dataService } from '../services/data';
+import { dataService, getTodayString } from '../services/data';
 import { Capacitor } from '@capacitor/core';
 import { useNotifications } from './useNotifications';
 
@@ -9,22 +9,25 @@ export const useReminders = (setActiveAlarm) => {
     const notifiedRef = useRef(new Set()); // Track notified instances to prevent spam
 
     // 1. Initial Load & Sync
-    useEffect(() => {
-        const loadReminders = () => {
-            const todayStr = new Date().toLocaleDateString('en-CA');
+    const loadReminders = useCallback(async () => {
+        try {
+            const todayStr = getTodayString();
             // FIX: Schedule next 7 days of reminders to ensure background reliability
             const allFuture = dataService.getUpcomingReminders(7);
-            // const all = dataService.getRemindersForDate(todayStr); 
             setReminders(allFuture);
             scheduleReminders(allFuture);
-        };
+        } catch (error) {
+            console.error("Failed to load reminders:", error);
+        }
+    }, [scheduleReminders]);
 
+    useEffect(() => {
         loadReminders();
 
         // Listen for storage updates (from sync or local edits)
         window.addEventListener('storage-update', loadReminders);
         return () => window.removeEventListener('storage-update', loadReminders);
-    }, [scheduleReminders]);
+    }, [loadReminders]);
 
     // 2. Foreground Check Loop (Every 15s)
     useEffect(() => {
