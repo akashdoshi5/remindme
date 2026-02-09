@@ -195,6 +195,9 @@ export const dataService = {
                 // Sort by date or order?
                 store.notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
+                // Force boolean for consistency
+                store.notes = store.notes.map(n => ({ ...n, isPinned: !!n.isPinned }));
+
                 save();
             });
             syncUnsubscribes.push(unsubShared);
@@ -621,6 +624,10 @@ export const dataService = {
                             // No, the existing code structure has 'times' processing inside the `if (match)`.
                             // Let's execute the instance creation here directly.
 
+                            // ---------------------------------------------------------
+                            // EXECUTION OF INSTANCE CREATION
+                            // ---------------------------------------------------------
+
                             // Helper to check multiple key formats (New YYYY-MM-DD vs Legacy M/D/YYYY)
                             const tryGetLog = (collection, dateStr, timeStr) => {
                                 if (!collection) return null;
@@ -634,13 +641,10 @@ export const dataService = {
                                 if (collection[key2]) return { key: key2, data: collection[key2] };
 
                                 // 3. Legacy Locale Date Formats (M/D/YYYY, D/M/YYYY) - Legacy App Sync
-                                // Because old app used toLocaleDateString() which varies by device region
-                                const [y, m, d] = dateStr.split('-').map(Number); // 2026, 2, 7
+                                const [y, m, d] = dateStr.split('-').map(Number);
                                 const formats = [
-                                    `${m}/${d}/${y}`,       // M/D/YYYY
-                                    `${d}/${m}/${y}`,       // D/M/YYYY
-                                    `${m}/${d}/${String(y).slice(-2)}`, // M/D/YY
-                                    `${d}/${m}/${String(y).slice(-2)}`  // D/M/YY
+                                    `${m}/${d}/${y}`, `${d}/${m}/${y}`,
+                                    `${m}/${d}/${String(y).slice(-2)}`, `${d}/${m}/${String(y).slice(-2)}`
                                 ];
 
                                 for (const f of formats) {
@@ -649,15 +653,65 @@ export const dataService = {
                                     if (collection[kA]) return { key: kA, data: collection[kA] };
                                     if (collection[kB]) return { key: kB, data: collection[kB] };
                                 }
+                                return null;
+                            };
 
+                            // NEW: Fuzzy Time Matching for Interval Shifts (e.g. Schedule Drift of 1 hour)
+                            const findNearestLog = (collection, dateStr, targetTimeStr) => {
+                                if (!collection) return null;
+                                // Only run fuzzy match if specific key not found
+                                const allKeys = Object.keys(collection);
+
+                                // Filter keys belonging to THIS date
+                                // Keys format: YYYY-MM-DD_time_HH:MM or YYYY-MM-DD_HH:MM
+                                const candidateKeys = allKeys.filter(k => k.startsWith(dateStr));
+
+                                if (candidateKeys.length === 0) return null;
+
+                                const [hTarget, mTarget] = targetTimeStr.split(':').map(Number);
+                                const targetMinutes = hTarget * 60 + mTarget;
+
+                                let closestKey = null;
+                                let minDiff = 90; // Tolerance: 90 Minutes (Matches 1 hour shift)
+
+                                candidateKeys.forEach(key => {
+                                    // Extract time part from key
+                                    // Key could be "2026-02-07_16:00" or "2026-02-07_time_16:00"
+                                    const parts = key.split('_');
+                                    const timePart = parts[parts.length - 1]; // Always last part? Yes.
+
+                                    if (timePart.includes(':')) {
+                                        const [h, m] = timePart.split(':').map(Number);
+                                        const mins = h * 60 + m;
+                                        const diff = Math.abs(mins - targetMinutes);
+
+                                        if (diff < minDiff) {
+                                            minDiff = diff;
+                                            closestKey = key;
+                                        }
+                                    }
+                                });
+
+                                if (closestKey) {
+                                    if (dateStr === '2026-02-07') {
+                                        console.log(`[FuzzyMatch] Mapped ${targetTimeStr} to ${closestKey} (Diff: ${minDiff}m)`);
+                                    }
+                                    return { key: closestKey, data: collection[closestKey] };
+                                }
                                 return null;
                             };
 
                             let instanceKey = `${dateString}_${time}`;
 
-                            // Attempt to find existing log/exception using all possible key variations
-                            const foundLog = tryGetLog(r.logs, dateString, time);
-                            const foundEx = tryGetLog(r.exceptions, dateString, time);
+                            // 1. Try Exact Matches (Fast)
+                            let foundLog = tryGetLog(r.logs, dateString, time);
+                            let foundEx = tryGetLog(r.exceptions, dateString, time);
+
+                            // 2. Fallback: Fuzzy Time Match (If Exact Failed)
+                            // Note: Only if it's an Interval reminder? Or safe for all? 
+                            // Safe for all because we check specific date keys.
+                            if (!foundLog) foundLog = findNearestLog(r.logs, dateString, time);
+                            if (!foundEx) foundEx = findNearestLog(r.exceptions, dateString, time);
 
                             // Use the found key if available to ensure we map back to the correct data
                             if (foundLog) instanceKey = foundLog.key;
@@ -929,15 +983,10 @@ export const dataService = {
                         dObj.setHours(0, 0, 0, 0);
                         if (dObj > today && status === 'missed') status = 'upcoming';
 
-                        // V10.24 FIX: Override displayTime with takenAt if status is taken
-                        // This ensures the custom time is shown in the UI
+                        // V10.24 FIX: Override displayTime with takenAt if status is taken -> REMOVED per User Request (Keep Schedule Time)
+                        // This ensures the UI sorts by SCHEDULED time, not completion time.
                         let takenAt = log ? log.takenAt : null;
-                        if (status === 'taken' && takenAt) {
-                            const d = new Date(takenAt);
-                            const h = String(d.getHours()).padStart(2, '0');
-                            const m = String(d.getMinutes()).padStart(2, '0');
-                            displayTime = `${h}:${m}`;
-                        }
+                        // if (status === 'taken' && takenAt) { ... } REMOVED
 
                         expanded.push({
                             ...r,
@@ -1005,14 +1054,10 @@ export const dataService = {
                         if (dObj > today && status === 'missed') status = 'upcoming';
 
                         // Merge log data (takenAt, custom time) into the expanded object.
-                        // Prioritize log.takenAt for display time if status is taken.
+                        // Merge log data (takenAt, custom time) into the expanded object.
+                        // Prioritize log.takenAt for display time -> REMOVED (Keep Schedule Time)
                         let takenAt = log ? log.takenAt : null;
-                        if (status === 'taken' && takenAt) {
-                            const d = new Date(takenAt);
-                            const h = String(d.getHours()).padStart(2, '0');
-                            const m = String(d.getMinutes()).padStart(2, '0');
-                            displayTime = `${h}:${m}`;
-                        }
+                        // if (status === 'taken' && takenAt) { ... } REMOVED
 
                         expanded.push({
                             ...r,

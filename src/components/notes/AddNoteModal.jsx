@@ -350,7 +350,9 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
             const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current.mimeType });
             if (blob.size > MAX_AUDIO_SIZE) { alert("Limit exceeded"); setAudioData(null); resolve(null); }
             else {
-                // Don't setAudioData here directly for main state, just return blob
+                // FIX: Immediately set local audioData for UI playback
+                const url = URL.createObjectURL(blob);
+                setAudioData(url);
                 resolve(blob);
             }
             streamRef.current?.getTracks().forEach(t => t.stop());
@@ -396,14 +398,19 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                 // Create File from Blob
                 const mimeType = audioBlob.type || 'audio/webm';
                 const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-                const filename = `Voice Note ${new Date().toLocaleTimeString()}.` + ext;
+                const filename = `Voice Note ${new Date().toLocaleTimeString().replace(/:/g, '-')}.${ext}`;
                 const file = new File([audioBlob], filename, { type: mimeType });
 
                 // Simulate Event for handleFileUpload
                 handleFileUpload({ target: { files: [file] } });
             }
         } else {
-            // Don't clear audioData, we might have legacy or multiple files now.
+            // New recording -> Clear old audioData to avoid confusion?
+            // User might want to replace.
+            if (audioData) {
+                if (!window.confirm("Replace existing recording?")) return;
+                setAudioData(null);
+            }
             startListening();
             startRecordingRobust();
         }
@@ -437,15 +444,28 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
             stopListening();
             const audioBlob = await stopRecordingAsync();
             if (audioBlob) {
-                // We can't really "wait" for upload here easily without major refactor.
-                // For now, if user forces close while recording, we might lose it or transform it quickly.
-                // Let's try to upload it.
-                // Actually, let's just alert user to stop recording first for safety.
-                // Or auto-stop and save as legacy audioData fallback? No, let's block close.
-                // Reverting to block if recording?
-                // Better: Auto-stop and add to pending files, but "files" state is async. 
-                // Let's just block close if recording.
-                // Wait, user might seek "auto-save".
+                // Create File from Blob
+                const mimeType = audioBlob.type || 'audio/webm';
+                const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+                const filename = `Voice Note ${new Date().toLocaleTimeString().replace(/:/g, '-')}.${ext}`;
+                const file = new File([audioBlob], filename, { type: mimeType });
+
+                // We must manually upload here since handleFileUpload is async and we need to wait
+                const tempId = crypto.randomUUID();
+                // Add placeholder
+                setFiles(prev => [...prev, { tempId, file, name: filename, type: mimeType, status: 'uploading', progress: 0 }]);
+
+                try {
+                    const sd = await fileStorage.saveFile(file, () => { });
+                    // Update files list with result
+                    setFiles(prev => prev.map(f => f.tempId === tempId ? { ...f, status: 'ready', progress: 100, storageData: sd } : f));
+
+                    // Continue save...
+                } catch (e) {
+                    alert("Failed to save recording.");
+                    setSaveStatus('error');
+                    return;
+                }
             }
         }
 
@@ -481,16 +501,38 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
 
             const finalFiles = files.map(f => f.storageData ? { id: f.storageData.id, name: f.name, type: f.type, url: f.storageData.url, path: f.storageData.path, extractedText: f.text } : f);
 
+            // FIX: Map local audioData blob to remote URL if available in files
+            let distinctAudioData = audioData;
+            // If audioData is a local blob URL, try to find matching file in uploaded files
+            if (audioData && audioData.startsWith('blob:')) {
+                // Find the newest audio file
+                const audioFile = finalFiles.filter(f => f.type?.startsWith('audio/')).pop();
+                if (audioFile && audioFile.url) {
+                    distinctAudioData = audioFile.url;
+                }
+            }
+
+            // Force Type 'Voice' if audio present and type is text (default)
+            let distinctType = noteType;
+            if (distinctAudioData && noteType === 'text') {
+                // Or just keep 'text' but with audio? User wants "Searchable as voice note".
+                // NotesPage filters by (n.type === 'voice' || n.audioData). So type change isn't strictly necessary but good for clarity.
+                // let's keep 'text' to avoid changing icon if they also have text? 
+                // Actually, NoteCard logic: note.type === 'voice' ? <Mic> : <FileText>.
+                // If it has audio, should it be a "Voice Note"? Probably.
+                distinctType = 'voice';
+            }
+
             const dataToSave = {
                 title: finalTitle,
                 content: noteType === 'text' ? content : '',
                 items: noteType === 'shopping' ? items : undefined,
                 tags: tags.split(',').map(t => t.trim()).filter(Boolean),
-                type: noteType,
+                type: distinctType,
                 date: noteToEdit ? noteToEdit.date : new Date().toLocaleString(),
                 updatedAt: new Date().toISOString(),
                 files: finalFiles,
-                audioData: audioData,
+                audioData: distinctAudioData,
                 id: localId,
                 ownerId: noteToEdit?.ownerId,
                 sharedWith: isNew ? [] : noteToEdit?.sharedWith,

@@ -1,24 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { Search, X, Bell, FileText, ArrowRight, Clock, Mic, MicOff } from 'lucide-react';
+import { Search, X, Bell, FileText, ArrowRight, Clock, Mic, MicOff, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { dataService } from '../../services/data';
 import { useNavigate } from 'react-router-dom';
 import { useVoice } from '../../hooks/useVoice';
 
+import TextPreviewModal from './TextPreviewModal';
+
 const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState({ reminders: [], notes: [] });
+    const [previewData, setPreviewData] = useState(null);
     const navigate = useNavigate();
     const { isListening, transcript, startListening, stopListening, isSupported } = useVoice();
 
-    // Auto-start voice if requested
+    // Auto-start voice if requested AND Clear query on open/close
     useEffect(() => {
-        if (isOpen && autoStartListening) {
-            startListening();
+        if (isOpen) {
+            setQuery(''); // Reset query when opened
+            if (autoStartListening) {
+                startListening();
+            }
         } else {
             stopListening();
+            setQuery(''); // Reset query when closed
         }
-    }, [isOpen, autoStartListening]);
+    }, [isOpen]); // Depend only on isOpen to trigger reset. Handling autoStart in separate logic if needed, but here is fine.
 
     // Update query with transcript
     useEffect(() => {
@@ -116,23 +123,62 @@ const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
                                                 <div className="flex-1 min-w-0">
                                                     <h4 className="font-bold text-gray-800 dark:text-gray-200 group-hover:text-orange-700 dark:group-hover:text-orange-400 truncate">{r.title}</h4>
                                                     <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                                                        {(() => {
-                                                            const q = query.toLowerCase();
-                                                            const matchFile = r.files?.find(f => f.name.toLowerCase().includes(q) || (f.extractedText && f.extractedText.toLowerCase().includes(q)));
-                                                            if (matchFile) return `📎 ${matchFile.name} ${matchFile.extractedText ? '- ' + matchFile.extractedText.substring(0, 30) + '...' : ''}`;
-
-                                                            // Always show instructions snippet if available, prioritizing match
-                                                            if (r.instructions) return r.instructions;
-
-                                                            return r.frequency || 'No details';
-                                                        })()}
+                                                        {r.instructions || r.frequency || 'No details'}
                                                     </p>
                                                     {/* Start/End dates */}
                                                     {(r.startDate || r.date) && (
                                                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                                                            📅 {r.startDate || r.date} {r.endDate ? `→ ${r.endDate}` : (r.frequency !== 'Once' ? '→ Ongoing' : '')}
+                                                            📅 {r.startDate || r.date} {
+                                                                (() => {
+                                                                    if (r.endDate) return `→ ${r.endDate}`;
+                                                                    // Check for calculated end date via duration
+                                                                    const schedule = r.schedule || {};
+                                                                    const duration = schedule.durationDays || schedule.medDuration || r.durationDays;
+
+                                                                    if (duration) {
+                                                                        const start = new Date(r.startDate || r.date);
+                                                                        start.setDate(start.getDate() + (parseInt(duration) - 1));
+                                                                        // Format: YYYY-MM-DD to match display
+                                                                        const endStr = start.toLocaleDateString('en-CA');
+                                                                        return `→ ${endStr}`;
+                                                                    }
+
+                                                                    return (r.frequency && r.frequency !== 'Once') ? '→ Ongoing' : '';
+                                                                })()
+                                                            }
                                                         </p>
                                                     )}
+
+                                                    {/* Attachment Matches */}
+                                                    {query.trim() && r.files?.length > 0 && r.files.filter(f =>
+                                                        f.name.toLowerCase().includes(query.toLowerCase()) ||
+                                                        (f.extractedText && f.extractedText.toLowerCase().includes(query.toLowerCase()))
+                                                    ).map((match, fIdx) => (
+                                                        <div key={fIdx} className="mt-2 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-900/30 rounded-md p-1.5 text-xs flex items-center gap-2">
+                                                            <span className="font-bold text-yellow-700 dark:text-yellow-500 shrink-0">📎 Match in {match.name}:</span>
+                                                            {match.extractedText && match.extractedText.toLowerCase().includes(query.toLowerCase()) && (
+                                                                <span className="text-gray-600 dark:text-gray-400 italic truncate">
+                                                                    "...{match.extractedText.substring(Math.max(0, match.extractedText.toLowerCase().indexOf(query.toLowerCase()) - 10), Math.min(match.extractedText.length, match.extractedText.toLowerCase().indexOf(query.toLowerCase()) + 20))}..."
+                                                                </span>
+                                                            )}
+                                                            <button
+                                                                className="ml-auto text-blue-600 hover:underline shrink-0 flex items-center gap-1"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    // Check for image
+                                                                    const isImage = match.name && /\.(jpg|jpeg|png|gif|webp)$/i.test(match.name);
+                                                                    setPreviewData({
+                                                                        title: match.name,
+                                                                        text: match.extractedText,
+                                                                        imageUrl: isImage ? match.url : null,
+                                                                        searchQuery: query
+                                                                    });
+                                                                }}
+                                                            >
+                                                                <Eye size={12} /> Preview
+                                                            </button>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                                 <div className="text-xs font-medium bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-600 dark:text-gray-300 flex items-center gap-1 shrink-0">
                                                     <Clock size={12} /> {r.time}
@@ -174,6 +220,15 @@ const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
                     Press <kbd className="bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded px-1 font-sans text-gray-500 dark:text-gray-300">Esc</kbd> to close
                 </div>
             </motion.div>
+
+            <TextPreviewModal
+                isOpen={!!previewData}
+                onClose={() => setPreviewData(null)}
+                title={previewData?.title}
+                text={previewData?.text}
+                imageUrl={previewData?.imageUrl}
+                searchQuery={query}
+            />
         </div>
     );
 };

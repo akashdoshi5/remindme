@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useShare } from '../hooks/useShare';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, Search, Mic, Image as ImageIcon, Edit2, Trash2, X, MoreVertical, Share2, FileText, ShoppingCart, StopCircle, Play, ArrowRightLeft, Paperclip, Download, Eye, Users, GripVertical, Pin, Maximize2, Minimize2, XCircle, RefreshCcw } from 'lucide-react';
+import { Plus, Search, Mic, Image as ImageIcon, Edit2, Trash2, X, MoreVertical, Share2, FileText, ShoppingCart, StopCircle, Play, ArrowRightLeft, Paperclip, Download, Eye, Users, GripVertical, Pin, Maximize2, Minimize2, XCircle, RefreshCcw, Bell } from 'lucide-react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
 import { useVoice } from '../hooks/useVoice';
 import { fileStorage } from '../services/fileStorage';
@@ -18,6 +18,7 @@ const NotesPage = () => {
     const navigate = useNavigate();
     const refs = useRef({});
     const [playingNoteId, setPlayingNoteId] = useState(null);
+    const audioRef = useRef(null); // Fix: Track audio instance
     const [selectedIds, setSelectedIds] = useState(new Set());
     const isSelectionMode = selectedIds.size > 0;
     const [highlightedId, setHighlightedId] = useState(null);
@@ -105,31 +106,61 @@ const NotesPage = () => {
             navigate(location.pathname, { replace: true, state: {} });
         }
 
-        if (location.state?.searchQuery) {
-            setSearchQuery(location.state.searchQuery);
-            // Clear state to prevent reapplying on refresh/tab switch
-            navigate(location.pathname, { replace: true, state: { ...location.state, searchQuery: undefined } });
+        if (location.state?.searchQuery !== undefined) {
+            // Strict Sync: If state has a query (or empty string), sync it. 
+            // This handles 'Sidebar Click' (state=undefined -> defaults to '') clearing the search.
+            const target = location.state.searchQuery;
+            if (searchQuery !== target) {
+                setSearchQuery(target);
+            }
+        } else if (location.state === null || location.state === undefined) {
+            // If explicit clean navigation (no state), clear search
+            if (searchQuery) setSearchQuery('');
         }
     }, [location.state]);
 
     const handlePlayAudio = (note) => {
+        // STOP Current
         if (playingNoteId === note.id) {
             window.speechSynthesis.cancel();
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current = null;
+            }
             setPlayingNoteId(null);
             return;
         }
 
+        // STOP Previous (if any)
         window.speechSynthesis.cancel();
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current = null;
+        }
+
         setPlayingNoteId(note.id);
 
         if (note.audioData) {
             const audio = new Audio(note.audioData);
-            audio.onended = () => setPlayingNoteId(null);
-            audio.play().catch(e => {
+            audioRef.current = audio; // Track it
+
+            audio.onended = () => {
+                setPlayingNoteId(null);
+                audioRef.current = null;
+            };
+            audio.onerror = (e) => {
                 console.error("Playback error", e);
                 setPlayingNoteId(null);
+                audioRef.current = null;
                 alert("Could not play audio.");
+            };
+
+            audio.play().catch(e => {
+                console.error("Playback start error", e);
+                setPlayingNoteId(null);
+                audioRef.current = null;
             });
+
         } else {
             const utterance = new SpeechSynthesisUtterance(note.content);
             utterance.onend = () => setPlayingNoteId(null);
@@ -393,7 +424,7 @@ const NotesPage = () => {
                                         <Share2 size={20} />
                                     </button>
                                     <button onClick={handleBatchConvert} title="Convert to Reminder" className="hover:text-orange-400 transition-colors">
-                                        <ArrowRightLeft size={20} />
+                                        <Bell size={20} />
                                     </button>
                                 </>
                             )}
@@ -418,13 +449,24 @@ const NotesPage = () => {
                         <input
                             type="text"
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                setSearchQuery(val);
+                                // FIX: Sync history state immediately so "Back" button doesn't restore stale search
+                                navigate(location.pathname, {
+                                    replace: true,
+                                    state: { ...location.state, searchQuery: val || undefined }
+                                });
+                            }}
                             placeholder="Search notes, text, files..."
                             className="flex-1 bg-transparent border-none outline-none text-gray-900 dark:text-white placeholder:text-gray-400 text-base"
                         />
                         {searchQuery && (
                             <button
-                                onClick={() => setSearchQuery('')}
+                                onClick={() => {
+                                    setSearchQuery('');
+                                    navigate(location.pathname, { replace: true, state: { ...location.state, searchQuery: undefined } });
+                                }}
                                 className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                             >
                                 <XCircle size={18} />

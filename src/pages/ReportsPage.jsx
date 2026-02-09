@@ -708,10 +708,23 @@ const ReportsPage = () => {
                                                     event.status === 'snoozed' ? <Clock size={20} /> :
                                                         <Clock size={20} />}
                                         </div>
-                                        <div className="flex-1">
-                                            <div className="flex justify-between items-start">
-                                                <h4 className="font-bold text-gray-900 dark:text-gray-100 leading-tight">{event.title}</h4>
-                                                <div className="flex flex-col items-end gap-1">
+                                        <div className="flex-1 min-w-0 overflow-hidden">
+                                            <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
+                                                <div className="min-w-0">
+                                                    <h4 className="font-bold text-gray-900 dark:text-gray-100 leading-tight truncate">{event.title}</h4>
+                                                    <p className="text-xs text-gray-400 font-medium mt-0.5">
+                                                        Scheduled: {event.displayTime}
+                                                    </p>
+                                                </div>
+
+                                                <div className="flex items-start gap-2 shrink-0">
+                                                    {!isReadOnly && (
+                                                        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <div className="p-1.5 bg-white dark:bg-gray-700 rounded-full shadow-sm border border-gray-100 dark:border-gray-600 text-orange-500 dark:text-orange-400">
+                                                                <Edit2 size={14} />
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                     <span className={`px-2 py-1 rounded-md text-xs font-bold ${event.status === 'taken' ? 'bg-green-100 text-green-700' :
                                                         event.status === 'missed' ? 'bg-red-100 text-red-700' :
                                                             'bg-gray-100 text-gray-600'
@@ -725,7 +738,6 @@ const ReportsPage = () => {
                                                                     return `${h}:${m}`;
                                                                 })()
                                                                 : (() => {
-                                                                    // Fallback: Check deep logs if top-level prop missing
                                                                     if (event.logs && event.instanceKey && event.logs[event.instanceKey]?.takenAt) {
                                                                         const d = new Date(event.logs[event.instanceKey].takenAt);
                                                                         const h = String(d.getHours()).padStart(2, '0');
@@ -737,16 +749,9 @@ const ReportsPage = () => {
                                                             : event.displayTime
                                                         }
                                                     </span>
-                                                    {!isReadOnly && (
-                                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <div className="p-2 bg-white dark:bg-gray-700 rounded-full shadow-sm border border-gray-100 dark:border-gray-600 text-orange-500 dark:text-orange-400">
-                                                                <Edit2 size={14} />
-                                                            </div>
-                                                        </div>
-                                                    )}
                                                 </div>
                                             </div>
-                                            <p className={`text-sm font-medium 
+                                            <p className={`text-xs font-medium 
                                                 ${event.status === 'taken' ? 'text-green-600 dark:text-green-400' :
                                                     event.status === 'missed' ? 'text-red-500 dark:text-red-400' :
                                                         event.status === 'snoozed' ? 'text-yellow-600 dark:text-yellow-400' :

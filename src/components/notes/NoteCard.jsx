@@ -344,13 +344,17 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
 
                 {/* Attachments & Voice Pill */}
                 <div className="flex flex-wrap gap-2 mt-2">
-                    {/* Attachments Pill */}
-                    {note.files && note.files.length > 0 && (
-                        <div className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-md text-[10px] font-bold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
-                            <Paperclip size={10} />
-                            <span>{note.files.length}</span>
-                        </div>
-                    )}
+                    {/* Attachments Pill (Filter out audioData match) */}
+                    {note.files && note.files.length > 0 && (() => {
+                        const visibleCount = note.files.filter(f => f.url !== note.audioData && f.data !== note.audioData).length;
+                        if (visibleCount === 0) return null;
+                        return (
+                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-md text-[10px] font-bold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+                                <Paperclip size={10} />
+                                <span>{visibleCount}</span>
+                            </div>
+                        );
+                    })()}
 
                     {/* Audio Player Preview (Compact) */}
                     {note.audioData && (
