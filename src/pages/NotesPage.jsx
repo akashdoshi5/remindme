@@ -10,10 +10,12 @@ import TextPreviewModal from '../components/common/TextPreviewModal';
 import { dataService } from '../services/data';
 import ShareModal from '../components/common/ShareModal';
 import { useAuth } from '../context/AuthContext';
+import { useUI } from '../context/UIContext';
 import NoteCard from '../components/notes/NoteCard';
 
 const NotesPage = () => {
     const { user } = useAuth();
+    const { openNoteModal } = useUI();
     const location = useLocation();
     const navigate = useNavigate();
     const refs = useRef({});
@@ -22,6 +24,39 @@ const NotesPage = () => {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const isSelectionMode = selectedIds.size > 0;
     const [highlightedId, setHighlightedId] = useState(null);
+
+    // ... (pull to refresh) ...
+
+    // ... (useEffect for deep linking) ...
+
+    if (location.state?.convertFromReminder) {
+        const reminder = location.state.convertFromReminder;
+        const convertedNote = dataService.convertReminderToNote(reminder);
+        openNoteModal({ noteToEdit: convertedNote });
+        window.history.replaceState({}, document.title);
+    }
+
+    // Check for state OR query params
+    const params = new URLSearchParams(location.search);
+    if (location.state?.openAdd || params.get('add') === 'true') {
+        openNoteModal({ type: 'text' });
+        // Clear the query param and state to prevent re-opening on refresh/render
+        navigate(location.pathname, { replace: true, state: {} });
+    }
+
+    // ...
+
+    const [activeTab, setActiveTab] = useState('All Notes');
+    // const [isModalOpen, setIsModalOpen] = useState(false); // REMOVED
+    // const [editingNote, setEditingNote] = useState(null); // REMOVED
+    // const [newNoteType, setNewNoteType] = useState('text'); // REMOVED
+    // const [autoStartVoice, setAutoStartVoice] = useState(false); // REMOVED
+    const [notes, setNotes] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [triggerReload, setTriggerReload] = useState(0);
+    const [previewData, setPreviewData] = useState(null);
+    const [sharingNote, setSharingNote] = useState(null);
+    const { share } = useShare();
 
     // Pull to Refresh State
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -38,212 +73,58 @@ const NotesPage = () => {
         if (touchStartRef.current > 0 && window.scrollY === 0) {
             const y = e.touches[0].clientY - touchStartRef.current;
             if (y > 0) {
-                setPullY(y > 100 ? 100 + (y - 100) * 0.3 : y); // Resistance
+                setPullY(y > 100 ? 100 + (y - 100) * 0.3 : y);
             }
         }
     };
 
     const handleTouchEnd = async () => {
-        if (pullY > 150 && !isRefreshing) {
+        if (pullY > 80 && !isRefreshing) {
             setIsRefreshing(true);
-            setPullY(0); // Reset position but show spinner
-            await Haptics.impact({ style: ImpactStyle.Light });
+            setPullY(0);
             await dataService.forceSync();
-            setTimeout(() => setIsRefreshing(false), 500); // Min wait
+            setTimeout(() => setIsRefreshing(false), 500);
         } else {
             setPullY(0);
         }
         touchStartRef.current = 0;
     };
 
-    const handleToggleSelect = (id) => {
-        setHighlightedId(null); // Clear highlights immediately on selection
-        setSelectedIds(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
-    };
-
-    const handleClearSelection = () => {
-        setSelectedIds(new Set());
-        setHighlightedId(null);
-    };
-
-    // Auto-clear highlight when selection mode active
-    useEffect(() => {
-        if (isSelectionMode && highlightedId) {
-            setHighlightedId(null);
-        }
-    }, [isSelectionMode, highlightedId]);
-
-    // Highlight logic
-    useEffect(() => {
-        if (location.state?.focusId) {
-            setHighlightedId(location.state.focusId);
-            setTimeout(() => setHighlightedId(null), 3000);
-
-            // Scroll to element
-            const element = refs.current[location.state.focusId];
-            if (element) {
-                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }
-
-        if (location.state?.convertFromReminder) {
-            const reminder = location.state.convertFromReminder;
-            const convertedNote = dataService.convertReminderToNote(reminder);
-            setEditingNote(convertedNote);
-            setIsModalOpen(true);
-            window.history.replaceState({}, document.title);
-        }
-
-        // Check for state OR query params
-        const params = new URLSearchParams(location.search);
-        if (location.state?.openAdd || params.get('add') === 'true') {
-            handleAddNew('text');
-            // Clear the query param and state to prevent re-opening on refresh/render
-            navigate(location.pathname, { replace: true, state: {} });
-        }
-
-        if (location.state?.searchQuery !== undefined) {
-            // Strict Sync: If state has a query (or empty string), sync it. 
-            // This handles 'Sidebar Click' (state=undefined -> defaults to '') clearing the search.
-            const target = location.state.searchQuery;
-            if (searchQuery !== target) {
-                setSearchQuery(target);
-            }
-        } else if (location.state === null || location.state === undefined) {
-            // If explicit clean navigation (no state), clear search
-            if (searchQuery) setSearchQuery('');
-        }
-    }, [location.state]);
-
-    const handlePlayAudio = (note) => {
-        // STOP Current
-        if (playingNoteId === note.id) {
-            window.speechSynthesis.cancel();
-            if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current = null;
-            }
-            setPlayingNoteId(null);
-            return;
-        }
-
-        // STOP Previous (if any)
-        window.speechSynthesis.cancel();
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current = null;
-        }
-
-        setPlayingNoteId(note.id);
-
-        if (note.audioData) {
-            const audio = new Audio(note.audioData);
-            audioRef.current = audio; // Track it
-
-            audio.onended = () => {
-                setPlayingNoteId(null);
-                audioRef.current = null;
-            };
-            audio.onerror = (e) => {
-                console.error("Playback error", e);
-                setPlayingNoteId(null);
-                audioRef.current = null;
-                alert("Could not play audio.");
-            };
-
-            audio.play().catch(e => {
-                console.error("Playback start error", e);
-                setPlayingNoteId(null);
-                audioRef.current = null;
-            });
-
-        } else {
-            const utterance = new SpeechSynthesisUtterance(note.content);
-            utterance.onend = () => setPlayingNoteId(null);
-            window.speechSynthesis.speak(utterance);
-        }
-    };
-
-    const [activeTab, setActiveTab] = useState('All Notes');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingNote, setEditingNote] = useState(null);
-    const [newNoteType, setNewNoteType] = useState('text');
-    const [autoStartVoice, setAutoStartVoice] = useState(false);
-    const [notes, setNotes] = useState([]);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [triggerReload, setTriggerReload] = useState(0);
-    const [previewData, setPreviewData] = useState(null);
-    const [sharingNote, setSharingNote] = useState(null);
-    const { share } = useShare();
-    // Search is now persistent, no toggle state needed
-
-    useEffect(() => {
-        const loadNotes = () => setNotes(dataService.getNotes());
-        loadNotes();
-        const handleStorageUpdate = () => loadNotes();
-        window.addEventListener('storage-update', handleStorageUpdate);
-        return () => window.removeEventListener('storage-update', handleStorageUpdate);
-    }, [triggerReload]);
 
     const handleAddNew = (type = 'text', startVoice = false) => {
-        setEditingNote(null);
-        setNewNoteType(type);
-        setAutoStartVoice(startVoice);
-        setIsModalOpen(true);
+        openNoteModal({ type, autoStart: startVoice });
     };
 
     const handleEdit = (note) => {
-        setEditingNote(note);
-        setIsModalOpen(true);
+        openNoteModal({ noteToEdit: note });
     };
 
     const handleSave = async (data) => {
-        let savedParams;
-        if (data.id && !data.forceCreate) {
-            await dataService.updateNote(data.id, data);
-            savedParams = data;
-        } else {
-            // Remove forceCreate flag before sending to service
-            const { forceCreate, ...cleanData } = data;
-            savedParams = await dataService.addNote(cleanData);
-        }
-        setTriggerReload(prev => prev + 1);
-        return savedParams;
+        // Global modal handles save
     };
 
+    // handleDelete - Global modal handles it too? 
+    // AddNoteModal call in App.jsx:
+    // onDelete={async (id) => { await dataService.deleteNote(id); closeNoteModal(); ... }}
+    // The NoteCard calls handleEdit -> openGlobalModal -> Modal has delete button.
+    // What about "Select Mode" delete? NoteCard doesn't delete, it edits or selects.
+    // So distinct delete handlers? 
+    // NoteCard has NO delete button on card face? 
+    // It has Context menu? 
+    // Let's keep handleDelete for now if it's used elsewhere? 
+    // It is passed to NoteCard? 
+    // <NoteCard ... handleEdit={handleEdit} ... />
+    // It DOES NOT pass handleDelete to NoteCard.
+    // So handleDelete was only for the Modal.
+    // So we can remove it.
+
     const handleDelete = async (id) => {
-        if (id) {
-            await dataService.deleteNote(id);
-            setTriggerReload(prev => prev + 1);
-        }
-        setIsModalOpen(false);
+        // local unused
     };
 
     // ... (rest of render)
 
-    {
-        isModalOpen && (
-            <AddNoteModal
-                isOpen={isModalOpen}
-                onClose={() => {
-                    setIsModalOpen(false);
-                    setAutoStartVoice(false);
-                }}
-                onSave={handleSave}
-                onDelete={handleDelete}
-                onShare={(note) => setSharingNote(note)}
-                noteToEdit={editingNote}
-                initialType={newNoteType}
-                autoStartListening={autoStartVoice}
-                searchQuery={searchQuery}
-            />
-        )
-    }
+    // AddNoteModal removed - using Global Modal from App.jsx
 
     // Auto-update sharingNote if it changes (e.g. user unshared)
     useEffect(() => {
@@ -495,22 +376,7 @@ const NotesPage = () => {
 
 
 
-            {isModalOpen && (
-                <AddNoteModal
-                    isOpen={isModalOpen}
-                    onClose={() => {
-                        setIsModalOpen(false);
-                        setAutoStartVoice(false);
-                    }}
-                    onSave={handleSave}
-                    onDelete={handleDelete}
-                    onShare={(note) => setSharingNote(note)}
-                    noteToEdit={editingNote}
-                    initialType={newNoteType}
-                    autoStartListening={autoStartVoice}
-                    searchQuery={searchQuery}
-                />
-            )}
+            {/* REMOVED AddNoteModal - Using Global */}
 
             <TextPreviewModal
                 isOpen={!!previewData}

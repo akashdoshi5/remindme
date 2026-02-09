@@ -269,6 +269,7 @@ const AppContent = () => {
         onClose={closeReminderModal}
         reminderToEdit={reminderModalConfig?.reminderToEdit}
         initialData={reminderModalConfig?.initialData} // For "Convert to Reminder"
+        autoStartListening={reminderModalConfig?.autoStart}
         onSave={async (reminderData, instanceKey) => {
           if (reminderData.id) await dataService.updateReminder(reminderData.id, reminderData, instanceKey);
           else await dataService.addReminder(reminderData);

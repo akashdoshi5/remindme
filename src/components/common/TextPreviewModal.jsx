@@ -1,62 +1,21 @@
-import React, { useEffect, useRef } from 'react';
-import { X, Search } from 'lucide-react';
+import ReactDOM from 'react-dom';
 
-import { BackButtonManager } from '../../services/BackButtonManager';
+// ... imports
 
 const TextPreviewModal = ({ isOpen, onClose, title, text, searchQuery, imageUrl }) => {
-    const contentRef = useRef(null);
-
-    // Back Button Handling
-    useEffect(() => {
-        if (!isOpen) return;
-        const unregister = BackButtonManager.register(async () => {
-            onClose();
-            return true;
-        });
-        return unregister;
-    }, [isOpen, onClose]);
-
-    useEffect(() => {
-        if (isOpen && searchQuery && contentRef.current && !imageUrl) {
-            // Wait for render
-            setTimeout(() => {
-                const firstMatch = contentRef.current.querySelector('mark');
-                if (firstMatch) {
-                    firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            }, 100);
-        }
-    }, [isOpen, searchQuery, text, imageUrl]);
+    // ... refs and effects
 
     if (!isOpen) return null;
 
-    // Helper to highlight text
-    const getHighlightedText = (content, query) => {
-        if (!query) return content;
+    // ... helper
 
-        const parts = content.split(new RegExp(`(${query})`, 'gi'));
-        return (
-            <span>
-                {parts.map((part, i) =>
-                    part.toLowerCase() === query.toLowerCase() ? (
-                        <mark key={i} className="bg-yellow-200 text-gray-900 font-bold px-0.5 rounded">
-                            {part}
-                        </mark>
-                    ) : (
-                        part
-                    )
-                )}
-            </span>
-        );
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4" onClick={onClose}>
+    return ReactDOM.createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4" onClick={onClose}>
+            {/* ... content ... */}
             <div
                 className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200 border border-gray-200 dark:border-gray-700 overflow-hidden"
                 onClick={e => e.stopPropagation()}
             >
-
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 z-10">
                     <div className="flex items-center gap-2">
@@ -99,7 +58,8 @@ const TextPreviewModal = ({ isOpen, onClose, title, text, searchQuery, imageUrl 
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

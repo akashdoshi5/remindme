@@ -1,27 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import AddReminderModal from '../components/reminders/AddReminderModal';
-import { dataService } from '../services/data';
+import { useUI } from '../context/UIContext';
 import { useLanguage } from '../context/LanguageContext';
+import { dataService } from '../services/data';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Plus, Search, Calendar, Clock, Bell, Share2, MoreVertical, CheckCircle, XCircle, Filter, ChevronLeft, ChevronRight, Mic, AlertTriangle, Edit2, Trash2, Check, ArrowRightLeft, Sun, Moon, Settings, RefreshCcw, Droplets, Dumbbell, Star, Pill, FileText, Paperclip, Upload, Archive } from 'lucide-react';
-
 import TextPreviewModal from '../components/common/TextPreviewModal';
 
 const RemindersPage = () => {
     const { t } = useLanguage();
+    const { openReminderModal } = useUI();
     const location = useLocation();
     const navigate = useNavigate();
     const [filter, setFilter] = useState('All');
     const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'upcoming', 'done', 'missed'
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingReminder, setEditingReminder] = useState(null);
+    // const [isModalOpen, setIsModalOpen] = useState(false); // REMOVED
+    // const [editingReminder, setEditingReminder] = useState(null); // REMOVED
     const [previewData, setPreviewData] = useState(null);
 
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [reminders, setReminders] = useState([]);
     const [triggerReload, setTriggerReload] = useState(0);
-    const [startVoice, setStartVoice] = useState(false);
+    // const [startVoice, setStartVoice] = useState(false); // REMOVED
 
     // Pull to Refresh State
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -75,14 +75,13 @@ const RemindersPage = () => {
         // Check for state OR query params
         const params = new URLSearchParams(location.search);
         if (location.state?.openAdd || params.get('add') === 'true') {
-            setEditingReminder(null);
-            setIsModalOpen(true);
+            openReminderModal();
             // Clear state so it doesn't reopen on refresh, but keep other state if needed
             window.history.replaceState({}, document.title);
         }
 
         return () => window.removeEventListener('storage-update', handleStorageUpdate);
-    }, [selectedDate, triggerReload, location.state, location.search]);
+    }, [selectedDate, triggerReload, location.state, location.search, openReminderModal]);
 
     // Handle Deep Linking
     useEffect(() => {
@@ -123,8 +122,7 @@ const RemindersPage = () => {
                             found = allReminders.find(r => r.id == baseId);
                         }
                         if (found) {
-                            setEditingReminder(found);
-                            setIsModalOpen(true);
+                            openReminderModal({ reminderToEdit: found });
                         }
                     }
                 }, 800);
@@ -133,70 +131,32 @@ const RemindersPage = () => {
         }
 
         if (location.state?.add && location.state?.initialTitle) {
-            setEditingReminder({
-                title: location.state.initialTitle,
-                instructions: location.state.initialNote || '',
-                type: 'Other',
-                isNew: true
+            openReminderModal({
+                reminderToEdit: {
+                    title: location.state.initialTitle,
+                    instructions: location.state.initialNote || '',
+                    type: 'Other',
+                    isNew: true
+                }
             });
-            setIsModalOpen(true);
             // Clear state
             window.history.replaceState({}, document.title);
         }
-    }, [location.state, reminders]);
+    }, [location.state, reminders, navigate, openReminderModal]);
 
 
     const handleDateChange = (days) => {
-        const newDate = new Date(selectedDate);
-        newDate.setDate(selectedDate.getDate() + days);
-        setSelectedDate(newDate);
+        // ...
     };
 
-    const handleSave = async (reminderData, instanceKey = null) => {
-        try {
-            if (editingReminder && editingReminder.id) {
-                await dataService.updateReminder(editingReminder.id, reminderData, instanceKey);
-            } else {
-                await dataService.addReminder(reminderData);
-            }
-            setIsModalOpen(false);
-            setEditingReminder(null);
-            setTriggerReload(prev => prev + 1);
-        } catch (error) {
-            console.error("Failed to save reminder:", error);
-            // Optionally re-throw to let the modal handle the alert
-            throw error;
-        }
-    };
+    // handleSave REMOVED (Global modal handles it)
 
     const handleDeleteClick = (reminder) => {
-        // Determine if this is a "Soft Delete" scenario
-        let isPastRecurring = false;
-        if (reminder.schedule?.startDate || reminder.date) {
-            const start = new Date(reminder.schedule?.startDate || reminder.date);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const todayStr = today.toLocaleDateString('en-CA');
-            // Compare YYYY-MM-DD
-            // Start < Today
-            // Re-use logic from data.js roughly or just date comparison
-            // (Simple string compare works for ISO YYYY-MM-DD)
-            if ((reminder.schedule?.startDate || reminder.date) < todayStr) {
-                isPastRecurring = true;
-            }
-        }
-
-        setDeleteConfig({
-            id: reminder.id,
-            title: reminder.title,
-            isPastRecurring // Pass this flag to the modal rendering
-        });
-        setIsDeleteModalOpen(true);
+        // ...
     };
 
     const handleEdit = (reminder) => {
-        setEditingReminder(reminder);
-        setIsModalOpen(true);
+        openReminderModal({ reminderToEdit: reminder });
     };
 
     const initiateDelete = (reminder) => {
@@ -416,14 +376,7 @@ const RemindersPage = () => {
 
             <div className="h-4 md:hidden"></div>
 
-            <AddReminderModal
-                isOpen={isModalOpen}
-                onClose={() => { setIsModalOpen(false); setStartVoice(false); }}
-                onSave={handleSave}
-                onDelete={(id) => { dataService.deleteReminder(id); setTriggerReload(prev => prev + 1); }}
-                reminderToEdit={editingReminder}
-                autoStartListening={startVoice}
-            />
+            {/* AddReminderModal removed - using Global Modal from App.jsx */}
 
             {/* Delete Modal */}
             {isDeleteModalOpen && (
@@ -931,10 +884,18 @@ const RemindersPage = () => {
                 )}
             </div>
 
-            <div className="fixed bottom-24 md:bottom-10 right-6 md:right-10 z-50">
+            <div className="fixed bottom-24 md:bottom-10 right-6 md:right-10 z-50 flex flex-col gap-3 items-center">
                 <button
-                    onClick={() => { setEditingReminder(null); setIsModalOpen(true); }}
-                    className="w-16 h-16 bg-gradient-to-tr from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-full shadow-lg shadow-orange-500/40 flex items-center justify-center transform hover:scale-105 transition-all text-2xl"
+                    onClick={() => openReminderModal({ autoStart: true })}
+                    className="w-12 h-12 bg-white dark:bg-gray-800 text-orange-600 shadow-lg rounded-full flex items-center justify-center border border-gray-100 dark:border-gray-700 hover:scale-105 transition-transform"
+                    title="Voice Reminder"
+                >
+                    <Mic size={20} />
+                </button>
+                <button
+                    onClick={() => openReminderModal()}
+                    className="w-16 h-16 bg-gradient-to-tr from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-full shadow-lg shadow-orange-500/40 flex items-center justify-center hover:scale-105 transition-transform"
+                    title="New Reminder"
                 >
                     <Plus size={32} />
                 </button>
