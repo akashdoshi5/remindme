@@ -120,14 +120,17 @@ const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
                                                             const q = query.toLowerCase();
                                                             const matchFile = r.files?.find(f => f.name.toLowerCase().includes(q) || (f.extractedText && f.extractedText.toLowerCase().includes(q)));
                                                             if (matchFile) return `📎 ${matchFile.name} ${matchFile.extractedText ? '- ' + matchFile.extractedText.substring(0, 30) + '...' : ''}`;
-                                                            if (r.instructions && r.instructions.toLowerCase().includes(q)) return r.instructions;
-                                                            return r.frequency;
+
+                                                            // Always show instructions snippet if available, prioritizing match
+                                                            if (r.instructions) return r.instructions;
+
+                                                            return r.frequency || 'No details';
                                                         })()}
                                                     </p>
                                                     {/* Start/End dates */}
                                                     {(r.startDate || r.date) && (
                                                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                                                            📅 {r.startDate || r.date}{r.endDate ? ` → ${r.endDate}` : ''}
+                                                            📅 {r.startDate || r.date} {r.endDate ? `→ ${r.endDate}` : (r.frequency !== 'Once' ? '→ Ongoing' : '')}
                                                         </p>
                                                     )}
                                                 </div>

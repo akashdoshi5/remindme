@@ -306,34 +306,56 @@ export const firestoreService = {
 
         console.log(`[Firestore Debug] getNotesRealtime: user.uid=${user.uid}, user.email=${user.email}`);
 
-        const notesRef = collection(db, 'notes');
-        const allNotesMap = new Map();
+        // Maintain separate maps for each query source to handle deletions correctly
+        // When a snapshot updates, we REPLACE the map for that source.
+        const notesMaps = {
+            owner: new Map(),
+            user: new Map(),
+            email: new Map()
+        };
 
         const updateAndNotify = () => {
-            const uniqueNotes = Array.from(allNotesMap.values());
+            // Merge all maps by ID
+            const allNotes = new Map();
+
+            // Priority: Owner > User > Email (though IDs should comprise the same object)
+            // We just merge them. If an ID exists in multiple, the last one wins (updates).
+            // Since they point to the same doc ID, data should be identical roughly.
+
+            notesMaps.owner.forEach((v, k) => allNotes.set(k, v));
+            notesMaps.user.forEach((v, k) => allNotes.set(k, v));
+            notesMaps.email.forEach((v, k) => allNotes.set(k, v));
+
+            const uniqueNotes = Array.from(allNotes.values());
             // Client-side sort
             uniqueNotes.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-            console.log(`[Firestore] Merged Notes: ${uniqueNotes.length}`);
+            console.log(`[Firestore] Merged Total Notes: ${uniqueNotes.length}`);
             callback(uniqueNotes);
         };
 
+        const notesRef = collection(db, 'notes');
+
         // 1. Current Schema (ownerId)
         const unsub1 = onSnapshot(query(notesRef, where('ownerId', '==', user.uid), limit(100)), (snap) => {
-            console.log(`[Firestore Debug] ownerId query returned ${snap.docs.length} docs`);
-            snap.docs.forEach(doc => allNotesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            const currentMap = new Map();
+            snap.docs.forEach(doc => currentMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            notesMaps.owner = currentMap;
             updateAndNotify();
         }, (e) => console.error("Error fetching notes (ownerId):", e));
 
         // 2. Legacy Schema (userId)
         const unsub2 = onSnapshot(query(notesRef, where('userId', '==', user.uid), limit(100)), (snap) => {
-            snap.docs.forEach(doc => allNotesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            const currentMap = new Map();
+            snap.docs.forEach(doc => currentMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            notesMaps.user = currentMap;
             updateAndNotify();
         }, (e) => console.error("Error fetching notes (userId):", e));
 
         // 3. Email-based ownership (for orphan notes that only have ownerEmail)
         const unsub3 = onSnapshot(query(notesRef, where('ownerEmail', '==', user.email), limit(100)), (snap) => {
-            console.log(`[Firestore Debug] ownerEmail query returned ${snap.docs.length} docs`);
-            snap.docs.forEach(doc => allNotesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            const currentMap = new Map();
+            snap.docs.forEach(doc => currentMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            notesMaps.email = currentMap;
             updateAndNotify();
         }, (e) => console.error("Error fetching notes (ownerEmail):", e));
 
