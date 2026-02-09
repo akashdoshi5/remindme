@@ -25,26 +25,31 @@ const NotesPage = () => {
     const isSelectionMode = selectedIds.size > 0;
     const [highlightedId, setHighlightedId] = useState(null);
 
-    // ... (pull to refresh) ...
 
-    // ... (useEffect for deep linking) ...
+    // --- Deep Link Handling ---
+    useEffect(() => {
+        // Check if navigating to a specific note ID
+        if (location.state?.noteId) {
+            setHighlightedId(location.state.noteId);
+            // Scroll into view after a tick
+            setTimeout(() => {
+                refs.current[location.state.noteId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+        }
+        if (location.state?.convertFromReminder) {
+            const reminder = location.state.convertFromReminder;
+            const convertedNote = dataService.convertReminderToNote(reminder);
+            openNoteModal({ noteToEdit: convertedNote });
+            window.history.replaceState({}, document.title);
+        }
+        // Check for state OR query params
+        const params = new URLSearchParams(location.search);
+        if (location.state?.openAdd || params.get('add') === 'true') {
+            openNoteModal({ type: 'text' });
+            navigate(location.pathname, { replace: true, state: {} });
+        }
+    }, [location.state, location.search]);
 
-    if (location.state?.convertFromReminder) {
-        const reminder = location.state.convertFromReminder;
-        const convertedNote = dataService.convertReminderToNote(reminder);
-        openNoteModal({ noteToEdit: convertedNote });
-        window.history.replaceState({}, document.title);
-    }
-
-    // Check for state OR query params
-    const params = new URLSearchParams(location.search);
-    if (location.state?.openAdd || params.get('add') === 'true') {
-        openNoteModal({ type: 'text' });
-        // Clear the query param and state to prevent re-opening on refresh/render
-        navigate(location.pathname, { replace: true, state: {} });
-    }
-
-    // ...
 
     const [activeTab, setActiveTab] = useState('All Notes');
     // const [isModalOpen, setIsModalOpen] = useState(false); // REMOVED
@@ -62,6 +67,12 @@ const NotesPage = () => {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pullY, setPullY] = useState(0);
     const touchStartRef = useRef(0);
+
+    // --- Load Notes ---
+    useEffect(() => {
+        const allNotes = dataService.getNotes();
+        setNotes(allNotes);
+    }, [triggerReload]);
 
     const handleTouchStart = (e) => {
         if (window.scrollY === 0) {
@@ -122,6 +133,42 @@ const NotesPage = () => {
         // local unused
     };
 
+    // --- Audio Playback Handlers ---
+    const handlePlayAudio = (noteId, audioData) => {
+        // Stop any currently playing audio first
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current = null;
+        }
+
+        const audio = new Audio(audioData);
+        audioRef.current = audio;
+        setPlayingNoteId(noteId);
+
+        audio.onended = () => {
+            setPlayingNoteId(null);
+            audioRef.current = null;
+        };
+
+        audio.onerror = () => {
+            setPlayingNoteId(null);
+            audioRef.current = null;
+        };
+
+        audio.play().catch(err => {
+            console.error('Error playing audio:', err);
+            setPlayingNoteId(null);
+        });
+    };
+
+    const handleStopAudio = () => {
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current = null;
+        }
+        setPlayingNoteId(null);
+    };
+
     // ... (rest of render)
 
     // AddNoteModal removed - using Global Modal from App.jsx
@@ -159,6 +206,23 @@ const NotesPage = () => {
             window.removeEventListener('popstate', handlePopState);
         };
     }, [isSelectionMode]);
+
+    // --- Selection Handlers ---
+    const handleToggleSelect = (noteId) => {
+        setSelectedIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(noteId)) {
+                newSet.delete(noteId);
+            } else {
+                newSet.add(noteId);
+            }
+            return newSet;
+        });
+    };
+
+    const handleClearSelection = () => {
+        setSelectedIds(new Set());
+    };
 
     const getFilteredNotes = () => {
         let filtered = notes;

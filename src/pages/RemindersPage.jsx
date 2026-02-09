@@ -4,7 +4,7 @@ import { useUI } from '../context/UIContext';
 import { useLanguage } from '../context/LanguageContext';
 import { dataService } from '../services/data';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Plus, Search, Calendar, Clock, Bell, Share2, MoreVertical, CheckCircle, XCircle, Filter, ChevronLeft, ChevronRight, Mic, AlertTriangle, Edit2, Trash2, Check, ArrowRightLeft, Sun, Moon, Settings, RefreshCcw, Droplets, Dumbbell, Star, Pill, FileText, Paperclip, Upload, Archive } from 'lucide-react';
+import { Plus, Search, Calendar, Clock, Bell, Share2, MoreVertical, CheckCircle, XCircle, Filter, ChevronLeft, ChevronRight, Mic, AlertTriangle, AlertCircle, Edit2, Trash2, Check, ArrowRightLeft, Sun, Moon, Settings, RefreshCcw, Droplets, Dumbbell, Star, Pill, FileText, Paperclip, Upload, Archive } from 'lucide-react';
 import TextPreviewModal from '../components/common/TextPreviewModal';
 
 const RemindersPage = () => {
