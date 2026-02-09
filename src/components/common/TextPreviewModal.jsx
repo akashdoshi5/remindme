@@ -51,7 +51,7 @@ const TextPreviewModal = ({ isOpen, onClose, title, text, searchQuery, imageUrl 
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4" onClick={onClose}>
             <div
                 className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200 border border-gray-200 dark:border-gray-700 overflow-hidden"
                 onClick={e => e.stopPropagation()}

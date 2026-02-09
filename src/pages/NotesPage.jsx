@@ -517,6 +517,7 @@ const NotesPage = () => {
                 onClose={() => setPreviewData(null)}
                 title={previewData?.title || ''}
                 text={previewData?.text || ''}
+                imageUrl={previewData?.imageUrl || previewData?.url}
                 searchQuery={searchQuery}
             />
 

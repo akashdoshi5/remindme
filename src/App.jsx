@@ -214,7 +214,7 @@ const AppContent = () => {
       {/* Global FAB for Desktop (optional, or rely on Header) */}
       {/* Mobile Nav handles bottom bar */}
       {/* Mobile Nav handles bottom bar - Hide when Modals are open to prevent overlap */}
-      {(!isNoteModalOpen && !isReminderModalOpen && !activeAlarm && !isSearchOpen) && (
+      {(!isNoteModalOpen && !isReminderModalOpen && !activeAlarm && !isSearchOpen && !isSettingsOpen) && (
         <MobileNav onMenuClick={openMobileMenu} onMicClick={handleFloatingMic} />
       )}
 
