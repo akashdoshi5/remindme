@@ -572,7 +572,7 @@ const RemindersPage = () => {
                                                                     : 'border-orange-500 bg-white dark:bg-gray-800'
                                                         }`}
                                                 >
-                                                    <div className="p-3 md:p-4 flex-1 flex flex-row items-center justify-between gap-3">
+                                                    <div className="p-3 md:p-4 flex-1 flex flex-row items-start justify-between gap-3">
                                                         <div className="flex items-center gap-3 md:gap-4 flex-1">
                                                             <div className="text-xl md:text-2xl shrink-0">
                                                                 {(() => {
@@ -728,7 +728,12 @@ const RemindersPage = () => {
                                                             </div>
                                                         </div>
 
-                                                        <div className="flex gap-2 shrink-0 overflow-x-auto no-scrollbar pb-1 max-w-[50%] md:max-w-none">
+                                                    </div>
+
+                                                    {/* Actions Row - Moved to bottom for visibility */}
+                                                    <div className="w-full p-2 border-t border-gray-100 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/50">
+                                                        {/* User requested "2 columns of buttons" - using grid */}
+                                                        <div className="grid grid-cols-2 gap-2">
                                                             {(() => {
                                                                 // Lock Logic: Disable delete for history older than Yesterday
                                                                 const yesterday = new Date();
@@ -943,7 +948,7 @@ const RemindersPage = () => {
                 searchQuery={searchQuery}
             />
 
-        </div>
+        </div >
     );
 };
 

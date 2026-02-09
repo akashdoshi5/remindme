@@ -576,8 +576,8 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] md:p-4">
-            <div className="bg-white dark:bg-gray-900 w-full md:max-w-md flex flex-col h-full md:h-auto md:max-h-[85vh] animate-fade-in shadow-2xl transition-colors duration-300 md:rounded-2xl border border-gray-100 dark:border-gray-800 relative z-[100] overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[500] md:p-4">
+            <div className="bg-white dark:bg-gray-900 w-full md:max-w-md flex flex-col h-full md:h-auto md:max-h-[85vh] animate-fade-in shadow-2xl transition-colors duration-300 md:rounded-2xl border border-gray-100 dark:border-gray-800 relative z-[500] overflow-hidden">
                 <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center shrink-0">
                     <h2 className="text-xl font-bold dark:text-white">{reminderToEdit ? 'Edit Reminder' : 'Add Reminder'}</h2>
                     <button onClick={onClose} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors">
@@ -586,7 +586,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                 </div>
 
                 <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 relative">
-                    <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin p-4 pb-32 md:p-6 flex flex-col gap-5">
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin p-4 pb-48 md:p-6 flex flex-col gap-5">
                         {/* Instance Toggle */}
                         {reminderToEdit && reminderToEdit.instanceKey && reminderToEdit.frequency !== 'Once' && (
                             <div className="bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded-lg border border-yellow-100 dark:border-yellow-800 flex p-1">
@@ -1148,7 +1148,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                         </div>
                     </div>
 
-                    <div className="fixed bottom-0 left-0 right-0 p-4 pb-8 md:pb-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 z-[120] md:static md:z-30 md:border-t md:shrink-0">
+                    <div className="fixed bottom-0 left-0 right-0 p-4 pb-8 md:pb-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 z-[600] md:static md:z-30 md:border-t md:shrink-0">
                         <div className="flex gap-3">
                             <button
                                 type="button"
