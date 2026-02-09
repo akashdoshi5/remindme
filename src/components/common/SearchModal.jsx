@@ -104,17 +104,17 @@ const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
                                 <div>
                                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-2">Reminders</h3>
                                     <div className="space-y-2">
-                                        {results.reminders.map(r => (
+                                        {results.reminders.map((r, idx) => (
                                             <div
-                                                key={r.id}
+                                                key={`reminder-${r.uniqueId || r.id}-${idx}`}
                                                 onClick={() => handleNavigate('/reminders', { state: { highlightId: r.uniqueId || r.id, targetDate: r.date, openEdit: true } })}
                                                 className="flex items-center gap-4 p-3 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-xl cursor-pointer group transition-colors border border-transparent hover:border-orange-100 dark:hover:border-orange-800"
                                             >
                                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${r.type === 'Medication' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
                                                     <Bell size={18} />
                                                 </div>
-                                                <div className="flex-1">
-                                                    <h4 className="font-bold text-gray-800 dark:text-gray-200 group-hover:text-orange-700 dark:group-hover:text-orange-400">{r.title}</h4>
+                                                <div className="flex-1 min-w-0">
+                                                    <h4 className="font-bold text-gray-800 dark:text-gray-200 group-hover:text-orange-700 dark:group-hover:text-orange-400 truncate">{r.title}</h4>
                                                     <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
                                                         {(() => {
                                                             const q = query.toLowerCase();
@@ -124,8 +124,14 @@ const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
                                                             return r.frequency;
                                                         })()}
                                                     </p>
+                                                    {/* Start/End dates */}
+                                                    {(r.startDate || r.date) && (
+                                                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                                                            📅 {r.startDate || r.date}{r.endDate ? ` → ${r.endDate}` : ''}
+                                                        </p>
+                                                    )}
                                                 </div>
-                                                <div className="text-xs font-medium bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-600 dark:text-gray-300 flex items-center gap-1">
+                                                <div className="text-xs font-medium bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-600 dark:text-gray-300 flex items-center gap-1 shrink-0">
                                                     <Clock size={12} /> {r.time}
                                                 </div>
                                             </div>
@@ -138,20 +144,20 @@ const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
                                 <div>
                                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-2">Notes</h3>
                                     <div className="space-y-2">
-                                        {results.notes.map(n => (
+                                        {results.notes.map((n, idx) => (
                                             <div
-                                                key={n.id}
+                                                key={`note-${n.id}-${idx}`}
                                                 onClick={() => handleNavigate('/notes', { state: { focusId: n.id, searchQuery: query } })}
                                                 className="flex items-center gap-4 p-3 hover:bg-teal-50 dark:hover:bg-teal-900/20 rounded-xl cursor-pointer group transition-colors border border-transparent hover:border-teal-100 dark:hover:border-teal-800"
                                             >
                                                 <div className="w-10 h-10 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center shrink-0">
                                                     <FileText size={18} />
                                                 </div>
-                                                <div className="flex-1">
-                                                    <h4 className="font-bold text-gray-800 dark:text-gray-200 group-hover:text-teal-700 dark:group-hover:text-teal-400">{n.title}</h4>
+                                                <div className="flex-1 min-w-0">
+                                                    <h4 className="font-bold text-gray-800 dark:text-gray-200 group-hover:text-teal-700 dark:group-hover:text-teal-400 truncate">{n.title}</h4>
                                                     <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{n.content}</p>
                                                 </div>
-                                                <ArrowRight size={16} className="text-gray-300 group-hover:text-teal-500 -translate-x-2 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all" />
+                                                <ArrowRight size={16} className="text-gray-300 group-hover:text-teal-500 -translate-x-2 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all shrink-0" />
                                             </div>
                                         ))}
                                     </div>

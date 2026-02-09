@@ -16,7 +16,8 @@ import {
     orderBy,
     writeBatch,
     deleteField,
-    limit // V7 Optimization
+    limit, // V7 Optimization
+    or     // V10: Logic Operator
 } from 'firebase/firestore';
 import {
     ref,
@@ -303,44 +304,44 @@ export const firestoreService = {
         const user = auth.currentUser;
         if (!user) return () => { };
 
-        // Query: My notes OR Notes shared with me
-        // Firestore OR queries are separate. We can query 'ownerId' == uid
-        // AND 'sharedWith' array-contains uid
-        // But we need to merge.
+        console.log(`[Firestore Debug] getNotesRealtime: user.uid=${user.uid}, user.email=${user.email}`);
 
         const notesRef = collection(db, 'notes');
-        // Query: My notes OR Notes shared with me
+        const allNotesMap = new Map();
 
-        // Setup listener for OWNED (V7: Smart Sync - Limit 50)
-        // Note: orderBy('createdAt') requires an index if mixed with where().
-        // If index is missing, this will fail. We use a try-catch assumption or fallback?
-        // Actually, we can just limit by default if we don't sort, but that's random.
-        // Let's assume user will create the index (link in console) OR we rely on a simpler query.
-        // For now, let's keep it simple to avoid breaking if index missing: just LIMIT, no sort provided by query.
-        // Client side sort handles the order.
+        const updateAndNotify = () => {
+            const uniqueNotes = Array.from(allNotesMap.values());
+            // Client-side sort
+            uniqueNotes.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            console.log(`[Firestore] Merged Notes: ${uniqueNotes.length}`);
+            callback(uniqueNotes);
+        };
 
-        // Wait, limit() on unsorted query is not deterministic.
-        // Let's TRY to use orderBy + limit.
-        // const qOwned = query(notesRef, where('ownerId', '==', user.uid), orderBy('createdAt', 'desc'), limit(50));
+        // 1. Current Schema (ownerId)
+        const unsub1 = onSnapshot(query(notesRef, where('ownerId', '==', user.uid), limit(100)), (snap) => {
+            console.log(`[Firestore Debug] ownerId query returned ${snap.docs.length} docs`);
+            snap.docs.forEach(doc => allNotesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            updateAndNotify();
+        }, (e) => console.error("Error fetching notes (ownerId):", e));
 
-        // Safer approach for "Drop-in" optimization without blocking index creation:
-        // SImply Limit 50. Most recently updated? No guarantee.
-        // But for COST SAVING, let's just use limit(50).
+        // 2. Legacy Schema (userId)
+        const unsub2 = onSnapshot(query(notesRef, where('userId', '==', user.uid), limit(100)), (snap) => {
+            snap.docs.forEach(doc => allNotesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            updateAndNotify();
+        }, (e) => console.error("Error fetching notes (userId):", e));
 
-        const qOwned = query(notesRef, where('ownerId', '==', user.uid), limit(50));
+        // 3. Email-based ownership (for orphan notes that only have ownerEmail)
+        const unsub3 = onSnapshot(query(notesRef, where('ownerEmail', '==', user.email), limit(100)), (snap) => {
+            console.log(`[Firestore Debug] ownerEmail query returned ${snap.docs.length} docs`);
+            snap.docs.forEach(doc => allNotesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            updateAndNotify();
+        }, (e) => console.error("Error fetching notes (ownerEmail):", e));
 
-        const unsubscribeOwned = onSnapshot(qOwned, (snapOwned) => {
-            let ownedNotes = snapOwned.docs.map(d => ({ id: d.id, ...d.data() }));
-
-            // Client-side sort by 'order' or date
-            ownedNotes.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-
-            callback(ownedNotes);
-        }, (error) => {
-            console.error("Error fetching owned notes:", error);
-        });
-
-        return unsubscribeOwned;
+        return () => {
+            unsub1();
+            unsub2();
+            unsub3();
+        };
     },
 
     // Separate stream for shared notes to avoid complex query issues initially
@@ -417,6 +418,7 @@ export const firestoreService = {
     updateNote: async (id, updates) => {
         // Warning: minimal security here for demo. Validation rules should enforce ownership.
         const ref = doc(db, 'notes', String(id));
+        const user = auth.currentUser;
 
         // Extra safety: Remove restricted keys if present
         // eslint-disable-next-line no-unused-vars
@@ -425,7 +427,26 @@ export const firestoreService = {
         // Remove undefined keys (Firestore rejection fix)
         Object.keys(safeUpdates).forEach(key => safeUpdates[key] === undefined && delete safeUpdates[key]);
 
-        await updateDoc(ref, safeUpdates);
+        try {
+            await updateDoc(ref, safeUpdates);
+        } catch (e) {
+            // Fallback for "Offline Created" or "Sync Gap" notes (Upsert)
+            // also catch 'permission-denied' because Rules fail on 'resource.data' access if doc missing
+            if (user && (e.code === 'not-found' || e.code === 'permission-denied' || e.message?.includes('No document to update') || e.message?.includes('Missing or insufficient permissions'))) {
+                console.warn("Note update failed (missing/perm), recreating (Upsert):", id);
+                const recreatePayload = {
+                    ...updates,
+                    id: String(id), // Ensure ID string
+                    ownerId: user.uid, // Required for 'create' rule
+                    ownerEmail: user.email,
+                    createdAt: updates.createdAt || new Date().toISOString()
+                };
+                // Ensure safeUpdates + Critical Fields
+                await setDoc(ref, recreatePayload, { merge: true });
+            } else {
+                throw e;
+            }
+        }
     },
 
     reorderNotes: async (orderedIds) => {
@@ -442,6 +463,20 @@ export const firestoreService = {
 
     deleteNote: async (id) => {
         const ref = doc(db, 'notes', String(id));
+
+        // DEBUG: Fetch doc to see why delete fails
+        try {
+            const docSnap = await getDoc(ref);
+            if (docSnap.exists()) {
+                console.log(`[Firestore DEBUG] Attempting to delete note ${id}. Data:`, docSnap.data());
+                console.log(`[Firestore DEBUG] Current User: uid=${auth.currentUser?.uid}, email=${auth.currentUser?.email}`);
+            } else {
+                console.warn(`[Firestore DEBUG] Note ${id} does not exist before delete.`);
+            }
+        } catch (e) {
+            console.error("[Firestore DEBUG] Failed to fetch note before delete:", e);
+        }
+
         await deleteDoc(ref);
     },
 

@@ -22,11 +22,37 @@ export const UIProvider = ({ children }) => {
     const closeMobileMenu = () => setIsMobileMenuOpen(false);
     const toggleMobileMenu = () => setIsMobileMenuOpen(prev => !prev);
 
+    const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+    const [noteModalConfig, setNoteModalConfig] = useState(null); // { noteToEdit, type, autoStart }
+
+    const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
+    const [reminderModalConfig, setReminderModalConfig] = useState(null); // { reminderToEdit, ... }
+
+    const openNoteModal = (config = {}) => {
+        setNoteModalConfig(config);
+        setIsNoteModalOpen(true);
+    };
+    const closeNoteModal = () => {
+        setIsNoteModalOpen(false);
+        setNoteModalConfig(null);
+    };
+
+    const openReminderModal = (config = {}) => {
+        setReminderModalConfig(config);
+        setIsReminderModalOpen(true);
+    };
+    const closeReminderModal = () => {
+        setIsReminderModalOpen(false);
+        setReminderModalConfig(null);
+    };
+
     const value = {
         isSearchOpen, openSearch, closeSearch,
         isSettingsOpen, openSettings, closeSettings,
         isMobileMenuOpen, openMobileMenu, closeMobileMenu, toggleMobileMenu,
-        searchQuery, setSearchQuery
+        searchQuery, setSearchQuery,
+        isNoteModalOpen, noteModalConfig, openNoteModal, closeNoteModal,
+        isReminderModalOpen, reminderModalConfig, openReminderModal, closeReminderModal,
     };
 
     return (

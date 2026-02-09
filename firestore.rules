@@ -41,25 +41,39 @@ service cloud.firestore {
       allow create: if isAuthenticated() 
                    && request.resource.data.ownerId == request.auth.uid;
 
-      // Allow read: If owner OR if in sharedWith list
+      // Allow read: If owner (by ownerId, userId, or ownerEmail) OR if in sharedWith list
       allow read: if isAuthenticated() && (
         resource.data.ownerId == request.auth.uid ||
+        resource.data.userId == request.auth.uid || 
+        resource.data.ownerEmail == request.auth.token.email ||
         request.auth.token.email in resource.data.sharedWith
       );
 
-      // Allow update: Only owner (for now) or shared users if we wanted collaborative editing
-      // Allow update: Owner OR Shared users (but Shared users cannot change sharing settings)
+      // Allow update: Owner (by ownerId, userId, or ownerEmail) OR Shared users
       allow update: if isAuthenticated() && (
         resource.data.ownerId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.ownerEmail == request.auth.token.email ||
         (
           request.auth.token.email in resource.data.sharedWith &&
-          request.resource.data.ownerId == resource.data.ownerId &&
+          // Ensure ownership is not stolen
+          (request.resource.data.ownerId == resource.data.ownerId || request.resource.data.userId == resource.data.userId) &&
           request.resource.data.sharedWith == resource.data.sharedWith
         )
       );
 
-      // Allow delete: STRICTLY Only owner
-      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+      // Allow delete: Owner by various identifier fields (handles legacy and migration cases)
+      // Check ownerId, userId, ownerEmail, or if user is in sharedWith
+      allow delete: if isAuthenticated() && (
+        // Primary owner check
+        (resource.data.keys().hasAny(['ownerId']) && resource.data.ownerId == request.auth.uid) ||
+        // Legacy userId check  
+        (resource.data.keys().hasAny(['userId']) && resource.data.userId == request.auth.uid) ||
+        // ownerEmail check (for notes synced with email but missing UID)
+        (resource.data.keys().hasAny(['ownerEmail']) && resource.data.ownerEmail == request.auth.token.email) ||
+        // Shared user can also delete
+        (resource.data.keys().hasAny(['sharedWith']) && request.auth.token.email in resource.data.sharedWith)
+      );
     }
   }
 }

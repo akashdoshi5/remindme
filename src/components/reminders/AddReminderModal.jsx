@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { X, Clock, Calendar, Bell, Mic, MicOff, Pill, Upload, FileText, Trash2, Sun, Moon, Coffee, Eye, Download, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Clock, Calendar, Bell, Mic, MicOff, Pill, Upload, FileText, Trash2, Sun, Moon, Coffee, Eye, Download, Check, Play, Pause } from 'lucide-react';
 import { useVoice } from '../../hooks/useVoice';
 import { fileStorage } from '../../services/fileStorage';
-
 import { BackButtonManager } from '../../services/BackButtonManager';
 
 const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, autoStartListening = false }) => {
-    if (!isOpen) return null;
+    // Note: Early return moved to end of hook declarations (React Rules of Hooks compliance)
 
     // Standard State
     const [title, setTitle] = useState('');
@@ -17,9 +16,38 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     const [isImportant, setIsImportant] = useState(false);
     const [editScope, setEditScope] = useState('all'); // 'this' or 'all'
 
+    // AUDIO PLAYBACK STATE
+    const [playingFile, setPlayingFile] = useState(null); // URL or ID
+    const audioRef = useRef(null);
+
+    const handlePlayAudio = (url) => {
+        if (playingFile === url) {
+            audioRef.current?.pause();
+            setPlayingFile(null);
+        } else {
+            if (audioRef.current) {
+                audioRef.current.pause();
+            }
+            const audio = new Audio(url);
+            audio.onended = () => setPlayingFile(null);
+            audio.play().catch(e => console.error("Audio play error", e));
+            audioRef.current = audio;
+            setPlayingFile(url);
+        }
+    };
+
+    // Cleanup audio on close
+    useEffect(() => {
+        if (!isOpen) {
+            audioRef.current?.pause();
+            setPlayingFile(null);
+        }
+    }, [isOpen]);
+
     // Custom Days
     const [customDays, setCustomDays] = useState([]);
     const [showCustomDays, setShowCustomDays] = useState(false);
+
 
     // Medication Course State
     const [isCourse, setIsCourse] = useState(false);
@@ -535,6 +563,9 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     useEffect(() => {
         handleSubmitRef.current = handleSubmit;
     }, [handleSubmit]);
+
+    // Early return MUST be after all hooks (React Rules of Hooks compliance)
+    if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] md:p-4">
@@ -1106,7 +1137,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                 previewFile && (
                     <div className="fixed inset-0 z-[150] bg-black text-white flex flex-col animate-fade-in">
                         {/* Header */}
-                        <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-md absolute top-0 left-0 right-0">
+                        <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-md absolute top-0 left-0 right-0 z-50">
                             <span className="truncate font-medium flex-1 mr-4">{previewFile.name}</span>
                             <div className="flex items-center gap-3">
                                 {/* Download/Open External Button */}

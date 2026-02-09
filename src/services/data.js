@@ -32,7 +32,8 @@ const loadStore = () => {
     try {
         const key = getStorageKey();
         const local = localStorage.getItem(key);
-        return local ? JSON.parse(local) : JSON.parse(JSON.stringify(defaultData));
+        if (local) return JSON.parse(local);
+        return JSON.parse(JSON.stringify(defaultData));
     } catch (e) {
         console.error("Failed to load store", e);
         return JSON.parse(JSON.stringify(defaultData));
@@ -106,7 +107,22 @@ export const dataService = {
             // A. Initial Migration (Push local to cloud if needed)
             if ((store.reminders && store.reminders.length > 0) || (store.notes && store.notes.length > 0)) {
                 console.log("Authenticated User: Syncing local cache to Cloud...");
-                firestoreService.migrateLocalData(store).catch(e => console.error("Sync-up failed", e));
+
+                // V10: Ensure ownerId is attached to all migrated data
+                const sanitizedStore = { ...store };
+                if (sanitizedStore.reminders) {
+                    sanitizedStore.reminders = sanitizedStore.reminders.map(r => ({ ...r, ownerId: uid, ownerEmail: auth.currentUser?.email }));
+                }
+                if (sanitizedStore.notes) {
+                    sanitizedStore.notes = sanitizedStore.notes.map(n => ({ ...n, ownerId: uid, ownerEmail: auth.currentUser?.email }));
+                }
+
+                try {
+                    await firestoreService.migrateLocalData(sanitizedStore);
+                    console.log("Migration complete.");
+                } catch (e) {
+                    console.error("Sync-up failed", e);
+                }
             }
 
             // B. Setup Realtime Listeners (Pull cloud to local)
@@ -121,22 +137,23 @@ export const dataService = {
 
             // Notes Listener (Owned)
             const unsubNotes = firestoreService.getNotesRealtime((notes) => {
-                // Preserve existing SHARED notes when owned notes update
-                const currentShared = store.notes.filter(n => n.isShared);
+                // AUTO-REPAIR: Fix orphan notes (missing ownerId) that we can access
+                if (auth.currentUser) {
+                    notes.forEach(n => {
+                        if (!n.ownerId && (n.ownerEmail === auth.currentUser.email || n.userId === auth.currentUser.uid)) {
+                            console.log(`[Auto-Repair] Fixing orphan note ${n.id} (adding ownerId)`);
+                            firestoreService.updateNote(n.id, { ownerId: auth.currentUser.uid });
+                        }
+                    });
+                }
 
-                // Combine new OWNED with existing SHARED
-                // Filter out any owned notes that might be in currentShared (unlikely but safe)
-                const sharedMap = new Map(currentShared.map(n => [n.id, n]));
-
-                // If an owned note is also in sharedMap, we prefer the OWNED version (latest from this listener)
-                // Actually, sharedMap only contains isShared=true.
-                // Just concat.
-                store.notes = [...notes, ...Array.from(sharedMap.values())];
+                store.notes = notes;
 
                 // Sort by createdAt descending
                 store.notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-                save();
+                save(); // Persist to local storage
+                notifyListeners();
             });
             syncUnsubscribes.push(unsubNotes);
 
@@ -259,7 +276,28 @@ export const dataService = {
                         });
                     }
 
-                    return { ...cloudR, logs: mergedLogs };
+                    // V10.35: Also merge Exceptions to preserve pending instance edits
+                    const mergedExceptions = { ...cloudR.exceptions }; // Start with Cloud
+                    if (localR.exceptions) {
+                        Object.keys(localR.exceptions).forEach(key => {
+                            const localEx = localR.exceptions[key];
+                            const cloudEx = mergedExceptions[key];
+
+                            if (!cloudEx) {
+                                // Cloud doesn't have this exception yet - keep local
+                                mergedExceptions[key] = localEx;
+                            } else {
+                                // Both have it - compare by updatedAt if available, otherwise keep local
+                                const localTime = localEx.updatedAt ? new Date(localEx.updatedAt).getTime() : Date.now();
+                                const cloudTime = cloudEx.updatedAt ? new Date(cloudEx.updatedAt).getTime() : 0;
+                                if (localTime >= cloudTime) {
+                                    mergedExceptions[key] = localEx;
+                                }
+                            }
+                        });
+                    }
+
+                    return { ...cloudR, logs: mergedLogs, exceptions: mergedExceptions };
                 }
                 return cloudR;
             });
@@ -382,6 +420,9 @@ export const dataService = {
 
             // 1. Global Start Date Check
             if (dateString < univStart) return;
+
+            // Scope Helper: Define 'show' at top level of loop to avoid ReferenceErrors
+            let show = false;
 
             // 2. Global Duration Check
             if (univSchedule.durationDays) {
@@ -638,6 +679,12 @@ export const dataService = {
                         return; // Done with this reminder
                     }
                 }
+
+                // 2. Standard Frequencies (Daily, Weekly, etc)
+                if (r.frequency && r.frequency.startsWith('Every')) show = true;
+                else if (r.frequency === 'Daily') show = true;
+                else if (r.frequency === 'Today') show = (r.date === dateString || (!r.date && dateString === todayStr));
+                else if (r.date === dateString) show = true;
                 else if (r.frequency === 'Monthly') {
                     // Monthly Logic: Same day of month
                     const start = new Date(r.schedule?.startDate || r.date || '2000-01-01');
@@ -1093,7 +1140,8 @@ export const dataService = {
                     exceptions[instanceKey] = {
                         ...(exceptions[instanceKey] || {}),
                         ...updates,
-                        isException: true
+                        isException: true,
+                        updatedAt: new Date().toISOString() // V10.35: Track for merge priority
                     };
 
                     // V10.24 FIX: If Time or Date is updated, we check if we should PRESERVE the 'taken' status
@@ -1724,13 +1772,24 @@ export const dataService = {
     },
 
     deleteNote: async (id) => {
-        if (auth.currentUser) {
-            await firestoreService.deleteNote(id);
-            return;
+        // OPTIMISTIC: Update local store FIRST (so UI updates immediately)
+        if (store.notes) {
+            store.notes = store.notes.filter(n => String(n.id) !== String(id));
+            save();
+            notifyListeners(); // Trigger UI update immediately
         }
-        if (!store.notes) return;
-        store.notes = store.notes.filter(n => n.id !== id);
-        save();
+
+        // Then try to delete from Firestore if logged in
+        if (auth.currentUser) {
+            try {
+                await firestoreService.deleteNote(id);
+            } catch (err) {
+                console.error("Firestore deleteNote failed:", err);
+                // Note is already removed from local store, so user sees it gone
+                // On next sync, if note still exists in Firestore, it may reappear
+                // but for now, the delete action completes successfully from user's perspective
+            }
+        }
     },
 
     reorderNotes: async (newNotes) => {

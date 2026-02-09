@@ -21,10 +21,20 @@ const LoginPage = () => {
     const [confirmationResult, setConfirmationResult] = useState(null);
 
     React.useEffect(() => {
-        import('../services/firebase').then(module => {
-            module.setupRecaptcha('recaptcha-container');
-        });
-    }, []);
+        // Only setup ReCaptcha when phone auth is selected (and container exists)
+        if (authMethod === 'phone') {
+            const timer = setTimeout(() => {
+                import('../services/firebase').then(module => {
+                    try {
+                        module.setupRecaptcha('recaptcha-container');
+                    } catch (e) {
+                        console.warn('ReCaptcha setup failed:', e);
+                    }
+                });
+            }, 100); // Small delay to ensure DOM is ready
+            return () => clearTimeout(timer);
+        }
+    }, [authMethod]);
 
     const handleGoogleLogin = async () => {
         setIsLoading(true);

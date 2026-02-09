@@ -197,9 +197,9 @@ const HomePage = () => {
                     </div>
                     {caregivers.length > 0 ? (
                         <div className="grid grid-cols-2 gap-3">
-                            {caregivers.slice(0, 4).map(patient => (
+                            {caregivers.slice(0, 4).map((patient, index) => (
                                 <motion.div
-                                    key={patient.id}
+                                    key={`${patient.id}-${index}`}
                                     whileTap={{ scale: 0.98 }}
                                     onClick={() => navigate('/reports', { state: { viewingProfile: patient } })}
                                     className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 flex items-center gap-3 shadow-sm cursor-pointer hover:border-orange-500/50 transition-colors"
@@ -245,9 +245,9 @@ const HomePage = () => {
                     </motion.div>
 
                     {/* Recent Notes List */}
-                    {notes.map(note => (
+                    {notes.map((note, index) => (
                         <motion.div
-                            key={note.id}
+                            key={`${note.id}-${index}`}
                             whileTap={{ scale: 0.98 }}
                             onClick={() => navigate('/notes', { state: { focusId: note.id } })}
                             className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col gap-2 min-h-[120px]"

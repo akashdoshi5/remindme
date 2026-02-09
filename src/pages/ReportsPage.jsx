@@ -328,7 +328,7 @@ const ReportsPage = () => {
         <div className="max-w-5xl mx-auto pb-12 relative">
 
             {/* STICKY HEADER: Title & Profile Switcher */}
-            <div className="sticky top-16 md:top-20 z-40 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-md -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-800 md:px-0 md:mx-0 md:rounded-b-2xl md:mb-6 transition-all shadow-sm">
+            <div className="sticky top-0 z-40 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-md -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-700/50 md:px-0 md:mx-0 md:rounded-b-2xl md:mb-6 transition-all shadow-sm">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900 dark:text-white capitalize">

@@ -165,7 +165,7 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
             className={`card group cursor-pointer relative select-none outline-none overflow-hidden
                 ${isSelected
                     ? 'ring-2 ring-orange-500 bg-orange-50 dark:bg-orange-900/20 z-10 shadow-lg border-transparent'
-                    : 'ring-0 border-gray-200 dark:border-gray-700 shadow-sm border-l-4 bg-white dark:bg-gray-800'
+                    : 'ring-0 border-gray-200 dark:border-gray-700/50 shadow-sm border-l-4 bg-white dark:bg-gray-800'
                 } 
                 transition-all duration-200
                 ${(!isSelected && highlightedId !== note.id) ? (

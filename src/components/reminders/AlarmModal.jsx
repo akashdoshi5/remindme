@@ -3,8 +3,8 @@ import { Bell, Clock, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
-    // Generated Chime using AudioContext for reliability without external files
-    const playChime = () => {
+    // Alarm sound that repeats until stopped - more attention-grabbing than a single chime
+    const playAlarm = () => {
         try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             if (!AudioContext) return null;
@@ -16,34 +16,53 @@ const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
                 ctx.resume().catch(e => console.warn("Audio resume failed", e));
             }
 
-            const oscillators = [];
+            let isPlaying = true;
+            const gainNode = ctx.createGain();
+            gainNode.connect(ctx.destination);
+            gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
 
-            // Create a pleasant major chord chime (C5, E5, G5)
-            [523.25, 659.25, 783.99].forEach((freq, i) => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
+            // Function to play one alarm beep sequence
+            const playBeepSequence = (startTime) => {
+                if (!isPlaying) return;
 
-                osc.type = 'sine';
-                osc.frequency.value = freq;
+                // Two-tone alarm pattern (classic alarm sound: high-low-high)
+                const frequencies = [880, 660, 880]; // A5, E5, A5
+                const beepDuration = 0.15;
+                const pauseBetweenBeeps = 0.05;
 
-                // Envelope for a bell-like sound
-                gain.gain.setValueAtTime(0, ctx.currentTime);
-                gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.1);
-                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 2);
+                frequencies.forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const beepGain = ctx.createGain();
 
-                osc.connect(gain);
-                gain.connect(ctx.destination);
+                    osc.type = 'square'; // Sharper alarm-like sound
+                    osc.frequency.value = freq;
 
-                // Stagger start slightly for arpeggio effect
-                osc.start(ctx.currentTime + (i * 0.1));
-                osc.stop(ctx.currentTime + 2.5);
-                oscillators.push(osc);
-            });
+                    osc.connect(beepGain);
+                    beepGain.connect(gainNode);
+
+                    const beepStart = startTime + (i * (beepDuration + pauseBetweenBeeps));
+                    beepGain.gain.setValueAtTime(0, beepStart);
+                    beepGain.gain.linearRampToValueAtTime(0.4, beepStart + 0.02);
+                    beepGain.gain.setValueAtTime(0.4, beepStart + beepDuration - 0.02);
+                    beepGain.gain.linearRampToValueAtTime(0, beepStart + beepDuration);
+
+                    osc.start(beepStart);
+                    osc.stop(beepStart + beepDuration);
+                });
+            };
+
+            // Play alarm sequence repeatedly every 1.5 seconds
+            let currentTime = ctx.currentTime;
+            const sequenceInterval = 1.5; // seconds between alarm sequences
+
+            // Schedule initial sequences
+            for (let i = 0; i < 20; i++) { // Pre-schedule 30 seconds of alarm
+                playBeepSequence(currentTime + (i * sequenceInterval));
+            }
 
             return () => {
-                oscillators.forEach(osc => {
-                    try { osc.stop(); } catch (e) { }
-                });
+                isPlaying = false;
+                gainNode.gain.setValueAtTime(0, ctx.currentTime);
                 ctx.close();
             };
         } catch (e) {
@@ -70,11 +89,11 @@ const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
             }
         }
 
-        // 2. Play Chime Once
-        const stopChime = playChime();
+        // 2. Play Alarm Sound (repeating until dismissed)
+        const stopAlarm = playAlarm();
 
         return () => {
-            if (stopChime) stopChime();
+            if (stopAlarm) stopAlarm();
             if (navigator.vibrate) navigator.vibrate(0); // Stop vibration
         };
     }, [reminder?.uniqueId, isSilent]); // Use uniqueId to ensure it triggers on new alarms

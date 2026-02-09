@@ -101,7 +101,8 @@ const NotesPage = () => {
         const params = new URLSearchParams(location.search);
         if (location.state?.openAdd || params.get('add') === 'true') {
             handleAddNew('text');
-            window.history.replaceState({}, document.title);
+            // Clear the query param and state to prevent re-opening on refresh/render
+            navigate(location.pathname, { replace: true, state: {} });
         }
 
         if (location.state?.searchQuery) {
@@ -288,9 +289,10 @@ const NotesPage = () => {
         }
     };
 
-    const handleBatchDelete = () => {
+    const handleBatchDelete = async () => {
         if (window.confirm(`Delete ${selectedIds.size} notes?`)) {
-            selectedIds.forEach(id => dataService.deleteNote(id));
+            // Wait for all delete operations to complete
+            await Promise.all(Array.from(selectedIds).map(id => dataService.deleteNote(id)));
             setTriggerReload(prev => prev + 1);
             handleClearSelection();
         }
@@ -405,7 +407,7 @@ const NotesPage = () => {
             </AnimatePresence>
 
             {/* STICKY HEADER & SEARCH */}
-            <div className="sticky top-16 md:top-20 z-30 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-sm -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-800 md:static md:bg-transparent md:p-0 md:border-none md:mb-6 transition-all shadow-sm md:shadow-none">
+            <div className="sticky top-16 md:top-20 z-30 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-700/50 md:static md:bg-transparent md:p-0 md:border-none md:mb-6 transition-all shadow-sm md:shadow-none">
                 <div className="flex flex-col gap-3">
 
                     {/* Persistent Search Bar */}

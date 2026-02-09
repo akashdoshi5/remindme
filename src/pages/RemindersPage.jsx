@@ -318,12 +318,12 @@ const RemindersPage = () => {
 
             {/* Header & Filters */}
             {/* Header & Filters */}
-            <div className="sticky top-16 md:top-20 z-40 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-md -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-800 md:px-0 md:mx-0 md:rounded-b-2xl md:mb-6 transition-all shadow-sm">
+            <div className="sticky top-0 z-40 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-md -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-700/50 md:px-0 md:mx-0 md:rounded-b-2xl md:mb-6 transition-all shadow-sm">
                 <div className="flex flex-col gap-3">
 
                     {/* Search Bar or Date Nav */}
                     {showSearch ? (
-                        <div className="flex items-center gap-2 bg-white dark:bg-gray-900 p-2 md:p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 relative z-50 animate-fade-in">
+                        <div className="flex items-center gap-2 bg-white dark:bg-gray-800 p-2 md:p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 relative z-50 animate-fade-in">
                             <Search size={20} className="text-gray-400 ml-2" />
                             <input
                                 type="text"
@@ -338,7 +338,7 @@ const RemindersPage = () => {
                             </button>
                         </div>
                     ) : (
-                        <div className="flex items-center justify-between bg-white dark:bg-gray-900 p-2 md:p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 relative z-50">
+                        <div className="flex items-center justify-between bg-white dark:bg-gray-800 p-2 md:p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 relative z-50">
                             <button onClick={(e) => { e.stopPropagation(); handleDateChange(-1); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400"><ChevronLeft size={20} /></button>
                             <div className="flex items-center gap-2 relative group cursor-pointer">
                                 {/* V10: Quick Calendar Picker */}
@@ -500,7 +500,7 @@ const RemindersPage = () => {
 
                     return (
                         <div key={group} className="animate-fade-in relative">
-                            <h3 className="text-base font-bold text-gray-400 mb-3 flex items-center gap-2 px-1 uppercase tracking-wider text-xs sticky top-0 bg-gray-50 dark:bg-gray-950 z-20 py-2">
+                            <h3 className="text-base font-bold text-gray-400 mb-3 flex items-center gap-2 px-1 uppercase tracking-wider text-xs sticky top-0 bg-gray-50 dark:bg-gray-900 z-20 py-2">
                                 {group === 'Morning' && <Sun className="text-orange-400" size={16} />}
                                 {group === 'Afternoon' && <Sun className="text-yellow-500" size={16} />}
                                 {group === 'Evening' && <Moon className="text-indigo-400" size={16} />}
