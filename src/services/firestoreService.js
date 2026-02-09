@@ -322,9 +322,11 @@ export const firestoreService = {
             // We just merge them. If an ID exists in multiple, the last one wins (updates).
             // Since they point to the same doc ID, data should be identical roughly.
 
-            notesMaps.owner.forEach((v, k) => allNotes.set(k, v));
-            notesMaps.user.forEach((v, k) => allNotes.set(k, v));
+            // Priority: Owner > User > Email
+            // We merge them in reverse order of priority so high priority overwrites low.
             notesMaps.email.forEach((v, k) => allNotes.set(k, v));
+            notesMaps.user.forEach((v, k) => allNotes.set(k, v));
+            notesMaps.owner.forEach((v, k) => allNotes.set(k, v));
 
             const uniqueNotes = Array.from(allNotes.values());
             // Client-side sort

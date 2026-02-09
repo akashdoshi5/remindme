@@ -147,7 +147,22 @@ export const dataService = {
                     });
                 }
 
-                store.notes = notes;
+                // V10.25 FIX: Preserver SHARED notes when updating owned notes
+                // Current store has [Owned + Shared]. 'notes' is just [Owned].
+                const currentShared = (store.notes || []).filter(n => n.isShared);
+
+                // Deduplicate in case 'notes' (Owned) somehow includes Shared (unlikely but safe)
+                const newOwnedMap = new Map();
+                notes.forEach(n => newOwnedMap.set(n.id, n));
+
+                // Add shared back if not in newOwned
+                currentShared.forEach(n => {
+                    if (!newOwnedMap.has(n.id)) {
+                        newOwnedMap.set(n.id, n);
+                    }
+                });
+
+                store.notes = Array.from(newOwnedMap.values());
 
                 // Sort by createdAt descending
                 store.notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -603,17 +618,54 @@ export const dataService = {
                             // No, the existing code structure has 'times' processing inside the `if (match)`.
                             // Let's execute the instance creation here directly.
 
-                            let instanceKey = `${dateString}_${time}`;
-                            // Legacy key check for backward compatibility
-                            const legacyKey = `${dateString}_time_${time}`;
-                            if ((r.logs || {})[legacyKey] || (r.exceptions || {})[legacyKey]) {
-                                instanceKey = legacyKey;
-                            }
+                            // Helper to check multiple key formats (New YYYY-MM-DD vs Legacy M/D/YYYY)
+                            const tryGetLog = (collection, dateStr, timeStr) => {
+                                if (!collection) return null;
 
-                            let log = (r.logs || {})[instanceKey];
-                            let exception = (r.exceptions || {})[instanceKey];
+                                // 1. Standard Modern Key (YYYY-MM-DD_HH:MM)
+                                const key1 = `${dateStr}_${timeStr}`;
+                                if (collection[key1]) return { key: key1, data: collection[key1] };
+
+                                // 2. Legacy Key with 'time' literal (YYYY-MM-DD_time_HH:MM) - Migration V5
+                                const key2 = `${dateStr}_time_${timeStr}`;
+                                if (collection[key2]) return { key: key2, data: collection[key2] };
+
+                                // 3. Legacy Locale Date Formats (M/D/YYYY, D/M/YYYY) - Legacy App Sync
+                                // Because old app used toLocaleDateString() which varies by device region
+                                const [y, m, d] = dateStr.split('-').map(Number); // 2026, 2, 7
+                                const formats = [
+                                    `${m}/${d}/${y}`,       // M/D/YYYY
+                                    `${d}/${m}/${y}`,       // D/M/YYYY
+                                    `${m}/${d}/${String(y).slice(-2)}`, // M/D/YY
+                                    `${d}/${m}/${String(y).slice(-2)}`  // D/M/YY
+                                ];
+
+                                for (const f of formats) {
+                                    const kA = `${f}_${timeStr}`;
+                                    const kB = `${f}_time_${timeStr}`;
+                                    if (collection[kA]) return { key: kA, data: collection[kA] };
+                                    if (collection[kB]) return { key: kB, data: collection[kB] };
+                                }
+
+                                return null;
+                            };
+
+                            let instanceKey = `${dateString}_${time}`;
+
+                            // Attempt to find existing log/exception using all possible key variations
+                            const foundLog = tryGetLog(r.logs, dateString, time);
+                            const foundEx = tryGetLog(r.exceptions, dateString, time);
+
+                            // Use the found key if available to ensure we map back to the correct data
+                            if (foundLog) instanceKey = foundLog.key;
+                            else if (foundEx) instanceKey = foundEx.key;
+
+                            const log = foundLog ? foundLog.data : undefined;
+                            const exception = foundEx ? foundEx.data : undefined;
 
                             if (exception && exception.status === 'cancelled') return;
+                            // Strict Date Check: If exception moves it to another date, hide it from THIS date's list
+                            // But if exception.date matches dateString, we keep it.
                             if (exception && exception.date && exception.date !== dateString) return;
 
                             let displayTime = exception?.time || time;
@@ -788,15 +840,42 @@ export const dataService = {
                         // Debug logs showed keys like '2026-02-01_time_20:00'. 
                         // Previous code generated '2026-02-01_20:00'.
                         // We must check BOTH to be safe, or standardize execution.
+                        // Standardize Key Lookup (Reuse helper logic if possible, or repeat inline)
+                        // Repeating inline for scope access, but simplified
                         let instanceKey = `${dateString}_${time || 'default'}`;
-                        const legacyKey = `${dateString}_time_${time || 'default'}`;
 
-                        let log = (r.logs || {})[instanceKey] || (r.logs || {})[legacyKey];
-                        let exception = (r.exceptions || {})[instanceKey] || (r.exceptions || {})[legacyKey];
+                        // Legacy Locale Support for Standard Reminders
+                        const [y, m, d] = dateString.split('-').map(Number);
+                        const legacyDates = [
+                            `${m}/${d}/${y}`, `${d}/${m}/${y}`,
+                            `${m}/${d}/${String(y).slice(-2)}`, `${d}/${m}/${String(y).slice(-2)}`
+                        ];
 
-                        // Normalize key for future use in this loop
-                        if ((r.logs || {})[legacyKey] || (r.exceptions || {})[legacyKey]) {
-                            instanceKey = legacyKey;
+                        // Search logic
+                        let checkKeys = [
+                            instanceKey,
+                            `${dateString}_time_${time || 'default'}`
+                        ];
+                        // Add legacy date combinations
+                        legacyDates.forEach(ld => {
+                            checkKeys.push(`${ld}_${time || 'default'}`);
+                            checkKeys.push(`${ld}_time_${time || 'default'}`);
+                        });
+
+                        // Find first match
+                        let log, exception;
+
+                        for (const k of checkKeys) {
+                            if ((r.logs || {})[k]) {
+                                log = r.logs[k];
+                                instanceKey = k;
+                                break;
+                            }
+                            if ((r.exceptions || {})[k]) {
+                                exception = r.exceptions[k];
+                                instanceKey = k;
+                                break;
+                            }
                         }
 
                         if (exception && exception.status === 'cancelled') return;
