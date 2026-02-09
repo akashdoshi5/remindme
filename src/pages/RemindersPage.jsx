@@ -296,7 +296,7 @@ const RemindersPage = () => {
 
     return (
         <div
-            className="max-w-5xl mx-auto pb-24 md:pb-10 relative min-h-screen"
+            className="max-w-5xl mx-auto pb-40 md:pb-10 relative min-h-screen"
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
@@ -728,7 +728,7 @@ const RemindersPage = () => {
                                                             </div>
                                                         </div>
 
-                                                        <div className="flex gap-2 shrink-0">
+                                                        <div className="flex gap-2 shrink-0 overflow-x-auto no-scrollbar pb-1 max-w-[50%] md:max-w-none">
                                                             {(() => {
                                                                 // Lock Logic: Disable delete for history older than Yesterday
                                                                 const yesterday = new Date();
