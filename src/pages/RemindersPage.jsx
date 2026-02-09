@@ -848,11 +848,11 @@ const RemindersPage = () => {
                                                                             setTriggerReload(prev => prev + 1);
                                                                         }}
                                                                         disabled={!isActionable}
-                                                                        className={`h-12 md:h-auto min-w-[3rem] w-auto px-3 md:px-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 font-bold ${isActionable
+                                                                        className={`h-12 w-12 md:w-auto md:px-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 font-bold ${isActionable
                                                                             ? (reason === 'Missed'
                                                                                 ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20' // Missed but actionable
                                                                                 : 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/20')
-                                                                            : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed shadow-none'
+                                                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed shadow-none'
                                                                             }`}
                                                                     >
                                                                         {isActionable ? (
@@ -867,7 +867,17 @@ const RemindersPage = () => {
                                                                                 </span>
                                                                             </>
                                                                         ) : (
-                                                                            <span className="text-xs font-bold uppercase">{reason}</span>
+                                                                            <>
+                                                                                {/* Mobile Icons for Status */}
+                                                                                <span className="md:hidden">
+                                                                                    {reason === 'Missed' && <XCircle size={20} className="text-red-400" />}
+                                                                                    {reason === 'Too Early' && <Clock size={20} />}
+                                                                                    {reason === 'History' && <Archive size={20} />}
+                                                                                    {!['Missed', 'Too Early', 'History'].includes(reason) && <AlertCircle size={20} />}
+                                                                                </span>
+                                                                                {/* Desktop: Text */}
+                                                                                <span className="hidden md:inline text-xs font-bold uppercase">{reason}</span>
+                                                                            </>
                                                                         )}
                                                                     </button>
                                                                 );
