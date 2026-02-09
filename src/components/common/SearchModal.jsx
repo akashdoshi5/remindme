@@ -205,6 +205,37 @@ const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
                                                 <div className="flex-1 min-w-0">
                                                     <h4 className="font-bold text-gray-800 dark:text-gray-200 group-hover:text-teal-700 dark:group-hover:text-teal-400 truncate">{n.title}</h4>
                                                     <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{n.content}</p>
+
+                                                    {/* Attachment Matches for Notes */}
+                                                    {query.trim() && n.files?.length > 0 && n.files.filter(f =>
+                                                        f.name.toLowerCase().includes(query.toLowerCase()) ||
+                                                        (f.extractedText && f.extractedText.toLowerCase().includes(query.toLowerCase()))
+                                                    ).map((match, fIdx) => (
+                                                        <div key={fIdx} className="mt-2 bg-teal-50 dark:bg-teal-900/10 border border-teal-100 dark:border-teal-900/30 rounded-md p-1.5 text-xs flex items-center gap-2">
+                                                            <span className="font-bold text-teal-700 dark:text-teal-500 shrink-0">📎 Match in {match.name}:</span>
+                                                            {match.extractedText && match.extractedText.toLowerCase().includes(query.toLowerCase()) && (
+                                                                <span className="text-gray-600 dark:text-gray-400 italic truncate">
+                                                                    "...{match.extractedText.substring(Math.max(0, match.extractedText.toLowerCase().indexOf(query.toLowerCase()) - 10), Math.min(match.extractedText.length, match.extractedText.toLowerCase().indexOf(query.toLowerCase()) + 20))}..."
+                                                                </span>
+                                                            )}
+                                                            <button
+                                                                className="ml-auto text-blue-600 hover:underline shrink-0 flex items-center gap-1"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    // Check for image
+                                                                    const isImage = match.name && /\.(jpg|jpeg|png|gif|webp)$/i.test(match.name);
+                                                                    setPreviewData({
+                                                                        title: match.name,
+                                                                        text: match.extractedText,
+                                                                        imageUrl: isImage ? match.url : null,
+                                                                        searchQuery: query
+                                                                    });
+                                                                }}
+                                                            >
+                                                                <Eye size={12} /> Preview
+                                                            </button>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                                 <ArrowRight size={16} className="text-gray-300 group-hover:text-teal-500 -translate-x-2 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all shrink-0" />
                                             </div>

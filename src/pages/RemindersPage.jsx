@@ -627,36 +627,65 @@ const RemindersPage = () => {
 
                                                                 {/* Attachments Display */}
                                                                 {reminder.files && reminder.files.length > 0 && (
-                                                                    <div className="flex gap-2 mt-1.5 overflow-x-auto scrollbar-none">
-                                                                        {reminder.files.map((file, fIdx) => (
-                                                                            <button
-                                                                                key={fIdx}
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    // Open file preview
-                                                                                    if (file.type?.startsWith('image/') || file.url?.match(/\.(jpeg|jpg|gif|png)$/i)) {
-                                                                                        // Open Image In New Tab (Temporary Simple Preview for Images)
-                                                                                        // Or we can use a lightbox. For now, let's just open url if exists, or show preview.
-                                                                                        if (file.url) window.open(file.url, '_blank');
-                                                                                        else if (file.data) {
-                                                                                            // Base64 image
-                                                                                            const win = window.open();
-                                                                                            win.document.write('<iframe src="' + file.data + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
-                                                                                        }
-                                                                                    } else {
-                                                                                        // Text/PDF Preview via Modal
+                                                                    <div className="flex flex-col mt-1.5 gap-1">
+                                                                        {/* File Chips */}
+                                                                        <div className="flex gap-2 overflow-x-auto scrollbar-none">
+                                                                            {reminder.files.map((file, fIdx) => (
+                                                                                <button
+                                                                                    key={fIdx}
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        // Consistent Preview via Modal
+                                                                                        const isImage = (file.type?.startsWith('image/') || file.url?.match(/\.(jpeg|jpg|gif|png|webp)$/i) || file.name?.match(/\.(jpeg|jpg|gif|png|webp)$/i));
+
                                                                                         setPreviewData({
                                                                                             title: file.name,
                                                                                             text: file.extractedText || "No text content available.",
-                                                                                            type: 'text'
+                                                                                            imageUrl: isImage ? (file.url || file.data) : null,
+                                                                                            searchQuery: searchQuery // Pass query for highlighting
                                                                                         });
-                                                                                    }
-                                                                                }}
-                                                                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                                                                            >
-                                                                                <Paperclip size={10} className="text-gray-500" />
-                                                                                <span className="truncate max-w-[80px]">{file.name}</span>
-                                                                            </button>
+                                                                                    }}
+                                                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-colors shrink-0 ${searchQuery && (file.name.toLowerCase().includes(searchQuery.toLowerCase()) || (file.extractedText && file.extractedText.toLowerCase().includes(searchQuery.toLowerCase())))
+                                                                                            ? 'bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-200 dark:border-yellow-700 font-bold'
+                                                                                            : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                                                                        }`}
+                                                                                >
+                                                                                    <Paperclip size={10} className={searchQuery && (file.name.toLowerCase().includes(searchQuery.toLowerCase()) || (file.extractedText && file.extractedText.toLowerCase().includes(searchQuery.toLowerCase()))) ? "text-yellow-600" : "text-gray-500"} />
+                                                                                    <span className="truncate max-w-[100px]">{file.name}</span>
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+
+                                                                        {/* Search Match Snippets (Only when searching) */}
+                                                                        {searchQuery && reminder.files.filter(f =>
+                                                                            f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                                                            (f.extractedText && f.extractedText.toLowerCase().includes(searchQuery.toLowerCase()))
+                                                                        ).map((match, mIdx) => (
+                                                                            <div key={`match-${mIdx}`} className="mt-1 text-xs bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-900/30 rounded p-1.5 animate-fade-in">
+                                                                                <div className="font-bold text-yellow-700 dark:text-yellow-500 mb-0.5 flex items-center gap-1">
+                                                                                    <Search size={10} /> Match in {match.name}:
+                                                                                </div>
+                                                                                {match.extractedText && match.extractedText.toLowerCase().includes(searchQuery.toLowerCase()) && (
+                                                                                    <div className="text-gray-600 dark:text-gray-400 italic truncate pl-4 border-l-2 border-yellow-200 dark:border-yellow-800 text-[10px]">
+                                                                                        "...{match.extractedText.substring(Math.max(0, match.extractedText.toLowerCase().indexOf(searchQuery.toLowerCase()) - 15), Math.min(match.extractedText.length, match.extractedText.toLowerCase().indexOf(searchQuery.toLowerCase()) + 30))}..."
+                                                                                    </div>
+                                                                                )}
+                                                                                <button
+                                                                                    className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 hover:underline mt-1 text-[10px] uppercase font-bold tracking-normal flex items-center gap-1"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        const isImage = (match.type?.startsWith('image/') || match.url?.match(/\.(jpeg|jpg|gif|png|webp)$/i) || match.name?.match(/\.(jpeg|jpg|gif|png|webp)$/i));
+                                                                                        setPreviewData({
+                                                                                            title: match.name,
+                                                                                            text: match.extractedText,
+                                                                                            imageUrl: isImage ? (match.url || match.data) : null,
+                                                                                            searchQuery: searchQuery
+                                                                                        });
+                                                                                    }}
+                                                                                >
+                                                                                    Preview Match
+                                                                                </button>
+                                                                            </div>
                                                                         ))}
                                                                     </div>
                                                                 )}
