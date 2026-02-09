@@ -1,8 +1,20 @@
 import React, { useEffect, useRef } from 'react';
 import { X, Search } from 'lucide-react';
 
+import { BackButtonManager } from '../../services/BackButtonManager';
+
 const TextPreviewModal = ({ isOpen, onClose, title, text, searchQuery, imageUrl }) => {
     const contentRef = useRef(null);
+
+    // Back Button Handling
+    useEffect(() => {
+        if (!isOpen) return;
+        const unregister = BackButtonManager.register(async () => {
+            onClose();
+            return true;
+        });
+        return unregister;
+    }, [isOpen, onClose]);
 
     useEffect(() => {
         if (isOpen && searchQuery && contentRef.current && !imageUrl) {

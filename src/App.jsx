@@ -213,7 +213,10 @@ const AppContent = () => {
 
       {/* Global FAB for Desktop (optional, or rely on Header) */}
       {/* Mobile Nav handles bottom bar */}
-      <MobileNav onMenuClick={openMobileMenu} onMicClick={handleFloatingMic} />
+      {/* Mobile Nav handles bottom bar - Hide when Modals are open to prevent overlap */}
+      {(!isNoteModalOpen && !isReminderModalOpen && !activeAlarm && !isSearchOpen) && (
+        <MobileNav onMenuClick={openMobileMenu} onMicClick={handleFloatingMic} />
+      )}
 
       <MobileMenu
         isOpen={isMobileMenuOpen}
@@ -266,8 +269,8 @@ const AppContent = () => {
         onClose={closeReminderModal}
         reminderToEdit={reminderModalConfig?.reminderToEdit}
         initialData={reminderModalConfig?.initialData} // For "Convert to Reminder"
-        onSave={async (reminderData) => {
-          if (reminderData.id) await dataService.updateReminder(reminderData);
+        onSave={async (reminderData, instanceKey) => {
+          if (reminderData.id) await dataService.updateReminder(reminderData.id, reminderData, instanceKey);
           else await dataService.addReminder(reminderData);
           window.dispatchEvent(new Event('storage-update'));
           return reminderData;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Clock, Calendar, Bell, Mic, MicOff, Pill, Upload, FileText, Trash2, Sun, Moon, Coffee, Eye, Download, Check, Play, Pause } from 'lucide-react';
+import { X, Calendar, Clock, Bell, Repeat, FileText, Check, ChevronRight, AlertTriangle, Mic, MicOff, Upload, Download, Trash2, Eye, Coffee, Sun, Moon, ChevronLeft } from 'lucide-react';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { useVoice } from '../../hooks/useVoice';
 import { fileStorage } from '../../services/fileStorage';
 import { BackButtonManager } from '../../services/BackButtonManager';
@@ -14,6 +15,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     const [frequency, setFrequency] = useState('Once');
     const [instructions, setInstructions] = useState('');
     const [isImportant, setIsImportant] = useState(false);
+    const [soundType, setSoundType] = useState('default'); // 'default' or 'alarm'
     const [editScope, setEditScope] = useState('all'); // 'this' or 'all'
 
     // AUDIO PLAYBACK STATE
@@ -133,7 +135,9 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             setType(reminderToEdit.type);
             setTime(reminderToEdit.displayTime || reminderToEdit.time);
             setInstructions(reminderToEdit.instructions || '');
+            setInstructions(reminderToEdit.instructions || '');
             setIsImportant(reminderToEdit.isImportant);
+            setSoundType(reminderToEdit.soundType || 'default');
             setFiles(reminderToEdit.files || []);
 
             // Instance Scope Logic
@@ -201,7 +205,9 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             setTime(timeStr);
             setFrequency('Once');
             setInstructions('');
+            setInstructions('');
             setIsImportant(false);
+            setSoundType('default');
             setCustomDays([]);
             setShowCustomDays(false);
             setIsCourse(false);
@@ -468,6 +474,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             type,
             instructions,
             isImportant,
+            soundType,
             isShared: reminderToEdit ? reminderToEdit.isShared : false,
             status: reminderToEdit ? reminderToEdit.status : 'upcoming',
             id: reminderToEdit ? reminderToEdit.id : undefined,
@@ -540,6 +547,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
         setIsSaving(true);
 
         try {
+            await Haptics.impact({ style: ImpactStyle.Light });
             if (reminderToEdit && editScope === 'this') {
                 // Update specific instance ONLY
                 // Explicitly verify time is in passed data
@@ -1115,7 +1123,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                         </div>
                     </div>
 
-                    <div className="fixed bottom-0 left-0 right-0 p-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 z-[110] md:static md:z-30 md:border-t md:shrink-0">
+                    <div className="fixed bottom-0 left-0 right-0 p-4 pb-8 md:pb-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 z-[120] md:static md:z-30 md:border-t md:shrink-0">
                         <div className="flex gap-3">
                             <button
                                 type="button"
@@ -1135,9 +1143,15 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             {/* FULL SCREEN FILE PREVIEW OVERLAY */}
             {
                 previewFile && (
-                    <div className="fixed inset-0 z-[150] bg-black text-white flex flex-col animate-fade-in">
+                    <div className="fixed inset-0 z-[200] bg-black text-white flex flex-col animate-fade-in h-[100dvh]">
                         {/* Header */}
-                        <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-md absolute top-0 left-0 right-0 z-50">
+                        <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-md z-50">
+                            <button
+                                onClick={() => setPreviewFile(null)}
+                                className="mr-3 p-2 bg-white/10 rounded-full hover:bg-white/20 text-white transition-all"
+                            >
+                                <ChevronLeft size={24} />
+                            </button>
                             <span className="truncate font-medium flex-1 mr-4">{previewFile.name}</span>
                             <div className="flex items-center gap-3">
                                 {/* Download/Open External Button */}
@@ -1183,6 +1197,16 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                     </a>
                                 </div>
                             )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 pb-8 md:pb-4 bg-black/50 backdrop-blur-md flex justify-center z-50">
+                            <button
+                                onClick={() => setPreviewFile(null)}
+                                className="px-6 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full text-white font-medium transition-colors"
+                            >
+                                Close Preview
+                            </button>
                         </div>
                     </div>
                 )

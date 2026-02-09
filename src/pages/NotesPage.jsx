@@ -44,9 +44,10 @@ const NotesPage = () => {
     };
 
     const handleTouchEnd = async () => {
-        if (pullY > 80 && !isRefreshing) {
+        if (pullY > 150 && !isRefreshing) {
             setIsRefreshing(true);
             setPullY(0); // Reset position but show spinner
+            await Haptics.impact({ style: ImpactStyle.Light });
             await dataService.forceSync();
             setTimeout(() => setIsRefreshing(false), 500); // Min wait
         } else {
@@ -440,8 +441,8 @@ const NotesPage = () => {
             </AnimatePresence>
 
             {/* STICKY HEADER & SEARCH */}
-            <div className="sticky top-16 md:top-20 z-30 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-700/50 md:static md:bg-transparent md:p-0 md:border-none md:mb-6 transition-all shadow-sm md:shadow-none">
-                <div className="flex flex-col gap-3">
+            <div className="sticky top-0 md:top-20 z-30 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-700/50 md:static md:bg-transparent md:p-0 md:border-none md:mb-6 transition-all shadow-sm md:shadow-none">
+                <div className="flex flex-col gap-2">
 
                     {/* Persistent Search Bar */}
                     <div className="flex items-center gap-2 bg-white dark:bg-gray-900 p-2 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in my-1">
@@ -527,7 +528,7 @@ const NotesPage = () => {
             />
 
             {/* Notes Grid */}
-            <div className="mt-4 md:mt-0 space-y-8">
+            <div className="mt-2 md:mt-0 space-y-4 md:space-y-8">
                 {(!searchQuery || !searchQuery.trim()) ? (
                     <>
                         {/* PINNED SECTION */}
@@ -644,7 +645,7 @@ const NotesPage = () => {
             }
 
 
-            <div className="fixed bottom-24 md:bottom-10 right-6 md:right-10 z-40 flex flex-col gap-3 items-center">
+            <div className="fixed bottom-24 md:bottom-10 right-6 md:right-10 z-50 flex flex-col gap-3 items-center">
                 <button
                     onClick={() => handleAddNew('text', true)}
                     className="w-12 h-12 bg-white dark:bg-gray-800 text-orange-600 shadow-lg rounded-full flex items-center justify-center border border-gray-100 dark:border-gray-700 hover:scale-105 transition-transform"

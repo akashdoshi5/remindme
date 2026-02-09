@@ -5,23 +5,37 @@ import { Capacitor } from '@capacitor/core';
 export const useNotifications = () => {
     const [permission, setPermission] = useState('default');
 
+    // Initialize Channels
+    useEffect(() => {
+        if (Capacitor.isNativePlatform()) {
+            // Channel 1: Standard Reminders (Default Sound)
+            LocalNotifications.createChannel({
+                id: 'reminders_v10',
+                name: 'Reminders',
+                description: 'General reminders',
+                importance: 4,
+                visibility: 1,
+                sound: 'default_notification.ogg', // System Default
+                vibration: true
+            }).catch(e => console.error("Channel Create Error", e));
+
+            // Channel 2: Important/Alarm Reminders (Long Sound)
+            LocalNotifications.createChannel({
+                id: 'reminders_alarm_v1',
+                name: 'Alarm Reminders',
+                description: 'High priority reminders preventing sleep',
+                importance: 5, // High
+                visibility: 1,
+                sound: 'alarm_sound.ogg', // We will try to rely on system alarm sound or fallback
+                vibration: true
+            }).catch(e => console.error("Alarm Channel Create Error", e));
+        }
+    }, []);
+
     const requestPermission = useCallback(async () => {
         if (Capacitor.isNativePlatform()) {
             const result = await LocalNotifications.requestPermissions();
             setPermission(result.display);
-
-            // Create Channel for Android - V5 Force Update
-            if (result.display === 'granted') {
-                await LocalNotifications.createChannel({
-                    id: 'reminders_v10', // V10: Force Sound Reset
-                    name: 'Reminders (V10)',
-                    description: 'Reminders for medications and tasks',
-                    importance: 5,
-                    visibility: 1,
-                    vibration: true,
-                    lights: true,
-                });
-            }
             return result.display;
         } else {
             if (!('Notification' in window)) {
@@ -38,7 +52,7 @@ export const useNotifications = () => {
     const sendNotification = useCallback(async (title, options = {}) => {
         try {
             if (Capacitor.isNativePlatform()) {
-                // ... existing native logic ...
+                const isAlarm = options.soundType === 'alarm';
                 await LocalNotifications.schedule({
                     notifications: [
                         {
@@ -46,8 +60,8 @@ export const useNotifications = () => {
                             body: options.body || '',
                             id: new Date().getTime() % 2147483647,
                             schedule: { at: new Date(Date.now() + 100) },
-                            sound: 'default', // CRITICAL: Explicit sound
-                            channelId: 'reminders_v10',
+                            sound: isAlarm ? 'alarm_sound.ogg' : 'default', // CRITICAL: Explicit sound
+                            channelId: isAlarm ? 'reminders_alarm_v1' : 'reminders_v10',
                             smallIcon: 'ic_notification_bell', // Explicitly set icon
                             actionTypeId: 'REMINDER_ACTIONS_V10',
                             extra: options.data || null
@@ -101,17 +115,13 @@ export const useNotifications = () => {
 
         try {
             // STEP 1: Process reminders into notification objects (SHARED LOGIC)
-            // This allows debugging the filtering logic on Web Console
-
             let filteredCount = 0;
             let pastCount = 0;
-            let invalidCount = 0;
             let firstFilterReason = "";
 
             const notificationsToSchedule = reminders.map(r => {
                 if (!r.displayTime) {
                     filteredCount++;
-                    /* console.log('❌ Filtered (no displayTime):', r.title); */
                     return null;
                 }
                 const [h, m] = r.displayTime.split(':').map(Number);
@@ -124,7 +134,6 @@ export const useNotifications = () => {
                     if (parts.length === 3) {
                         const [year, month, day] = parts;
                         date = new Date(year, month - 1, day, h, m, 0, 0);
-                        /* console.log('🎯', r.title, '- targetDate:', r.targetDate, '→ parsed:', date.toString()); */
                     } else {
                         // Fallback if parsing failed
                         console.error('Invalid targetDate format:', r.targetDate);
@@ -137,7 +146,6 @@ export const useNotifications = () => {
                 } else {
                     date = new Date();
                     date.setHours(h, m, 0, 0);
-                    /* console.log('📍', r.title, '- no targetDate, using today with time:', date.toString()); */
                 }
 
                 const now = new Date();
@@ -146,12 +154,10 @@ export const useNotifications = () => {
                 // ONLY if we don't have an explicit target date (which implies confidence)
                 if (!r.targetDate && date <= now) {
                     if (r.frequency === 'Daily' || (r.schedule && r.schedule.type === 'recurring')) {
-                        /* console.log('🔁', r.title, '- Recurring/Daily, time passed, moving to tomorrow'); */
                         date.setDate(date.getDate() + 1);
                     } else {
                         filteredCount++;
                         if (!firstFilterReason) firstFilterReason = `Passed & Not Recurring (${r.title})`;
-                        /* console.log('❌ Filtered (no targetDate, time passed, not recurring):', r.title); */
                         return null;
                     }
                 }
@@ -162,11 +168,9 @@ export const useNotifications = () => {
                     if (targetDate <= now) {
                         filteredCount++;
                         if (!firstFilterReason) firstFilterReason = `Once & Passed (${r.title})`;
-                        /* console.log('❌ Filtered (Once frequency, r.date in past):', r.title); */
                         return null;
                     }
                     date = targetDate;
-                    /* console.log('📅', r.title, '- Using r.date for Once reminder:', date.toString()); */
                 }
 
                 // CRITICAL FIX: Generate unique numeric ID for each instance
@@ -186,14 +190,12 @@ export const useNotifications = () => {
                     safeId = (parseInt(r.id) + date.getTime()) & 0x7FFFFFFF;
                 }
 
-                // const safeId = parseInt(r.id) % 2147483647; // OLD BROKEN logic
                 const bodyText = r.instructions ? r.instructions : (r.type === 'Medication' ? 'Time for your meds!' : 'Reminder');
 
                 // EXTRA SAFETY: Don't schedule past events (tolerance 5 min)
                 if (date.getTime() < now.getTime() - 300000) {
                     pastCount++;
                     if (!firstFilterReason) firstFilterReason = `>5min Past (${r.title} @ ${date.toLocaleTimeString()})`;
-                    /* console.log('❌ Filtered (> 5min in past):', r.title, 'date:', date.toString()); */
                     return null;
                 }
 
@@ -202,7 +204,6 @@ export const useNotifications = () => {
                     const end = new Date(r.schedule.endDate);
                     end.setHours(23, 59, 59, 999);
                     if (date > end) {
-                        /* console.log('❌ Filtered (Past End Date):', r.title); */
                         filteredCount++;
                         if (!firstFilterReason) firstFilterReason = `Past End Date (${r.title})`;
                         return null;
@@ -217,77 +218,48 @@ export const useNotifications = () => {
                         at: date, // CRITICAL FIX: Must be Date object for Native Bridge
                         allowWhileIdle: true
                     },
-                    sound: 'default',
-                    channelId: 'reminders_v10',
+                    sound: r.soundType === 'alarm' ? 'alarm_sound.ogg' : 'default', // Fallback to safe system default if file missing
+                    channelId: r.soundType === 'alarm' ? 'reminders_alarm_v1' : 'reminders_v10',
                     smallIcon: 'ic_notification_bell',
                     actionTypeId: 'REMINDER_ACTIONS_V10',
                     extra: { uniqueId: r.uniqueId }
                 };
             });
 
-            /* console.log('🔍 Shared Logic Filter Check:'); */
-            /* console.log('   Total Input:', reminders.length); */
-            /* console.log('   Mapped (Pre-Null-Filter):', notificationsToSchedule.length); */
-
             const filtered = notificationsToSchedule.filter(n => n !== null && !isNaN(n.id));
-            /* console.log('✅ Final Valid Notifications:', filtered.length); */
 
             if (filtered.length === 0 && reminders.length > 0) {
                 console.warn(`Debug: 0/${reminders.length} scheduled. Filtered: ${filteredCount}, Past: ${pastCount}. First Reason: ${firstFilterReason}`);
-            } else if (filtered.length > 0) {
-                // alert(`Debug: Prepared ${filtered.length} notifications. First: ${filtered[0].title} @ ${new Date(filtered[0].schedule.at).toLocaleTimeString()}`);
-            }
-
-            if (filtered.length > 0) {
-                /*
-                console.table(filtered.map(n => ({
-                    Title: n.title,
-                    Time: new Date(n.schedule.at).toLocaleString(),
-                    ID: n.id,
-                    Timestamp: n.schedule.at
-                })));
-                */
             }
 
             // STEP 2: Platform Execution
             if (Capacitor.isNativePlatform()) {
                 const pending = await LocalNotifications.getPending();
-                /* console.log('🗑️ Cancelling', pending.notifications.length, 'old notifications'); */
                 if (pending.notifications.length > 0) {
                     await LocalNotifications.cancel(pending);
                 }
 
                 if (filtered.length > 0) {
-                    /* console.log('🔔 Scheduling', filtered.length, 'Android notifications'); */
                     try {
-                        const result = await LocalNotifications.schedule({
+                        await LocalNotifications.schedule({
                             notifications: filtered
                         });
-                        // alert(`Success! Scheduled ${filtered.length}.`);
                     } catch (schedError) {
                         console.error(`Native Schedule Failed: ${schedError.message}`);
                     }
-                    /* console.log('✅ Scheduled successfully!'); */
 
                     // Verify
                     const p = await LocalNotifications.getPending();
-                    /* console.log('📡 Verified Pending Count:', p.notifications.length); */
                     if (p.notifications.length === 0) {
-                        if (p.notifications.length === 0) {
-                            console.error('CRITICAL: Native says success but 0 pending found! Check Logcat.');
-                        }
+                        console.error('CRITICAL: Native says success but 0 pending found! Check Logcat.');
                     }
-                } else {
-                    /* console.warn('⚠️ No notifications to schedule after filtering'); */
                 }
             } else {
-                // ...
+                // Web platform logic could go here
             }
 
         } catch (error) {
             console.error("Scheduling Error:", error);
-            console.error("Scheduling Error:", error);
-            // alert("General Schedule Error: " + error.message);
         }
     }, []);
 

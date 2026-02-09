@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Mic, MicOff, Image as ImageIcon, Trash2, FileText, Paperclip, Loader2, CheckSquare, Tag, Play, Pause, GripVertical, Share2, Pin, Undo, Redo, Download, Bell } from 'lucide-react';
+import { X, Mic, MicOff, Image as ImageIcon, Trash2, FileText, Paperclip, Loader2, CheckSquare, Tag, Play, Pause, GripVertical, Share2, Pin, Undo, Redo, Download, Bell, ChevronLeft } from 'lucide-react';
 import { Reorder } from 'framer-motion';
 import { useVoice } from '../../hooks/useVoice';
 import { fileStorage } from '../../services/fileStorage';
@@ -796,9 +796,15 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
             {/* FULL SCREEN FILE PREVIEW OVERLAY */}
             {
                 previewFile && (
-                    <div className="fixed inset-0 z-[150] bg-black text-white flex flex-col animate-fade-in">
+                    <div className="fixed inset-0 z-[200] bg-black text-white flex flex-col animate-fade-in h-[100dvh]">
                         {/* Header */}
-                        <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-md absolute top-0 left-0 right-0">
+                        <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-md z-50">
+                            <button
+                                onClick={() => setPreviewFile(null)}
+                                className="mr-3 p-2 bg-white/10 rounded-full hover:bg-white/20 text-white transition-all"
+                            >
+                                <ChevronLeft size={24} />
+                            </button>
                             <span className="truncate font-medium flex-1 mr-4">{previewFile?.name || 'Preview'}</span>
                             <div className="flex items-center gap-3">
                                 {/* Download Button */}
@@ -913,6 +919,15 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                                     </a>
                                 </div>
                             )}
+                        </div>
+                        {/* Footer */}
+                        <div className="p-4 pb-8 md:pb-4 bg-black/50 backdrop-blur-md flex justify-center z-50">
+                            <button
+                                onClick={() => setPreviewFile(null)}
+                                className="px-6 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full text-white font-medium transition-colors"
+                            >
+                                Close Preview
+                            </button>
                         </div>
                     </div>
                 )

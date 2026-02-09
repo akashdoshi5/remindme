@@ -382,7 +382,7 @@ const RemindersPage = () => {
                     )}
 
                     {/* Filter Chips */}
-                    <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1 items-center">
+                    <div className="flex gap-2 overflow-x-auto scrollbar-none items-center h-10">
                         <div className="flex bg-gray-200 dark:bg-gray-800 p-1 rounded-full shrink-0">
                             {[
                                 { id: 'all', label: 'All' },
@@ -646,8 +646,8 @@ const RemindersPage = () => {
                                                                                         });
                                                                                     }}
                                                                                     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-colors shrink-0 ${searchQuery && (file.name.toLowerCase().includes(searchQuery.toLowerCase()) || (file.extractedText && file.extractedText.toLowerCase().includes(searchQuery.toLowerCase())))
-                                                                                            ? 'bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-200 dark:border-yellow-700 font-bold'
-                                                                                            : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                                                                        ? 'bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-200 dark:border-yellow-700 font-bold'
+                                                                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
                                                                                         }`}
                                                                                 >
                                                                                     <Paperclip size={10} className={searchQuery && (file.name.toLowerCase().includes(searchQuery.toLowerCase()) || (file.extractedText && file.extractedText.toLowerCase().includes(searchQuery.toLowerCase()))) ? "text-yellow-600" : "text-gray-500"} />
@@ -916,7 +916,7 @@ const RemindersPage = () => {
                 )}
             </div>
 
-            <div className="fixed bottom-24 md:bottom-10 right-6 md:right-10 z-40">
+            <div className="fixed bottom-24 md:bottom-10 right-6 md:right-10 z-50">
                 <button
                     onClick={() => { setEditingReminder(null); setIsModalOpen(true); }}
                     className="w-16 h-16 bg-gradient-to-tr from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-full shadow-lg shadow-orange-500/40 flex items-center justify-center transform hover:scale-105 transition-all text-2xl"

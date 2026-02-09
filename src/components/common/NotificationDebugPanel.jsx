@@ -8,6 +8,7 @@ import pkg from '../../../package.json'; // Import version
 
 export const NotificationDebugPanel = ({ isOpen, onClose }) => {
     const [pending, setPending] = useState([]);
+    const [dbReminders, setDbReminders] = useState([]);
     const { scheduleReminders, requestPermission } = useNotifications();
 
     const loadPending = async () => {
@@ -24,6 +25,21 @@ export const NotificationDebugPanel = ({ isOpen, onClose }) => {
             } catch (e) {
                 console.error('Failed to get pending notifications:', e);
             }
+        }
+    };
+
+    const loadDbReminders = () => {
+        try {
+            const all = dataService.getReminders(); // Get raw list
+            // Filter only upcoming for today/future
+            const now = new Date();
+            const upcoming = all.filter(r => {
+                // Simple logic for debug: just show all active
+                return r.status !== 'done' && r.status !== 'missed';
+            });
+            setDbReminders(upcoming);
+        } catch (e) {
+            console.error("DB Load Error", e);
         }
     };
 
@@ -53,7 +69,10 @@ export const NotificationDebugPanel = ({ isOpen, onClose }) => {
             alert(`Found ${reminders.length} active reminders. Scheduling...`);
             await scheduleReminders(reminders);
             alert('Schedule Logic Finished. Checking pending...');
+            await scheduleReminders(reminders);
+            alert('Schedule Logic Finished. Checking pending...');
             loadPending();
+            loadDbReminders();
         } catch (e) {
             alert('Force Schedule Failed: ' + e.message);
         }
@@ -73,7 +92,10 @@ export const NotificationDebugPanel = ({ isOpen, onClose }) => {
 
     useEffect(() => {
         if (isOpen) {
-            loadPending();
+            if (isOpen) {
+                loadPending();
+                loadDbReminders();
+            }
         }
     }, [isOpen]);
 
@@ -141,6 +163,18 @@ export const NotificationDebugPanel = ({ isOpen, onClose }) => {
                             ))}
                         </div>
                     )}
+                </div>
+
+                {/* DB LIST */}
+                <div className="flex-1 overflow-y-auto p-4 bg-orange-50 dark:bg-orange-900/10 border-t border-orange-200">
+                    <h3 className="text-xs uppercase font-bold text-orange-600 mb-2">DB Active Reminders ({dbReminders.length})</h3>
+                    <div className="space-y-1">
+                        {dbReminders.map((r, i) => (
+                            <div key={i} className="text-xs p-2 bg-white dark:bg-gray-800 rounded border border-orange-100 dark:border-orange-800">
+                                <span className="font-bold">{r.title}</span> - {r.time} ({r.frequency})
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>
