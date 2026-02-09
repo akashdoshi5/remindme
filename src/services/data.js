@@ -162,7 +162,10 @@ export const dataService = {
                     }
                 });
 
-                store.notes = Array.from(newOwnedMap.values());
+                store.notes = Array.from(newOwnedMap.values()).map(n => ({
+                    ...n,
+                    isPinned: !!n.isPinned
+                }));
 
                 // Sort by createdAt descending
                 store.notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));

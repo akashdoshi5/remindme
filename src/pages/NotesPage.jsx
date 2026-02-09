@@ -107,6 +107,8 @@ const NotesPage = () => {
 
         if (location.state?.searchQuery) {
             setSearchQuery(location.state.searchQuery);
+            // Clear state to prevent reapplying on refresh/tab switch
+            navigate(location.pathname, { replace: true, state: { ...location.state, searchQuery: undefined } });
         }
     }, [location.state]);
 
@@ -484,7 +486,7 @@ const NotesPage = () => {
 
             {/* Notes Grid */}
             <div className="mt-4 md:mt-0 space-y-8">
-                {(!searchQuery) ? (
+                {(!searchQuery || !searchQuery.trim()) ? (
                     <>
                         {/* PINNED SECTION */}
                         {filteredNotes.some(n => n.isPinned) && (
