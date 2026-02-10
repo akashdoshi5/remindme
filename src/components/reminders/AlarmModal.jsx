@@ -110,10 +110,10 @@ const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
             try {
                 if (reminder.soundType === 'alarm') {
                     // Aggressive vibration for Alarm
-                    navigator.vibrate([500, 200, 500, 200, 500]);
+                    navigator.vibrate([1000, 500, 1000, 500, 1000]);
                 } else {
-                    // Subtle vibration for Standard
-                    navigator.vibrate([200]);
+                    // Standard but High Intensity (Single Long Pulse)
+                    navigator.vibrate([800]);
                 }
             } catch (err) {
                 console.warn("Vibration failed", err);

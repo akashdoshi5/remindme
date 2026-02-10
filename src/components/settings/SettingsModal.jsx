@@ -24,6 +24,57 @@ const SettingsModal = ({ isOpen, onClose }) => {
         }
     }, [isOpen]);
 
+    const playPreview = (type) => {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = new AudioContext();
+            const gainNode = ctx.createGain();
+            gainNode.connect(ctx.destination);
+            gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+
+            if (type === 'alarm') {
+                // Aggressive Loop Preview (Short)
+                const frequencies = [880, 660, 880];
+                const now = ctx.currentTime;
+                frequencies.forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const bg = ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.value = freq;
+                    osc.connect(bg);
+                    bg.connect(gainNode);
+                    const start = now + (i * 0.2);
+                    bg.gain.setValueAtTime(0, start);
+                    bg.gain.linearRampToValueAtTime(0.4, start + 0.02);
+                    bg.gain.setValueAtTime(0.4, start + 0.15 - 0.02);
+                    bg.gain.linearRampToValueAtTime(0, start + 0.15);
+                    osc.start(start);
+                    osc.stop(start + 0.15);
+                });
+                if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
+            } else {
+                // Chime Preview
+                const osc = ctx.createOscillator();
+                const cg = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 660;
+                osc.connect(cg);
+                cg.connect(gainNode);
+                const now = ctx.currentTime;
+                cg.gain.setValueAtTime(0, now);
+                cg.gain.linearRampToValueAtTime(0.6, now + 0.1);
+                cg.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
+                osc.start(now);
+                osc.stop(now + 1.5);
+                if (navigator.vibrate) navigator.vibrate([200]);
+            }
+            setTimeout(() => ctx.close(), 2000);
+        } catch (e) {
+            console.error("Preview failed", e);
+        }
+    };
+
     if (!isOpen) return null;
 
     const handleSave = () => {
@@ -128,7 +179,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                     key={option.id}
                                     onClick={() => {
                                         setNotificationSound(option.id);
-                                        Haptics.impact({ style: ImpactStyle.Light });
+                                        playPreview(option.id);
                                     }}
                                     className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${notificationSound === option.id
                                         ? 'bg-white dark:bg-gray-700 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-100 dark:border-orange-900'

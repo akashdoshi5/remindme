@@ -103,7 +103,8 @@ export const useReminders = (setActiveAlarm) => {
         checkAlarms(); // Initial check
 
         // Listen for global data updates (e.g. Snooze from Notification) to re-evaluate alarms immediately
-        window.addEventListener('data-updated', checkAlarms);
+        // Listen for global data updates (e.g. Snooze from Notification) to re-evaluate alarms immediately
+        window.addEventListener('storage-update', checkAlarms);
 
         return () => {
             clearInterval(interval);
