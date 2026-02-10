@@ -275,14 +275,19 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                         vibration: true,
                                     });
 
+                                    // Determine Channel based on Current Setting
+                                    const isAlarm = notificationSound === 'alarm'; // Use local state
+
                                     await LocalNotifications.schedule({
                                         notifications: [{
                                             title: 'Test Reminder',
-                                            body: 'If you see this, notifications are working!',
+                                            body: `This is a test using the ${isAlarm ? 'ALARM' : 'STANDARD'} sound channel.`,
                                             id: Math.floor(Date.now() / 1000),
                                             schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
                                             smallIcon: 'ic_notification_bell',
-                                            channelId: 'reminders_v10',
+                                            // DYNAMIC CHANNEL SELECTION
+                                            channelId: isAlarm ? 'reminders_alarm_v1' : 'reminders_v10',
+                                            sound: isAlarm ? 'alarm.wav' : 'chime.wav',
                                             actionTypeId: 'REMINDER_ACTIONS_V10',
                                             extra: { uniqueId: 'test_manual' }
                                         }]

@@ -10,6 +10,7 @@ import SettingsModal from './components/settings/SettingsModal';
 import { firestoreService } from './services/firestoreService';
 import { useDataSync } from './hooks/useDataSync';
 import { useReminders } from './hooks/useReminders';
+import { useShare } from './hooks/useShare';
 
 import { App as CapacitorApp } from '@capacitor/app';
 import { BackButtonManager } from './services/BackButtonManager';
@@ -222,20 +223,30 @@ const AppContent = () => {
   // Handle Notification Actions (Snooze/Done)
   useEffect(() => {
     const handleAction = async (event) => {
-      const { action, tag } = event.detail; // tag is uniqueDateId (e.g. "2024-02-10_period_1") or just id
+      const { action, tag } = event.detail; // tag is uniqueId (e.g. "12345_2024-02-10_time_09:00")
       console.log('🔔 Notification Action Received:', action, tag);
       if (!tag) return;
 
+      // PARROTING FIX: The tag is "ID_INSTANCEKEY". We need to split them.
+      // IDs are numeric but stored as strings here.
+      // If tag doesn't have an underscore, it might be a legacy ID.
+      let id, instanceKey;
+      if (typeof tag === 'string' && tag.includes('_')) {
+        const parts = tag.split('_');
+        id = parts[0];
+        instanceKey = parts.slice(1).join('_');
+      } else {
+        id = tag;
+        instanceKey = null;
+      }
+
+      console.log(`🔔 Parsed Action: ID=${id}, Instance=${instanceKey}, Action=${action}`);
+
       if (action === 'snooze') {
-        // Default 15 mins. Note: `tag` is expected to be uniqueId/instanceKey. 
-        // We pass it as both parentId and instanceId because dataService often iterates to find parent if instanceKey is unique.
-        // Or if tag is simple numeric ID, it works.
-        // dataService.snoozeReminder(id, instanceKey, duration)
-        // We make a best guess: pass tag as ID. The service logic will scan.
         // Default 5 mins as per user request
-        await dataService.snoozeReminder(tag, tag, 5);
+        await dataService.snoozeReminder(id, instanceKey, 5);
       } else if (action === 'done') {
-        await dataService.completeReminder(tag, tag);
+        await dataService.completeReminder(id, instanceKey);
       }
       window.dispatchEvent(new Event('storage-update'));
     };
@@ -313,8 +324,11 @@ const AppContent = () => {
           window.dispatchEvent(new Event('storage-update'));
         }}
         onShare={(note) => {
-          // Share logic (can be passed or handled internally)
-          console.log("Share requested", note);
+          share({
+            title: note.title || 'Note',
+            text: note.content || '',
+            url: window.location.href
+          });
         }}
       />
 

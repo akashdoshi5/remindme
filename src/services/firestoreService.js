@@ -623,5 +623,37 @@ export const firestoreService = {
             console.error("Access Denied to Patient Data:", error);
             callback([]); // Return empty if permission denied
         });
+    },
+
+    // --- DELETED NOTES TRACKING (Cross-Device Sync) ---
+
+    /**
+     * Persist a deleted note ID to Firestore so other devices know not to re-sync it.
+     */
+    saveDeletedNoteId: async (noteId) => {
+        const user = auth.currentUser;
+        if (!user) return;
+        try {
+            const ref = doc(db, 'users', user.uid, 'deletedNotes', String(noteId));
+            await setDoc(ref, { deletedAt: new Date().toISOString() });
+        } catch (e) {
+            console.error("Failed to save deleted note ID to Firestore:", e);
+        }
+    },
+
+    /**
+     * Fetch all deleted note IDs from Firestore (called on login for cross-device sync).
+     */
+    fetchDeletedNoteIds: async () => {
+        const user = auth.currentUser;
+        if (!user) return [];
+        try {
+            const q = collection(db, 'users', user.uid, 'deletedNotes');
+            const snapshot = await getDocs(q);
+            return snapshot.docs.map(doc => doc.id);
+        } catch (e) {
+            console.error("Failed to fetch deleted note IDs:", e);
+            return [];
+        }
     }
 };

@@ -31,24 +31,29 @@ export const useNotifications = () => {
                 .catch(e => console.error('❌ Action Registration Failed', e));
 
             // 2. Create Channels
+            // V11: Enhanced Vibration Patterns
             LocalNotifications.createChannel({
                 id: 'reminders_v10',
                 name: 'Reminders',
                 description: 'General reminders',
                 importance: 4,
                 visibility: 1,
-                sound: 'chime.wav', // Custom sound
-                vibration: true
+                sound: 'chime.wav',
+                vibration: true,
+                lights: true,
+                vibrationPattern: [0, 500, 200, 500] // Double Buzz
             }).catch(e => console.error("Channel Create Error", e));
 
             LocalNotifications.createChannel({
                 id: 'reminders_alarm_v1',
                 name: 'Alarm Reminders',
                 description: 'High priority reminders',
-                importance: 5, // Max importance for heads-up
+                importance: 5, // Max importance
                 visibility: 1,
-                sound: 'alarm.wav', // Custom sound
-                vibration: true
+                sound: 'alarm.wav',
+                vibration: true,
+                lights: true,
+                vibrationPattern: [0, 1000, 500, 1000, 500, 1000, 500, 1000] // 4x Long Pulse for "Lot more vibration"
             }).catch(e => console.error("Alarm Channel Create Error", e));
 
             // 3. Add Action Listener
@@ -58,6 +63,9 @@ export const useNotifications = () => {
                 const extra = notification.notification.extra;
                 const uniqueId = extra?.uniqueId;
                 // Note: notification.notification.id is an integer safeId. uniqueId is the string key.
+
+                // Clear the notification from tray on action
+                // LocalNotifications.removeAllDeliveredNotifications(); // Optional?
 
                 window.dispatchEvent(new CustomEvent('notification-action', {
                     detail: {

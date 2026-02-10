@@ -174,24 +174,28 @@ const RemindersPage = () => {
 
     const initiateDelete = (reminder) => {
         const isRecurring = reminder.schedule?.type === 'recurring' || (reminder.frequency && reminder.frequency !== 'Once');
+        const todayStr = new Date().toLocaleDateString('en-CA');
+        const startDate = reminder.schedule?.startDate || reminder.date;
+        const isPastRecurring = isRecurring && startDate && startDate < todayStr;
         setDeleteConfig({
             id: reminder.id,
             title: reminder.title,
             isRecurring: isRecurring,
+            isPastRecurring: isPastRecurring,
             instanceKey: reminder.instanceKey
         });
         setIsDeleteModalOpen(true);
     };
 
-    const confirmDelete = (scope) => {
+    const confirmDelete = async (scope) => {
         if (!deleteConfig) return;
         if (scope === 'series') {
-            dataService.deleteReminder(deleteConfig.id);
+            await dataService.deleteReminder(deleteConfig.id);
         } else {
             if (deleteConfig.instanceKey) {
-                dataService.updateReminder(deleteConfig.id, { status: 'cancelled' }, deleteConfig.instanceKey);
+                await dataService.updateReminder(deleteConfig.id, { status: 'cancelled' }, deleteConfig.instanceKey);
             } else {
-                dataService.deleteReminder(deleteConfig.id);
+                await dataService.deleteReminder(deleteConfig.id);
             }
         }
         setTriggerReload(prev => prev + 1);
@@ -772,40 +776,57 @@ const RemindersPage = () => {
                                                                     else if (diff > 2) { reason = 'Missed'; } // Grace period
                                                                 }
 
-                                                                if (reminder.status === 'missed' && !isActionable) reason = 'Missed';
-
                                                                 return (
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            if (!isActionable) return;
-                                                                            dataService.logReminderStatus(reminder.id, reminder.instanceKey, 'taken');
-                                                                            setTriggerReload(prev => prev + 1);
-                                                                        }}
-                                                                        disabled={!isActionable}
-                                                                        className={`px-4 py-2.5 rounded-xl font-bold text-sm shadow-md flex items-center gap-2 transition-transform active:scale-95 ${isActionable
-                                                                            ? (reason === 'Missed'
-                                                                                ? 'bg-red-500 text-white shadow-red-500/20'
-                                                                                : 'bg-orange-500 text-white shadow-orange-500/20 hover:bg-orange-600')
-                                                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed shadow-none'
-                                                                            }`}
-                                                                    >
-                                                                        {isActionable ? (
-                                                                            <>
-                                                                                {reason === 'Missed' ? <RefreshCcw size={16} /> : <Check size={18} />}
-                                                                                <span>{reason === 'Missed' ? 'Take Late' : (reminder.type === 'Medication' ? 'Take' : 'Done')}</span>
-                                                                            </>
-                                                                        ) : (
-                                                                            <>
-                                                                                <span className="opacity-50">
-                                                                                    {reason === 'Missed' && <XCircle size={18} />}
-                                                                                    {reason === 'Too Early' && <Clock size={18} />}
-                                                                                    {reason === 'History' && <Archive size={18} />}
-                                                                                </span>
-                                                                                <span>{reason || 'Action'}</span>
-                                                                            </>
+                                                                    <div className="flex items-center gap-3">
+                                                                        {/* NEW: Snooze Button (Visible if Actionable) */}
+                                                                        {isActionable && (
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    // Default 5 minutes as requested
+                                                                                    dataService.snoozeReminder(reminder.id, reminder.instanceKey, 5);
+                                                                                    setTriggerReload(prev => prev + 1);
+                                                                                }}
+                                                                                className="px-4 py-2.5 bg-slate-200 dark:bg-slate-700/80 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-xl text-slate-700 dark:text-slate-200 font-bold text-sm shadow-sm flex items-center gap-2 transition-transform active:scale-95 border border-slate-300 dark:border-slate-600"
+                                                                                title="Snooze 5m"
+                                                                            >
+                                                                                <Clock size={18} strokeWidth={2.5} />
+                                                                                <span className="hidden xs:inline">5m</span>
+                                                                            </button>
                                                                         )}
-                                                                    </button>
+
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (!isActionable) return;
+                                                                                dataService.logReminderStatus(reminder.id, reminder.instanceKey, 'taken');
+                                                                                setTriggerReload(prev => prev + 1);
+                                                                            }}
+                                                                            disabled={!isActionable}
+                                                                            className={`px-4 py-2.5 rounded-xl font-bold text-sm shadow-md flex items-center gap-2 transition-transform active:scale-95 ${isActionable
+                                                                                ? (reason === 'Missed'
+                                                                                    ? 'bg-red-500 text-white shadow-red-500/20'
+                                                                                    : 'bg-orange-500 text-white shadow-orange-500/20 hover:bg-orange-600')
+                                                                                : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed shadow-none'
+                                                                                }`}
+                                                                        >
+                                                                            {isActionable ? (
+                                                                                <>
+                                                                                    {reason === 'Missed' ? <RefreshCcw size={16} /> : <Check size={18} />}
+                                                                                    <span>{reason === 'Missed' ? 'Take Late' : (reminder.type === 'Medication' ? 'Take' : 'Done')}</span>
+                                                                                </>
+                                                                            ) : (
+                                                                                <>
+                                                                                    <span className="opacity-50">
+                                                                                        {reason === 'Missed' && <XCircle size={18} />}
+                                                                                        {reason === 'Too Early' && <Clock size={18} />}
+                                                                                        {reason === 'History' && <Archive size={18} />}
+                                                                                    </span>
+                                                                                    <span>{reason || 'Action'}</span>
+                                                                                </>
+                                                                            )}
+                                                                        </button>
+                                                                    </div>
                                                                 );
                                                             })()}
                                                         </div>

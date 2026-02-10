@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Calendar, Clock, Bell, Repeat, FileText, Check, ChevronRight, AlertTriangle, Mic, MicOff, Upload, Download, Trash2, Eye, Coffee, Sun, Moon, ChevronLeft } from 'lucide-react';
+import { X, Calendar, Clock, Bell, Repeat, FileText, Check, ChevronRight, AlertTriangle, Mic, MicOff, Upload, Download, Trash2, Eye, Coffee, Sun, Moon, ChevronLeft, Pill } from 'lucide-react';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { useVoice } from '../../hooks/useVoice';
 import { fileStorage } from '../../services/fileStorage';

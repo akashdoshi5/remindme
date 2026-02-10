@@ -121,9 +121,11 @@ export const dataService = {
 
         // 3. Sync-Up Check & Realtime Listeners
         if (uid) {
-            // A. Initial Migration (Push local to cloud if needed)
-            if ((store.reminders && store.reminders.length > 0) || (store.notes && store.notes.length > 0)) {
-                console.log("Authenticated User: Syncing local cache to Cloud...");
+            // A. Initial Migration (Push local to cloud ONLY ONCE per user)
+            const migrationKey = `remindme_migrated_${uid}`;
+            const alreadyMigrated = localStorage.getItem(migrationKey);
+            if (!alreadyMigrated && ((store.reminders && store.reminders.length > 0) || (store.notes && store.notes.length > 0))) {
+                console.log("First login: Migrating local cache to Cloud...");
 
                 // V10: Ensure ownerId is attached to all migrated data
                 const sanitizedStore = { ...store };
@@ -136,19 +138,33 @@ export const dataService = {
 
                 try {
                     await firestoreService.migrateLocalData(sanitizedStore);
-                    console.log("Migration complete.");
+                    localStorage.setItem(migrationKey, 'true');
+                    console.log("Migration complete. Flag set.");
                 } catch (e) {
                     console.error("Sync-up failed", e);
                 }
+            } else if (alreadyMigrated) {
+                console.log("Migration already done for this user. Skipping.");
+            }
+
+            // A2. Fetch cloud-stored deleted note IDs (cross-device sync)
+            try {
+                const cloudDeletedIds = await firestoreService.fetchDeletedNoteIds();
+                if (cloudDeletedIds && cloudDeletedIds.length > 0) {
+                    cloudDeletedIds.forEach(id => deletedNoteIds.add(String(id)));
+                    saveDeletedIds();
+                    console.log(`Loaded ${cloudDeletedIds.length} deleted note IDs from cloud.`);
+                }
+            } catch (e) {
+                console.warn("Failed to fetch cloud deleted IDs", e);
             }
 
             // B. Setup Realtime Listeners (Pull cloud to local)
             console.log("Setting up Realtime Sync for:", uid);
 
-            // Reminders Listener
+            // Reminders Listener — Route through syncFromCloud for smart merge
             const unsubReminders = firestoreService.getRemindersRealtime((reminders) => {
-                store.reminders = reminders;
-                save(); // Persist to local storage
+                dataService.syncFromCloud('reminders', reminders);
             });
             syncUnsubscribes.push(unsubReminders);
 
@@ -175,22 +191,26 @@ export const dataService = {
                 // Deduplicate in case 'notes' (Owned) somehow includes Shared (unlikely but safe)
                 const newOwnedMap = new Map();
 
-                // SMART MERGE: Check timestamps to avoid overwriting pending local edits
+                // SMART MERGE: Cloud wins for CONTENT, local wins only for UI state (isPinned)
+                // This prevents stale local cache from overwriting newer cloud data
                 validNotes.forEach(cloudNote => {
                     const localNote = store.notes.find(n => n.id === cloudNote.id);
                     if (localNote) {
                         const localTime = localNote.updatedAt ? new Date(localNote.updatedAt).getTime() : 0;
                         const cloudTime = cloudNote.updatedAt ? new Date(cloudNote.updatedAt).getTime() : 0;
+                        const nowMs = Date.now();
+                        const recentEditThreshold = 5000; // 5 second window for in-flight local edits
 
-                        // If user JUST edited locally (within last 3 seconds) or local timestamp is strictly newer
-                        // Keep local changes.
-                        // (3s buffer for clock skew / race)
-                        if (localTime > cloudTime) {
-                            // Keep local, but update 'isShared' status if changed on server?
-                            // For now, prioritize local user intent for things like isPinned
+                        if (localTime > cloudTime && (nowMs - localTime) < recentEditThreshold) {
+                            // Local edit is very recent (within 5s) — keep local to avoid clobbering
+                            // an in-flight Firestore write that hasn't round-tripped yet
                             newOwnedMap.set(cloudNote.id, { ...cloudNote, ...localNote });
                         } else {
-                            newOwnedMap.set(cloudNote.id, cloudNote);
+                            // Cloud wins for content, but preserve local-only UI state
+                            newOwnedMap.set(cloudNote.id, {
+                                ...cloudNote,
+                                isPinned: localNote.isPinned ?? cloudNote.isPinned
+                            });
                         }
                     } else {
                         newOwnedMap.set(cloudNote.id, cloudNote);
@@ -232,18 +252,22 @@ export const dataService = {
                 // Deduplicate by ID just in case
                 const sharedMap = new Map();
 
-                // SMART MERGE for Shared Notes
+                // SMART MERGE for Shared Notes: Cloud wins for content, local for UI state
                 validShared.forEach(cloudNote => {
                     const localNote = store.notes.find(n => n.id === cloudNote.id);
                     if (localNote) {
                         const localTime = localNote.updatedAt ? new Date(localNote.updatedAt).getTime() : 0;
                         const cloudTime = cloudNote.updatedAt ? new Date(cloudNote.updatedAt).getTime() : 0;
+                        const nowMs = Date.now();
+                        const recentEditThreshold = 5000;
 
-                        // Preserve local changes (e.g. pinned status) if newer
-                        if (localTime > cloudTime) {
+                        if (localTime > cloudTime && (nowMs - localTime) < recentEditThreshold) {
                             sharedMap.set(cloudNote.id, { ...cloudNote, ...localNote });
                         } else {
-                            sharedMap.set(cloudNote.id, cloudNote);
+                            sharedMap.set(cloudNote.id, {
+                                ...cloudNote,
+                                isPinned: localNote.isPinned ?? cloudNote.isPinned
+                            });
                         }
                     } else {
                         sharedMap.set(cloudNote.id, cloudNote);
@@ -1131,6 +1155,9 @@ export const dataService = {
                 return r;
             });
 
+            // CRITICAL: Save and notify immediately for UI refresh
+            save();
+
             // Update Firestore for exception
             if (auth.currentUser) {
                 const payload = {};
@@ -1138,6 +1165,7 @@ export const dataService = {
                     payload[`exceptions.${instanceKey}.${k}`] = updates[k];
                 });
                 payload[`exceptions.${instanceKey}.isException`] = true;
+                payload[`exceptions.${instanceKey}.updatedAt`] = new Date().toISOString();
 
                 // Also delete log field if time changed (unless we decided to keep it locally!)
                 if (updates.time || updates.date) {
@@ -1667,7 +1695,17 @@ export const dataService = {
     addNote: async (note) => {
         // V10.20: Optimistic Add
         const id = note.id || Date.now();
-        const newNote = { ...note, id };
+        const nowIso = new Date().toISOString();
+        const newNote = {
+            ...note,
+            id,
+            createdAt: note.createdAt || nowIso,
+            updatedAt: nowIso
+        };
+
+        // Remove from deletedNoteIds if re-creating with same ID
+        deletedNoteIds.delete(String(id));
+        saveDeletedIds();
 
         // 1. Update Local
         if (!store.notes) store.notes = [];
@@ -1732,12 +1770,15 @@ export const dataService = {
         // Then try to delete from Firestore if logged in
         if (auth.currentUser) {
             try {
-                await firestoreService.deleteNote(id);
+                // Delete the note document AND persist deletion record for cross-device sync
+                await Promise.all([
+                    firestoreService.deleteNote(id),
+                    firestoreService.saveDeletedNoteId(String(id))
+                ]);
             } catch (err) {
                 console.error("Firestore deleteNote failed:", err);
-                // Note is already removed from local store, so user sees it gone
-                // On next sync, if note still exists in Firestore, it may reappear
-                // but for now, the delete action completes successfully from user's perspective
+                // Still try to save the deletion record even if the doc delete failed
+                try { await firestoreService.saveDeletedNoteId(String(id)); } catch (e) { /* silent */ }
             }
         }
     },
