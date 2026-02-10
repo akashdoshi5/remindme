@@ -51,34 +51,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
                     {/* ... User Profile ... */}
                     {/* ... Theme ... */}
 
-                    {/* Notification Sound Settings */}
-                    <div>
-                        <h3 className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Notification Sound</h3>
-                        <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-xl flex">
-                            {[
-                                { id: 'standard', icon: Bell, label: 'Standard Chime' },
-                                { id: 'alarm', icon: AlertCircle, label: 'Alarm (Long)' },
-                            ].map((option) => (
-                                <button
-                                    key={option.id}
-                                    onClick={() => {
-                                        setNotificationSound(option.id);
-                                        Haptics.impact({ style: ImpactStyle.Light });
-                                    }}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${notificationSound === option.id
-                                        ? 'bg-white dark:bg-gray-700 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-100 dark:border-orange-900'
-                                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                                        }`}
-                                >
-                                    <option.icon size={16} />
-                                    {option.label}
-                                </button>
-                            ))}
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 px-1">
-                            "Alarm" plays a long sound and vibrates heavily, even if phone is in Do Not Disturb (depending on OS settings).
-                        </p>
-                    </div>
+
                     {/* User Profile Section */}
                     {user ? (
                         <div className="flex items-center gap-4 pb-6 border-b border-gray-100 dark:border-gray-800">
@@ -154,13 +127,10 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                 <button
                                     key={option.id}
                                     onClick={() => {
-                                        dataService.updateSettings({ notificationSound: option.id });
-                                        // Force UI refresh by closing/reopening or just state? 
-                                        // SettingsModal doesn't have local state for sound, it reads from dataService on open.
-                                        // We should add local state for it to reflect change immediately?
-                                        // Yes, see below.
+                                        setNotificationSound(option.id);
+                                        Haptics.impact({ style: ImpactStyle.Light });
                                     }}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${(dataService.getSettings()?.notificationSound || 'standard') === option.id
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${notificationSound === option.id
                                         ? 'bg-white dark:bg-gray-700 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-100 dark:border-orange-900'
                                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                                         }`}
