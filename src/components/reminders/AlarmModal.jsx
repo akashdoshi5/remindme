@@ -5,65 +5,91 @@ import { motion, AnimatePresence } from 'framer-motion';
 const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
     // Alarm sound that repeats until stopped - more attention-grabbing than a single chime
     const playAlarm = () => {
+        if (!reminder) return null;
         try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             if (!AudioContext) return null;
 
             const ctx = new AudioContext();
 
-            // Attempt to resume if suspended (fixes "no sound until interaction" on some browsers)
+            // Attempt to resume if suspended
             if (ctx.state === 'suspended') {
                 ctx.resume().catch(e => console.warn("Audio resume failed", e));
             }
 
-            let isPlaying = true;
             const gainNode = ctx.createGain();
             gainNode.connect(ctx.destination);
             gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
 
-            // Function to play one alarm beep sequence
-            const playBeepSequence = (startTime) => {
-                if (!isPlaying) return;
+            let isPlaying = true;
+            let timerId = null;
 
-                // Two-tone alarm pattern (classic alarm sound: high-low-high)
-                const frequencies = [880, 660, 880]; // A5, E5, A5
+            // ALARM SOUND (Looping, Aggressive)
+            const playAlarmSequence = () => {
+                const currentTime = ctx.currentTime;
+                // Two-tone alarm pattern
+                const frequencies = [880, 660, 880];
                 const beepDuration = 0.15;
-                const pauseBetweenBeeps = 0.05;
+                const pause = 0.05;
 
                 frequencies.forEach((freq, i) => {
                     const osc = ctx.createOscillator();
                     const beepGain = ctx.createGain();
-
-                    osc.type = 'square'; // Sharper alarm-like sound
+                    osc.type = 'square';
                     osc.frequency.value = freq;
-
                     osc.connect(beepGain);
                     beepGain.connect(gainNode);
 
-                    const beepStart = startTime + (i * (beepDuration + pauseBetweenBeeps));
-                    beepGain.gain.setValueAtTime(0, beepStart);
-                    beepGain.gain.linearRampToValueAtTime(0.4, beepStart + 0.02);
-                    beepGain.gain.setValueAtTime(0.4, beepStart + beepDuration - 0.02);
-                    beepGain.gain.linearRampToValueAtTime(0, beepStart + beepDuration);
+                    const start = currentTime + (i * (beepDuration + pause));
+                    beepGain.gain.setValueAtTime(0, start);
+                    beepGain.gain.linearRampToValueAtTime(0.4, start + 0.02);
+                    beepGain.gain.setValueAtTime(0.4, start + beepDuration - 0.02);
+                    beepGain.gain.linearRampToValueAtTime(0, start + beepDuration);
 
-                    osc.start(beepStart);
-                    osc.stop(beepStart + beepDuration);
+                    osc.start(start);
+                    osc.stop(start + beepDuration);
                 });
             };
 
-            // Play alarm sequence repeatedly every 1.5 seconds
-            let currentTime = ctx.currentTime;
-            const sequenceInterval = 1.5; // seconds between alarm sequences
+            // CHIME SOUND (Single, Soft)
+            const playChime = () => {
+                const currentTime = ctx.currentTime;
+                const osc = ctx.createOscillator();
+                const chimeGain = ctx.createGain();
 
-            // Schedule initial sequences
-            for (let i = 0; i < 20; i++) { // Pre-schedule 30 seconds of alarm
-                playBeepSequence(currentTime + (i * sequenceInterval));
+                osc.type = 'sine'; // Soft sine wave
+                osc.frequency.value = 660; // E5
+                osc.connect(chimeGain);
+                chimeGain.connect(gainNode);
+
+                chimeGain.gain.setValueAtTime(0, currentTime);
+                chimeGain.gain.linearRampToValueAtTime(0.6, currentTime + 0.1);
+                chimeGain.gain.exponentialRampToValueAtTime(0.01, currentTime + 1.5); // Long clean decay
+
+                osc.start(currentTime);
+                osc.stop(currentTime + 1.5);
+            };
+
+            // Logic Switch
+            const isAlarm = reminder.soundType === 'alarm';
+
+            if (isAlarm) {
+                // Play immediately and repeat every 1.5s
+                playAlarmSequence();
+                timerId = setInterval(() => {
+                    if (isPlaying) playAlarmSequence();
+                }, 1500);
+            } else {
+                // Play ONCE
+                playChime();
             }
 
             return () => {
                 isPlaying = false;
+                if (timerId) clearInterval(timerId);
+                gainNode.gain.cancelScheduledValues(ctx.currentTime);
                 gainNode.gain.setValueAtTime(0, ctx.currentTime);
-                ctx.close();
+                setTimeout(() => ctx.close(), 100); // Close after slight delay to prevent clip
             };
         } catch (e) {
             console.error("Audio Context Error", e);
@@ -79,24 +105,29 @@ const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
             return;
         }
 
-        // 1. Haptic Feedback (Vibration) - 2 times
+        // 1. Haptic Feedback (Vibration)
         if (navigator.vibrate) {
             try {
-                // Pulse (500ms) - Pause (200ms) - Pulse (500ms)
-                navigator.vibrate([500, 200, 500]);
+                if (reminder.soundType === 'alarm') {
+                    // Aggressive vibration for Alarm
+                    navigator.vibrate([500, 200, 500, 200, 500]);
+                } else {
+                    // Subtle vibration for Standard
+                    navigator.vibrate([200]);
+                }
             } catch (err) {
                 console.warn("Vibration failed", err);
             }
         }
 
-        // 2. Play Alarm Sound (repeating until dismissed)
+        // 2. Play Sound
         const stopAlarm = playAlarm();
 
         return () => {
             if (stopAlarm) stopAlarm();
             if (navigator.vibrate) navigator.vibrate(0); // Stop vibration
         };
-    }, [reminder?.uniqueId, isSilent]); // Use uniqueId to ensure it triggers on new alarms
+    }, [reminder?.uniqueId, reminder?.soundType, isSilent]); // Trigger on uniqueId change OR settings change
 
     const handleAction = (actionFn, ...args) => {
         // No vibration or sound on action
