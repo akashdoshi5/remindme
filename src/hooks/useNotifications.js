@@ -6,28 +6,48 @@ import { dataService } from '../services/data';
 export const useNotifications = () => {
     const [permission, setPermission] = useState('default');
 
-    // Initialize Channels
+    // MIGRATION: Ensure channels and actions are created/registered immediately
     useEffect(() => {
         if (Capacitor.isNativePlatform()) {
-            // Channel 1: Standard Reminders (Default Sound)
+
+            // 1. Register Action Types (Buttons) - Do this first!
+            LocalNotifications.registerActionTypes({
+                types: [{
+                    id: 'REMINDER_ACTIONS_V10',
+                    actions: [
+                        {
+                            id: 'snooze',
+                            title: 'Snooze',
+                            foreground: true
+                        },
+                        {
+                            id: 'done',
+                            title: 'Mark as Done',
+                            foreground: true
+                        }
+                    ]
+                }]
+            }).then(() => console.log('✅ Notification Actions Registered'))
+                .catch(e => console.error('❌ Action Registration Failed', e));
+
+            // 2. Create Channels
             LocalNotifications.createChannel({
                 id: 'reminders_v10',
                 name: 'Reminders',
                 description: 'General reminders',
                 importance: 4,
                 visibility: 1,
-                sound: 'default_notification.ogg', // System Default
+                sound: 'default',
                 vibration: true
             }).catch(e => console.error("Channel Create Error", e));
 
-            // Channel 2: Important/Alarm Reminders (Long Sound)
             LocalNotifications.createChannel({
                 id: 'reminders_alarm_v1',
                 name: 'Alarm Reminders',
-                description: 'High priority reminders preventing sleep',
-                importance: 5, // High
+                description: 'High priority reminders',
+                importance: 5, // Max importance for heads-up
                 visibility: 1,
-                sound: 'alarm_sound.ogg', // We will try to rely on system alarm sound or fallback
+                sound: 'default', // Fallback to system default since raw/ resource is missing
                 vibration: true
             }).catch(e => console.error("Alarm Channel Create Error", e));
         }
@@ -39,16 +59,12 @@ export const useNotifications = () => {
             setPermission(result.display);
             return result.display;
         } else {
-            if (!('Notification' in window)) {
-                console.warn('This browser does not support desktop notification');
-                return 'denied';
-            }
+            if (!('Notification' in window)) return 'denied';
             const result = await Notification.requestPermission();
             setPermission(result);
             return result;
         }
     }, []);
-
 
     const sendNotification = useCallback(async (title, options = {}) => {
         try {
@@ -61,35 +77,29 @@ export const useNotifications = () => {
                             body: options.body || '',
                             id: new Date().getTime() % 2147483647,
                             schedule: { at: new Date(Date.now() + 100) },
-                            sound: isAlarm ? 'alarm_sound.ogg' : 'default', // CRITICAL: Explicit sound
+                            sound: isAlarm ? 'default' : 'default', // Use default for now
                             channelId: isAlarm ? 'reminders_alarm_v1' : 'reminders_v10',
-                            smallIcon: 'ic_notification_bell', // Explicitly set icon
-                            actionTypeId: 'REMINDER_ACTIONS_V10',
+                            smallIcon: 'ic_notification_bell',
+                            actionTypeId: 'REMINDER_ACTIONS_V10', // Bind actions
                             extra: options.data || null
                         }
                     ]
                 });
             } else {
-                // WEB: Use Service Worker for Buttons
+                // Web fallback
                 if ('serviceWorker' in navigator && Notification.permission === 'granted') {
                     const registration = await navigator.serviceWorker.ready;
-
-                    // Define Actions
-                    const actions = [
-                        { action: 'snooze', title: 'Snooze' },
-                        { action: 'done', title: 'Mark as Done' }
-                    ];
-
                     await registration.showNotification(title, {
                         ...options,
-                        icon: '/icon.png', // Ensure icon exists
-                        actions: actions,
-                        tag: options.data?.uniqueId, // To allow closing specific one
-                        requireInteraction: true, // Keep it visible until interaction
+                        icon: '/icon.png',
+                        actions: [
+                            { action: 'snooze', title: 'Snooze' },
+                            { action: 'done', title: 'Mark as Done' }
+                        ],
+                        tag: options.data?.uniqueId,
                         data: options.data
                     });
                 } else if (Notification.permission === 'granted') {
-                    // Fallback for non-SW support (rare)
                     new Notification(title, options);
                 }
             }
@@ -112,109 +122,68 @@ export const useNotifications = () => {
     }, []);
 
     const scheduleReminders = useCallback(async (reminders) => {
-        /* console.log('📅 scheduleReminders called with', reminders.length, 'reminders'); */
-
         try {
-            // STEP 1: Process reminders into notification objects (SHARED LOGIC)
+            if (!Capacitor.isNativePlatform()) return;
+
             let filteredCount = 0;
             let pastCount = 0;
-            let firstFilterReason = "";
 
-            // V10: GLOBAL NOTIFICATION SETTING
-            // User requested that sound settings be global and apply to ALL reminders
             const globalSettings = dataService.getSettings();
-            const globalSoundType = globalSettings?.notificationSound || 'standard'; // 'standard' | 'alarm'
+            const globalSoundType = globalSettings?.notificationSound || 'standard';
             const isAlarm = globalSoundType === 'alarm';
 
             const notificationsToSchedule = reminders.map(r => {
-                if (!r.displayTime) {
-                    filteredCount++;
-                    return null;
-                }
+                if (!r.displayTime) return null;
                 const [h, m] = r.displayTime.split(':').map(Number);
 
                 let date;
                 if (r.targetDate) {
-                    // CRITICAL FIX: Parse using regex to handle YYYY-MM-DD or YYYY/MM/DD
+                    // TRUST THE TARGET DATE
                     const parts = r.targetDate.split(/[-/]/).map(Number);
-                    // Ensure we have 3 parts [Year, Month, Day]
                     if (parts.length === 3) {
                         const [year, month, day] = parts;
                         date = new Date(year, month - 1, day, h, m, 0, 0);
                     } else {
-                        // Fallback if parsing failed
-                        console.error('Invalid targetDate format:', r.targetDate);
-                        date = new Date(); // unsafe default but prevents crash
+                        // Fallback logic
+                        date = new Date();
                         date.setHours(h, m, 0, 0);
-                        filteredCount++;
-                        if (!firstFilterReason) firstFilterReason = `Invalid Date Format (${r.targetDate})`;
-                        return null; // Skip invalid dates
                     }
                 } else {
+                    // No target date? Assume today
                     date = new Date();
                     date.setHours(h, m, 0, 0);
                 }
 
                 const now = new Date();
 
-                // Logic for Daily/Recurring: If passed today, schedule for tomorrow
-                // ONLY if we don't have an explicit target date (which implies confidence)
+                // CRITICAL FIX: Disable "Smart" rescheduling if we have an explicit target date.
+                // If the date is passed, it's passed. Do not push it to tomorrow.
                 if (!r.targetDate && date <= now) {
-                    if (r.frequency === 'Daily' || (r.schedule && r.schedule.type === 'recurring')) {
+                    if (r.frequency === 'Daily') {
                         date.setDate(date.getDate() + 1);
-                    } else {
-                        filteredCount++;
-                        if (!firstFilterReason) firstFilterReason = `Passed & Not Recurring (${r.title})`;
-                        return null;
                     }
                 }
 
-                if (r.date && r.frequency === 'Once' && !r.targetDate) {
-                    const [year, month, day] = r.date.split('-').map(Number);
-                    const targetDate = new Date(year, month - 1, day, h, m, 0, 0);
-                    if (targetDate <= now) {
-                        filteredCount++;
-                        if (!firstFilterReason) firstFilterReason = `Once & Passed (${r.title})`;
-                        return null;
-                    }
-                    date = targetDate;
-                }
-
-                // CRITICAL FIX: Generate unique numeric ID for each instance
-                // Prevents overwriting recurring reminders (which share the same base r.id)
+                // Generates ID
                 let safeId;
                 if (r.extra?.uniqueId || r.uniqueId) {
                     const uidStr = r.extra?.uniqueId || r.uniqueId;
                     let hash = 0;
                     for (let i = 0; i < uidStr.length; i++) {
-                        const char = uidStr.charCodeAt(i);
-                        hash = ((hash << 5) - hash) + char;
-                        hash = hash & hash; // Convert to 32bit integer
+                        hash = ((hash << 5) - hash) + uidStr.charCodeAt(i);
+                        hash = hash & hash;
                     }
-                    safeId = Math.abs(hash); // Ensure positive ID
+                    safeId = Math.abs(hash);
                 } else {
-                    // Fallback to time-based unique ID if uniqueId is missing
                     safeId = (parseInt(r.id) + date.getTime()) & 0x7FFFFFFF;
                 }
 
                 const bodyText = r.instructions ? r.instructions : (r.type === 'Medication' ? 'Time for your meds!' : 'Reminder');
 
-                // EXTRA SAFETY: Don't schedule past events (tolerance 5 min)
-                if (date.getTime() < now.getTime() - 300000) {
+                // STRICT FILTER: Check if strictly in the past (tolerance 1 min)
+                if (date.getTime() < now.getTime() - 60000) {
                     pastCount++;
-                    if (!firstFilterReason) firstFilterReason = `>5min Past (${r.title} @ ${date.toLocaleTimeString()})`;
                     return null;
-                }
-
-                // CHECK END DATE (Soft Delete / Expiry)
-                if (r.schedule?.endDate) {
-                    const end = new Date(r.schedule.endDate);
-                    end.setHours(23, 59, 59, 999);
-                    if (date > end) {
-                        filteredCount++;
-                        if (!firstFilterReason) firstFilterReason = `Past End Date (${r.title})`;
-                        return null;
-                    }
                 }
 
                 return {
@@ -222,47 +191,29 @@ export const useNotifications = () => {
                     body: bodyText,
                     id: safeId,
                     schedule: {
-                        at: date, // CRITICAL FIX: Must be Date object for Native Bridge
+                        at: date,
                         allowWhileIdle: true
                     },
-                    sound: isAlarm ? 'alarm_sound.ogg' : 'default', // Fallback to safe system default if file missing
+                    sound: isAlarm ? 'default' : 'default', // Fallback
                     channelId: isAlarm ? 'reminders_alarm_v1' : 'reminders_v10',
                     smallIcon: 'ic_notification_bell',
-                    actionTypeId: 'REMINDER_ACTIONS_V10',
+                    actionTypeId: 'REMINDER_ACTIONS_V10', // Ensure buttons appear
                     extra: { uniqueId: r.uniqueId }
                 };
             });
 
             const filtered = notificationsToSchedule.filter(n => n !== null && !isNaN(n.id));
 
-            if (filtered.length === 0 && reminders.length > 0) {
-                console.warn(`Debug: 0/${reminders.length} scheduled. Filtered: ${filteredCount}, Past: ${pastCount}. First Reason: ${firstFilterReason}`);
-            }
-
-            // STEP 2: Platform Execution
-            if (Capacitor.isNativePlatform()) {
+            if (filtered.length > 0) {
+                // Cancel existing to prevent duplicates/ghosts
                 const pending = await LocalNotifications.getPending();
                 if (pending.notifications.length > 0) {
+                    // Optimally we should only cancel relevant ones, but for now clear strictly to ensure clean slate
                     await LocalNotifications.cancel(pending);
                 }
 
-                if (filtered.length > 0) {
-                    try {
-                        await LocalNotifications.schedule({
-                            notifications: filtered
-                        });
-                    } catch (schedError) {
-                        console.error(`Native Schedule Failed: ${schedError.message}`);
-                    }
-
-                    // Verify
-                    const p = await LocalNotifications.getPending();
-                    if (p.notifications.length === 0) {
-                        console.error('CRITICAL: Native says success but 0 pending found! Check Logcat.');
-                    }
-                }
-            } else {
-                // Web platform logic could go here
+                await LocalNotifications.schedule({ notifications: filtered });
+                console.log(`✅ Scheduled ${filtered.length} reminders.`);
             }
 
         } catch (error) {
@@ -270,66 +221,8 @@ export const useNotifications = () => {
         }
     }, []);
 
-    // Registration of actions (Buttons)
-    useEffect(() => {
-        if (Capacitor.isNativePlatform()) {
-            LocalNotifications.checkPermissions().then(async (res) => {
-                setPermission(res.display);
-
-                // ALWAYS Try to register types if native, regardless of permission state (sometimes needed pre-grant)
-                // or just do it on load.
-                try {
-                    await LocalNotifications.registerActionTypes({
-                        types: [{
-                            id: 'REMINDER_ACTIONS_V10',
-                            actions: [
-                                {
-                                    id: 'snooze',
-                                    title: 'Snooze',
-                                    foreground: true // Try foreground to see if buttons appear more reliably or if it brings app to front
-                                },
-                                {
-                                    id: 'done',
-                                    title: 'Mark as Done',
-                                    foreground: true
-                                }
-                            ]
-                        }]
-                    });
-
-                    console.log("Registered Actions V9 with Foreground=True");
-
-                    // Create Channel V6
-                    if (res.display === 'granted') {
-                        await LocalNotifications.createChannel({
-                            id: 'reminders_v10',
-                            name: 'Reminders (V10)',
-                            description: 'Reminders for medications and tasks',
-                            importance: 5,
-                            visibility: 1,
-                            vibration: true,
-                            lights: true,
-                        });
-                    }
-
-                    // Listener for actions
-                    LocalNotifications.addListener('localNotificationActionPerformed', (payload) => {
-                        console.log('Notification action:', payload);
-                        // Dispatch event for UI or Service handling
-                        window.dispatchEvent(new CustomEvent('notification-action', {
-                            detail: { action: payload.actionId, tag: payload.notification.extra?.uniqueId }
-                        }));
-                    });
-
-                } catch (e) {
-                    console.error("Error initializing notifications V5", e);
-                }
-            });
-        } else {
-            setPermission(Notification.permission);
-        }
-    }, []);
-
+    // Listener setup is now done in App.jsx to avoid hook duplication issues
+    // Just return helpers
     const checkPermissions = useCallback(async () => {
         if (Capacitor.isNativePlatform()) {
             const result = await LocalNotifications.checkPermissions();

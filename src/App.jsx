@@ -219,6 +219,30 @@ const AppContent = () => {
     };
   }, [location.pathname, navigate]);
 
+  // Handle Notification Actions (Snooze/Done)
+  useEffect(() => {
+    const handleAction = async (event) => {
+      const { action, tag } = event.detail; // tag is uniqueDateId (e.g. "2024-02-10_period_1") or just id
+      console.log('🔔 Notification Action Received:', action, tag);
+      if (!tag) return;
+
+      if (action === 'snooze') {
+        // Default 15 mins. Note: `tag` is expected to be uniqueId/instanceKey. 
+        // We pass it as both parentId and instanceId because dataService often iterates to find parent if instanceKey is unique.
+        // Or if tag is simple numeric ID, it works.
+        // dataService.snoozeReminder(id, instanceKey, duration)
+        // We make a best guess: pass tag as ID. The service logic will scan.
+        await dataService.snoozeReminder(tag, tag, 15);
+      } else if (action === 'done') {
+        await dataService.completeReminder(tag, tag);
+      }
+      window.dispatchEvent(new Event('storage-update'));
+    };
+
+    window.addEventListener('notification-action', handleAction);
+    return () => window.removeEventListener('notification-action', handleAction);
+  }, []);
+
   return (
     <div className="h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200 flex flex-col font-sans overflow-hidden">
       <Header />
