@@ -50,6 +50,22 @@ export const useNotifications = () => {
                 sound: 'default', // Fallback to system default since raw/ resource is missing
                 vibration: true
             }).catch(e => console.error("Alarm Channel Create Error", e));
+
+            // 3. Add Action Listener
+            LocalNotifications.addListener('localNotificationActionPerformed', (notification) => {
+                console.log('🔔 Action Performed:', notification.actionId);
+                const actionId = notification.actionId;
+                const extra = notification.notification.extra;
+                const uniqueId = extra?.uniqueId;
+                // Note: notification.notification.id is an integer safeId. uniqueId is the string key.
+
+                window.dispatchEvent(new CustomEvent('notification-action', {
+                    detail: {
+                        action: actionId,
+                        tag: uniqueId || notification.notification.id
+                    }
+                }));
+            });
         }
     }, []);
 
