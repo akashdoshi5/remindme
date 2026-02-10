@@ -232,7 +232,8 @@ const AppContent = () => {
         // Or if tag is simple numeric ID, it works.
         // dataService.snoozeReminder(id, instanceKey, duration)
         // We make a best guess: pass tag as ID. The service logic will scan.
-        await dataService.snoozeReminder(tag, tag, 15);
+        // Default 5 mins as per user request
+        await dataService.snoozeReminder(tag, tag, 5);
       } else if (action === 'done') {
         await dataService.completeReminder(tag, tag);
       }
