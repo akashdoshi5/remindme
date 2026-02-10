@@ -165,7 +165,7 @@ import AddReminderModal from './components/reminders/AddReminderModal';
 
 const AppContent = () => {
   const { user } = useAuth();
-  const { requestPermission, checkPermissions, permission, sendNotification, scheduleReminders, clearDelivered } = useNotifications();
+  const { requestPermission, checkPermissions, permission, sendNotification, scheduleReminders, clearDelivered, cancelReminderNotification } = useNotifications();
   const {
     openSearch, closeSearch, isSearchOpen,
     openSettings, closeSettings, isSettingsOpen,
@@ -357,7 +357,9 @@ const AppContent = () => {
           if (activeAlarm) {
             const instanceId = activeAlarm.instanceKey || null;
             dataService.snoozeReminder(activeAlarm.id, instanceId, duration || 15);
-            clearDelivered(activeAlarm.id % 2147483647);
+            // Sync Fix: Cancel the notification from tray
+            cancelReminderNotification(activeAlarm);
+
             setActiveAlarm(null);
             window.dispatchEvent(new Event('storage-update'));
           }
@@ -366,7 +368,9 @@ const AppContent = () => {
           if (activeAlarm) {
             const instanceId = activeAlarm.instanceKey || null;
             dataService.completeReminder(activeAlarm.id, instanceId);
-            clearDelivered(activeAlarm.id % 2147483647);
+            // Sync Fix: Cancel the notification from tray
+            cancelReminderNotification(activeAlarm);
+
             setActiveAlarm(null);
             window.dispatchEvent(new Event('storage-update'));
           }

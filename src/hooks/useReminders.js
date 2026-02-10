@@ -102,7 +102,13 @@ export const useReminders = (setActiveAlarm) => {
         const interval = setInterval(checkAlarms, 2000); // Check every 2s for responsiveness
         checkAlarms(); // Initial check
 
-        return () => clearInterval(interval);
+        // Listen for global data updates (e.g. Snooze from Notification) to re-evaluate alarms immediately
+        window.addEventListener('data-updated', checkAlarms);
+
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('data-updated', checkAlarms);
+        };
     }, [setActiveAlarm, sendNotification]);
 
     // 3. Listen for Snooze/Done actions to CLEAR notified ref

@@ -248,12 +248,52 @@ export const useNotifications = () => {
         return Notification.permission;
     }, []);
 
+    const cancelReminderNotification = useCallback(async (reminder) => {
+        if (!Capacitor.isNativePlatform()) return;
+        try {
+            // Re-generate ID using same logic as scheduleReminders
+            // We need to approximation the 'date' used. 
+            // Since we don't know the exact scheduled time easily without parsing, 
+            // allow passing the specific ID if known, or try to reconstruct.
+            // BETTER: Just cancel by ID if we can stored it? No.
+            // Logic: 
+            // if (r.extra?.uniqueId) hash(uniqueId)
+            // else (parseInt(r.id) + date.getTime()) ... this is hard to replicate exactly if date shifted.
+            // FIX: We should rely on uniqueId if available.
+
+            let idToCancel;
+            if (reminder.uniqueId || (reminder.extra && reminder.extra.uniqueId)) {
+                const uidStr = reminder.uniqueId || reminder.extra.uniqueId;
+                let hash = 0;
+                for (let i = 0; i < uidStr.length; i++) {
+                    hash = ((hash << 5) - hash) + uidStr.charCodeAt(i);
+                    hash = hash & hash;
+                }
+                idToCancel = Math.abs(hash);
+            } else {
+                // Fallback: This is risky without exact date. 
+                // We'll rely on the caller passing the 'safeId' if possible, or just skip if not uniqueId.
+                if (reminder.notificationId) idToCancel = reminder.notificationId;
+            }
+
+            if (idToCancel) {
+                await LocalNotifications.removeDeliveredNotifications({ notifications: [{ id: idToCancel }] });
+                // Also cancel pending?
+                await LocalNotifications.cancel({ notifications: [{ id: idToCancel }] });
+                console.log(`Cancelled Notification ID: ${idToCancel}`);
+            }
+        } catch (error) {
+            console.error("Error cancelling notification:", error);
+        }
+    }, []);
+
     return {
         permission,
         requestPermission,
         checkPermissions,
         sendNotification,
         scheduleReminders,
-        clearDelivered
+        clearDelivered,
+        cancelReminderNotification
     };
 };

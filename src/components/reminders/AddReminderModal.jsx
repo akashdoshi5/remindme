@@ -216,6 +216,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
             setFiles([]);
             setEditScope('all');
             setDurationDays(30);
+            setIsSaving(false); // Reset saving state
         }
     }, [reminderToEdit, isOpen]);
 
