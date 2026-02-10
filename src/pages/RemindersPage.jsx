@@ -24,6 +24,14 @@ const RemindersPage = () => {
     const [triggerReload, setTriggerReload] = useState(0);
     // const [startVoice, setStartVoice] = useState(false); // REMOVED
 
+    // V10.22: Live Time Update for "Current Time" Indicator
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 60000); // Update every minute
+        return () => clearInterval(timer);
+    }, []);
+
     // Pull to Refresh State
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pullY, setPullY] = useState(0);
@@ -776,10 +784,10 @@ const RemindersPage = () => {
                                                                         }}
                                                                         disabled={!isActionable}
                                                                         className={`px-4 py-2.5 rounded-xl font-bold text-sm shadow-md flex items-center gap-2 transition-transform active:scale-95 ${isActionable
-                                                                                ? (reason === 'Missed'
-                                                                                    ? 'bg-red-500 text-white shadow-red-500/20'
-                                                                                    : 'bg-orange-500 text-white shadow-orange-500/20 hover:bg-orange-600')
-                                                                                : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed shadow-none'
+                                                                            ? (reason === 'Missed'
+                                                                                ? 'bg-red-500 text-white shadow-red-500/20'
+                                                                                : 'bg-orange-500 text-white shadow-orange-500/20 hover:bg-orange-600')
+                                                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed shadow-none'
                                                                             }`}
                                                                     >
                                                                         {isActionable ? (
