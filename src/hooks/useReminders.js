@@ -99,7 +99,7 @@ export const useReminders = (setActiveAlarm) => {
             }
         };
 
-        const interval = setInterval(checkAlarms, 15000); // Check every 15s
+        const interval = setInterval(checkAlarms, 2000); // Check every 2s for responsiveness
         checkAlarms(); // Initial check
 
         return () => clearInterval(interval);

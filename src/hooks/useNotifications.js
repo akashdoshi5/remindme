@@ -37,7 +37,7 @@ export const useNotifications = () => {
                 description: 'General reminders',
                 importance: 4,
                 visibility: 1,
-                sound: 'default',
+                sound: 'chime.wav', // Custom sound
                 vibration: true
             }).catch(e => console.error("Channel Create Error", e));
 
@@ -47,7 +47,7 @@ export const useNotifications = () => {
                 description: 'High priority reminders',
                 importance: 5, // Max importance for heads-up
                 visibility: 1,
-                sound: 'default', // Fallback to system default since raw/ resource is missing
+                sound: 'alarm.wav', // Custom sound
                 vibration: true
             }).catch(e => console.error("Alarm Channel Create Error", e));
 
@@ -93,7 +93,7 @@ export const useNotifications = () => {
                             body: options.body || '',
                             id: new Date().getTime() % 2147483647,
                             schedule: { at: new Date(Date.now() + 100) },
-                            sound: isAlarm ? 'default' : 'default', // Use default for now
+                            sound: isAlarm ? 'alarm.wav' : 'chime.wav',
                             channelId: isAlarm ? 'reminders_alarm_v1' : 'reminders_v10',
                             smallIcon: 'ic_notification_bell',
                             actionTypeId: 'REMINDER_ACTIONS_V10', // Bind actions
@@ -210,7 +210,7 @@ export const useNotifications = () => {
                         at: date,
                         allowWhileIdle: true
                     },
-                    sound: isAlarm ? 'default' : 'default', // Fallback
+                    sound: isAlarm ? 'alarm.wav' : 'chime.wav',
                     channelId: isAlarm ? 'reminders_alarm_v1' : 'reminders_v10',
                     smallIcon: 'ic_notification_bell',
                     actionTypeId: 'REMINDER_ACTIONS_V10', // Ensure buttons appear
