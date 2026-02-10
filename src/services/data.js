@@ -174,9 +174,30 @@ export const dataService = {
 
                 // Deduplicate in case 'notes' (Owned) somehow includes Shared (unlikely but safe)
                 const newOwnedMap = new Map();
-                validNotes.forEach(n => newOwnedMap.set(n.id, n));
 
-                // Add shared back if not in newOwned
+                // SMART MERGE: Check timestamps to avoid overwriting pending local edits
+                validNotes.forEach(cloudNote => {
+                    const localNote = store.notes.find(n => n.id === cloudNote.id);
+                    if (localNote) {
+                        const localTime = localNote.updatedAt ? new Date(localNote.updatedAt).getTime() : 0;
+                        const cloudTime = cloudNote.updatedAt ? new Date(cloudNote.updatedAt).getTime() : 0;
+
+                        // If user JUST edited locally (within last 3 seconds) or local timestamp is strictly newer
+                        // Keep local changes.
+                        // (3s buffer for clock skew / race)
+                        if (localTime > cloudTime) {
+                            // Keep local, but update 'isShared' status if changed on server?
+                            // For now, prioritize local user intent for things like isPinned
+                            newOwnedMap.set(cloudNote.id, { ...cloudNote, ...localNote });
+                        } else {
+                            newOwnedMap.set(cloudNote.id, cloudNote);
+                        }
+                    } else {
+                        newOwnedMap.set(cloudNote.id, cloudNote);
+                    }
+                });
+
+                // Add shared back if not in newOwned which overrides shared if ID collision
                 currentShared.forEach(n => {
                     if (!newOwnedMap.has(n.id)) {
                         newOwnedMap.set(n.id, n);
@@ -209,7 +230,26 @@ export const dataService = {
                 const owned = store.notes.filter(n => !n.isShared);
 
                 // Deduplicate by ID just in case
-                const sharedMap = new Map(validShared.map(n => [n.id, n]));
+                const sharedMap = new Map();
+
+                // SMART MERGE for Shared Notes
+                validShared.forEach(cloudNote => {
+                    const localNote = store.notes.find(n => n.id === cloudNote.id);
+                    if (localNote) {
+                        const localTime = localNote.updatedAt ? new Date(localNote.updatedAt).getTime() : 0;
+                        const cloudTime = cloudNote.updatedAt ? new Date(cloudNote.updatedAt).getTime() : 0;
+
+                        // Preserve local changes (e.g. pinned status) if newer
+                        if (localTime > cloudTime) {
+                            sharedMap.set(cloudNote.id, { ...cloudNote, ...localNote });
+                        } else {
+                            sharedMap.set(cloudNote.id, cloudNote);
+                        }
+                    } else {
+                        sharedMap.set(cloudNote.id, cloudNote);
+                    }
+                });
+
                 owned.forEach(n => {
                     if (sharedMap.has(n.id)) sharedMap.delete(n.id); // Prefer owned version if conflict?
                 });
@@ -1650,10 +1690,12 @@ export const dataService = {
     updateNote: async (id, updates) => {
         // V10.20: Optimistic Update
         const targetStore = getCurrentStore();
+        const nowIso = new Date().toISOString();
+        const optimisticUpdates = { ...updates, updatedAt: nowIso };
 
         // 1. Update Local / Cache
         if (targetStore.notes) {
-            targetStore.notes = targetStore.notes.map(n => String(n.id) === String(id) ? { ...n, ...updates } : n);
+            targetStore.notes = targetStore.notes.map(n => String(n.id) === String(id) ? { ...n, ...optimisticUpdates } : n);
             if (!activeProfile) save(); // Only save to local storage if it's my data
             notifyListeners();
         }
@@ -1662,7 +1704,7 @@ export const dataService = {
         if (auth.currentUser) {
             try {
                 // eslint-disable-next-line no-unused-vars
-                const { ownerId, createdAt, ownerEmail, ...cleanUpdates } = updates;
+                const { ownerId, createdAt, ownerEmail, ...cleanUpdates } = optimisticUpdates;
                 // Remove undefined values
                 Object.keys(cleanUpdates).forEach(key => cleanUpdates[key] === undefined && delete cleanUpdates[key]);
 
