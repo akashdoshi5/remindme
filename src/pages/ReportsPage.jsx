@@ -225,7 +225,14 @@ const ReportsPage = () => {
         setIsLoadingPatient(true);
 
         const unsubscribe = firestoreService.getPatientRemindersRealtime(viewingProfile.uid, (reminders) => {
-            setPatientData({ reminders });
+            // Deduplicate by ID to prevent duplicate entries in Reports
+            const unique = new Map();
+            reminders.forEach(r => {
+                if (r.id && !unique.has(String(r.id))) {
+                    unique.set(String(r.id), r);
+                }
+            });
+            setPatientData({ reminders: Array.from(unique.values()) });
             setIsLoadingPatient(false);
         });
 

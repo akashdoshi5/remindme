@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, Bell, FileText, Users, Mic, Search, Activity, Settings } from 'lucide-react';
 import { useNotifications } from './hooks/useNotifications';
 import { dataService } from './services/data';
@@ -10,6 +10,9 @@ import SettingsModal from './components/settings/SettingsModal';
 import { firestoreService } from './services/firestoreService';
 import { useDataSync } from './hooks/useDataSync';
 import { useReminders } from './hooks/useReminders';
+
+import { App as CapacitorApp } from '@capacitor/app';
+import { BackButtonManager } from './services/BackButtonManager';
 
 import PermissionBanner from './components/common/PermissionBanner';
 import AppVersionManager from './components/common/AppVersionManager';
@@ -185,9 +188,36 @@ const AppContent = () => {
     openNoteModal({ autoStart: true });
   };
 
-  // ... (existing Back Button Logic - update to handle note/reminder modals?)
-  // (We'll skip complex back button for them for this step to keep it atomic, 
-  //  but they usually have their own internal back handlers in the modal components themselves)
+  // ... (existing hooks)
+
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Back Button Logic
+  useEffect(() => {
+    let backListener;
+    const setupListener = async () => {
+      backListener = await CapacitorApp.addListener('backButton', async ({ canGoBack }) => {
+        // 1. Check Modals / Managers via BackButtonManager
+        const handled = await BackButtonManager.handleBackPress();
+        if (handled) return;
+
+        // 2. Custom Navigation Logic
+        if (location.pathname !== '/') {
+          // Navigate to Home if not there
+          navigate('/');
+        } else {
+          // 3. Exit App if on Home
+          CapacitorApp.exitApp();
+        }
+      });
+    };
+    setupListener();
+
+    return () => {
+      if (backListener) backListener.remove();
+    };
+  }, [location.pathname, navigate]);
 
   return (
     <div className="h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200 flex flex-col font-sans overflow-hidden">

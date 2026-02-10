@@ -6,6 +6,7 @@
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
+    "site": "remindme-app-9988",
     "public": "dist",
     "ignore": [
       "firebase.json",

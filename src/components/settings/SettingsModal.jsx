@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Moon, Sun, Save, Smartphone, LogOut, User, Trash2, Bell, RefreshCw, Activity } from 'lucide-react';
+import { X, Moon, Sun, Save, Smartphone, LogOut, User, Trash2, Bell, RefreshCw, Activity, AlertCircle } from 'lucide-react';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { dataService } from '../../services/data';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -12,12 +13,14 @@ const SettingsModal = ({ isOpen, onClose }) => {
 
     const [sleepStart, setSleepStart] = useState('22:00');
     const [sleepEnd, setSleepEnd] = useState('08:00');
+    const [notificationSound, setNotificationSound] = useState('standard');
 
     useEffect(() => {
         const current = dataService.getSettings();
         if (current) {
             setSleepStart(current.sleepStart || '22:00');
             setSleepEnd(current.sleepEnd || '08:00');
+            setNotificationSound(current.notificationSound || 'standard');
         }
     }, [isOpen]);
 
@@ -27,7 +30,8 @@ const SettingsModal = ({ isOpen, onClose }) => {
         dataService.updateSettings({
             sleepStart,
             sleepEnd,
-            theme // Ensure explicit save just in case, though context handles it.
+            theme,
+            notificationSound // Save this
         });
         onClose();
     };
@@ -35,6 +39,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] md:p-4 animate-fade-in backdrop-blur-sm">
             <div className="bg-white dark:bg-gray-900 w-full md:max-w-md flex flex-col h-full md:h-auto md:max-h-[85vh] shadow-2xl overflow-hidden transition-colors duration-300 md:rounded-2xl relative z-[100]">
+                {/* ... header ... */}
                 <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
                     <h2 className="text-xl font-bold dark:text-white">Settings</h2>
                     <button onClick={onClose} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors">
@@ -43,6 +48,37 @@ const SettingsModal = ({ isOpen, onClose }) => {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 pb-32 md:pb-6 flex flex-col gap-6">
+                    {/* ... User Profile ... */}
+                    {/* ... Theme ... */}
+
+                    {/* Notification Sound Settings */}
+                    <div>
+                        <h3 className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Notification Sound</h3>
+                        <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-xl flex">
+                            {[
+                                { id: 'standard', icon: Bell, label: 'Standard Chime' },
+                                { id: 'alarm', icon: AlertCircle, label: 'Alarm (Long)' },
+                            ].map((option) => (
+                                <button
+                                    key={option.id}
+                                    onClick={() => {
+                                        setNotificationSound(option.id);
+                                        Haptics.impact({ style: ImpactStyle.Light });
+                                    }}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${notificationSound === option.id
+                                        ? 'bg-white dark:bg-gray-700 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-100 dark:border-orange-900'
+                                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                                        }`}
+                                >
+                                    <option.icon size={16} />
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 px-1">
+                            "Alarm" plays a long sound and vibrates heavily, even if phone is in Do Not Disturb (depending on OS settings).
+                        </p>
+                    </div>
                     {/* User Profile Section */}
                     {user ? (
                         <div className="flex items-center gap-4 pb-6 border-b border-gray-100 dark:border-gray-800">
@@ -105,6 +141,38 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                 </button>
                             ))}
                         </div>
+                    </div>
+
+                    {/* Notification Sound Settings */}
+                    <div>
+                        <h3 className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Notification Sound</h3>
+                        <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-xl flex">
+                            {[
+                                { id: 'standard', icon: Bell, label: 'Standard Chime' },
+                                { id: 'alarm', icon: AlertCircle, label: 'Alarm (Long)' },
+                            ].map((option) => (
+                                <button
+                                    key={option.id}
+                                    onClick={() => {
+                                        dataService.updateSettings({ notificationSound: option.id });
+                                        // Force UI refresh by closing/reopening or just state? 
+                                        // SettingsModal doesn't have local state for sound, it reads from dataService on open.
+                                        // We should add local state for it to reflect change immediately?
+                                        // Yes, see below.
+                                    }}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${(dataService.getSettings()?.notificationSound || 'standard') === option.id
+                                        ? 'bg-white dark:bg-gray-700 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-100 dark:border-orange-900'
+                                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                                        }`}
+                                >
+                                    <option.icon size={16} />
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 px-1">
+                            "Alarm" plays a long sound and vibrates heavily, even if phone is in Do Not Disturb (depending on OS settings).
+                        </p>
                     </div>
 
                     {/* Sleep Schedule */}

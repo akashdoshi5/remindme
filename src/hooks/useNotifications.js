@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
+import { dataService } from '../services/data';
 
 export const useNotifications = () => {
     const [permission, setPermission] = useState('default');
@@ -119,6 +120,12 @@ export const useNotifications = () => {
             let pastCount = 0;
             let firstFilterReason = "";
 
+            // V10: GLOBAL NOTIFICATION SETTING
+            // User requested that sound settings be global and apply to ALL reminders
+            const globalSettings = dataService.getSettings();
+            const globalSoundType = globalSettings?.notificationSound || 'standard'; // 'standard' | 'alarm'
+            const isAlarm = globalSoundType === 'alarm';
+
             const notificationsToSchedule = reminders.map(r => {
                 if (!r.displayTime) {
                     filteredCount++;
@@ -218,8 +225,8 @@ export const useNotifications = () => {
                         at: date, // CRITICAL FIX: Must be Date object for Native Bridge
                         allowWhileIdle: true
                     },
-                    sound: r.soundType === 'alarm' ? 'alarm_sound.ogg' : 'default', // Fallback to safe system default if file missing
-                    channelId: r.soundType === 'alarm' ? 'reminders_alarm_v1' : 'reminders_v10',
+                    sound: isAlarm ? 'alarm_sound.ogg' : 'default', // Fallback to safe system default if file missing
+                    channelId: isAlarm ? 'reminders_alarm_v1' : 'reminders_v10',
                     smallIcon: 'ic_notification_bell',
                     actionTypeId: 'REMINDER_ACTIONS_V10',
                     extra: { uniqueId: r.uniqueId }

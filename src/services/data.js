@@ -24,7 +24,8 @@ const defaultData = {
     settings: {
         sleepStart: '22:00',
         sleepEnd: '08:00',
-        theme: 'system'
+        theme: 'system',
+        notificationSound: 'standard' // 'standard' | 'alarm'
     }
 };
 
@@ -54,6 +55,22 @@ let patientUnsubscribe = null;
 
 // SYNC LISTENERS (V6)
 let syncUnsubscribes = []; // Array of unsubscribe functions for current user
+
+// Track locally deleted note IDs to prevent re-sync
+const DELETED_IDS_KEY = 'remindme_deleted_ids';
+const loadDeletedIds = () => {
+    try {
+        const stored = localStorage.getItem(DELETED_IDS_KEY);
+        return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch (e) {
+        return new Set();
+    }
+};
+let deletedNoteIds = loadDeletedIds();
+
+const saveDeletedIds = () => {
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(deletedNoteIds)));
+};
 
 const getCurrentStore = () => activeProfile ? patientData : store;
 
@@ -147,13 +164,17 @@ export const dataService = {
                     });
                 }
 
+                // V10.36 FIX: Filter out locally deleted notes to prevent re-sync
+                // This prevents "zombie notes" from reappearing if Firestore delete is pending/failed
+                const validNotes = notes.filter(n => !deletedNoteIds.has(String(n.id)));
+
                 // V10.25 FIX: Preserver SHARED notes when updating owned notes
                 // Current store has [Owned + Shared]. 'notes' is just [Owned].
                 const currentShared = (store.notes || []).filter(n => n.isShared);
 
                 // Deduplicate in case 'notes' (Owned) somehow includes Shared (unlikely but safe)
                 const newOwnedMap = new Map();
-                notes.forEach(n => newOwnedMap.set(n.id, n));
+                validNotes.forEach(n => newOwnedMap.set(n.id, n));
 
                 // Add shared back if not in newOwned
                 currentShared.forEach(n => {
@@ -177,6 +198,9 @@ export const dataService = {
 
             // Shared Notes Listener
             const unsubShared = firestoreService.getSharedNotesRealtime((sharedNotes) => {
+                // Filter locally deleted shared notes
+                const validShared = sharedNotes.filter(n => !deletedNoteIds.has(String(n.id)));
+
                 // Merge Shared into Store
                 // We need to avoid duplicates if a note is both owned and shared (unlikely).
                 // We also need to avoid overwriting owned notes when shared update comes.
@@ -185,7 +209,7 @@ export const dataService = {
                 const owned = store.notes.filter(n => !n.isShared);
 
                 // Deduplicate by ID just in case
-                const sharedMap = new Map(sharedNotes.map(n => [n.id, n]));
+                const sharedMap = new Map(validShared.map(n => [n.id, n]));
                 owned.forEach(n => {
                     if (sharedMap.has(n.id)) sharedMap.delete(n.id); // Prefer owned version if conflict?
                 });
@@ -323,7 +347,10 @@ export const dataService = {
                 return cloudR;
             });
         }
-        else if (type === 'notes') store.notes = data;
+        else if (type === 'notes') {
+            // Filter out locally deleted notes to prevent re-sync
+            store.notes = data.filter(n => !deletedNoteIds.has(String(n.id)));
+        }
         else if (type === 'caregivers') store.caregivers = data;
 
         if (type === 'settings') {
@@ -372,8 +399,18 @@ export const dataService = {
     // Export store access for migration
     getLocalStore: () => store,
 
-    // Reminders
-    getReminders: () => [...(getCurrentStore().reminders || [])],
+    // Reminders - with deduplication to prevent duplicates in Reports
+    getReminders: () => {
+        const reminders = getCurrentStore().reminders || [];
+        // Deduplicate by ID - keep first occurrence
+        const unique = new Map();
+        reminders.forEach(r => {
+            if (r.id && !unique.has(String(r.id))) {
+                unique.set(String(r.id), r);
+            }
+        });
+        return Array.from(unique.values());
+    },
 
     isReminderDone: (id, instanceKey) => {
         const r = (getCurrentStore().reminders || []).find(i => String(i.id) === String(id));
@@ -442,7 +479,7 @@ export const dataService = {
 
             // 1. Handle Complex Schedules (Medication)
             if (r.schedule && r.schedule.type === 'recurring') {
-                const startStr = r.schedule.startDate; 
+                const startStr = r.schedule.startDate;
                 if (dateString < startStr) return;
 
                 const diffDays = getHealthDiffDays(startStr, dateString);
@@ -453,12 +490,12 @@ export const dataService = {
                         if (!r.schedule.frequency.includes(period)) return;
 
                         let instanceKey = `${dateString}_period_${period}`;
-                        
+
                         // Check for EXCEPTION (Edit Instance)
                         const exception = (r.exceptions || {})[instanceKey];
                         if (exception && exception.status === 'cancelled') return;
 
-                        let displayTime = exception?.time || time; 
+                        let displayTime = exception?.time || time;
                         let checkDateTime = new Date(dateString);
                         if (displayTime && displayTime.includes(':')) {
                             const [th, tm] = displayTime.split(':').map(Number);
@@ -468,7 +505,7 @@ export const dataService = {
                         // Log Logic
                         const log = (r.logs || {})[instanceKey];
                         if (log && log.snoozedUntil && log.status === 'snoozed') {
-                             if (log.snoozedUntil.includes('T')) {
+                            if (log.snoozedUntil.includes('T')) {
                                 checkDateTime = new Date(log.snoozedUntil);
                                 displayTime = checkDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
                             } else {
@@ -479,7 +516,7 @@ export const dataService = {
                         }
 
                         // STRICT STATUS LOGIC
-                        let status = 'upcoming'; 
+                        let status = 'upcoming';
                         const now = new Date();
                         const twoHoursMs = 2 * 60 * 60 * 1000;
                         const diff = now.getTime() - checkDateTime.getTime();
@@ -487,17 +524,17 @@ export const dataService = {
                         if (log && log.status === 'taken') status = 'taken';
                         else if (log && log.status === 'missed') status = 'missed';
                         else if (log && log.status === 'snoozed') {
-                             // SNOOZE FUTURE CHECK
-                             const snoozedDate = new Date(checkDateTime);
-                             snoozedDate.setHours(0, 0, 0, 0);
-                             const targetDateObj = new Date(dateString);
-                             targetDateObj.setHours(0, 0, 0, 0);
+                            // SNOOZE FUTURE CHECK
+                            const snoozedDate = new Date(checkDateTime);
+                            snoozedDate.setHours(0, 0, 0, 0);
+                            const targetDateObj = new Date(dateString);
+                            targetDateObj.setHours(0, 0, 0, 0);
 
-                             if (snoozedDate > targetDateObj) {
-                                  return; // Hidden from today
-                             }
-                             if (diff < twoHoursMs) status = 'snoozed';
-                             else status = 'missed';
+                            if (snoozedDate > targetDateObj) {
+                                return; // Hidden from today
+                            }
+                            if (diff < twoHoursMs) status = 'snoozed';
+                            else status = 'missed';
                         }
                         else if (diff > twoHoursMs) status = 'missed';
                         else status = 'upcoming';
@@ -511,7 +548,7 @@ export const dataService = {
 
                         expanded.push({
                             ...r,
-                            ...exception, 
+                            ...exception,
                             uniqueId: `${r.id}_${instanceKey}`,
                             instanceKey: instanceKey,
                             time: displayTime,
@@ -521,7 +558,7 @@ export const dataService = {
                             status: status,
                             takenAt: log ? log.takenAt : null,
                             isVirtual: true,
-                            targetDate: dateString 
+                            targetDate: dateString
                         });
                     });
                 }
@@ -570,113 +607,113 @@ export const dataService = {
                 } else {
                     // STANDARD SINGLE / DAILY
                     if (r.id) {
-                         // Check frequency
-                         if (!r.frequency || r.frequency === 'Once') {
-                             if (r.date === dateString) {
-                                 times.push(r.time || '09:00');
-                             }
-                         } else {
-                             // Daily/Weekly/etc
-                             // Simplified check: assume 'Daily' for now if not 'Once' and not 'Every'
-                             // Real app likely has day check. 
-                             // Assuming daily for simple migration or existing logic:
-                             times.push(r.time || '09:00');
-                         }
+                        // Check frequency
+                        if (!r.frequency || r.frequency === 'Once') {
+                            if (r.date === dateString) {
+                                times.push(r.time || '09:00');
+                            }
+                        } else {
+                            // Daily/Weekly/etc
+                            // Simplified check: assume 'Daily' for now if not 'Once' and not 'Every'
+                            // Real app likely has day check. 
+                            // Assuming daily for simple migration or existing logic:
+                            times.push(r.time || '09:00');
+                        }
                     }
                 }
 
                 // PROCESS NATURAL INSTANCES (Legacy Loop)
                 times.forEach(time => {
-                        // CRITICAL FIX V5.4: Key Format Standardization
-                        let instanceKey = `${dateString}_${time || 'default'}`;
-                        const [y, m, d] = dateString.split('-').map(Number);
-                        const legacyDates = [
-                            `${m}/${d}/${y}`, `${d}/${m}/${y}`,
-                            `${m}/${d}/${String(y).slice(-2)}`, `${d}/${m}/${String(y).slice(-2)}`
-                        ];
+                    // CRITICAL FIX V5.4: Key Format Standardization
+                    let instanceKey = `${dateString}_${time || 'default'}`;
+                    const [y, m, d] = dateString.split('-').map(Number);
+                    const legacyDates = [
+                        `${m}/${d}/${y}`, `${d}/${m}/${y}`,
+                        `${m}/${d}/${String(y).slice(-2)}`, `${d}/${m}/${String(y).slice(-2)}`
+                    ];
 
-                        let checkKeys = [instanceKey, `${dateString}_time_${time || 'default'}`];
-                        legacyDates.forEach(ld => {
-                            checkKeys.push(`${ld}_${time || 'default'}`);
-                            checkKeys.push(`${ld}_time_${time || 'default'}`);
-                        });
+                    let checkKeys = [instanceKey, `${dateString}_time_${time || 'default'}`];
+                    legacyDates.forEach(ld => {
+                        checkKeys.push(`${ld}_${time || 'default'}`);
+                        checkKeys.push(`${ld}_time_${time || 'default'}`);
+                    });
 
-                        let log, exception;
-                        for (const k of checkKeys) {
-                            if ((r.logs || {})[k]) { log = r.logs[k]; instanceKey = k; break; }
-                            if ((r.exceptions || {})[k]) { exception = r.exceptions[k]; instanceKey = k; break; }
-                        }
+                    let log, exception;
+                    for (const k of checkKeys) {
+                        if ((r.logs || {})[k]) { log = r.logs[k]; instanceKey = k; break; }
+                        if ((r.exceptions || {})[k]) { exception = r.exceptions[k]; instanceKey = k; break; }
+                    }
 
-                        if (exception && exception.status === 'cancelled') return;
-                        if (exception && exception.date && exception.date !== dateString) return;
+                    if (exception && exception.status === 'cancelled') return;
+                    if (exception && exception.date && exception.date !== dateString) return;
 
-                        let displayTime = exception?.time || time;
-                        let checkDateTime = new Date(dateString);
+                    let displayTime = exception?.time || time;
+                    let checkDateTime = new Date(dateString);
 
-                        if (displayTime) {
-                            const [th, tm] = displayTime.split(':').map(Number);
-                            checkDateTime.setHours(th, tm, 0, 0);
+                    if (displayTime) {
+                        const [th, tm] = displayTime.split(':').map(Number);
+                        checkDateTime.setHours(th, tm, 0, 0);
+                    } else {
+                        checkDateTime.setHours(23, 59, 0, 0);
+                    }
+
+                    if (log && log.snoozedUntil && log.status === 'snoozed') {
+                        // SNOOZE CHECK
+                        if (log.snoozedUntil.includes('T')) {
+                            checkDateTime = new Date(log.snoozedUntil);
+                            displayTime = checkDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
                         } else {
-                            checkDateTime.setHours(23, 59, 0, 0);
+                            displayTime = log.snoozedUntil;
+                            const [sth, stm] = displayTime.split(':').map(Number);
+                            checkDateTime.setHours(sth, stm, 0, 0);
                         }
+                    }
 
-                        if (log && log.snoozedUntil && log.status === 'snoozed') {
-                             // SNOOZE CHECK
-                            if (log.snoozedUntil.includes('T')) {
-                                checkDateTime = new Date(log.snoozedUntil);
-                                displayTime = checkDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-                            } else {
-                                displayTime = log.snoozedUntil;
-                                const [sth, stm] = displayTime.split(':').map(Number);
-                                checkDateTime.setHours(sth, stm, 0, 0);
-                            }
+                    let status = 'upcoming';
+                    const now = new Date();
+                    const twoHoursMs = 2 * 60 * 60 * 1000;
+                    const diff = now.getTime() - checkDateTime.getTime();
+
+                    if (log && log.status === 'taken') status = 'taken';
+                    else if (log && log.status === 'missed') status = 'missed';
+                    else if (r.status === 'done' && !log && r.frequency === 'Once') status = 'taken';
+                    else if (log && log.status === 'snoozed') {
+                        const snoozedDate = new Date(checkDateTime);
+                        snoozedDate.setHours(0, 0, 0, 0);
+                        const targetDateObj = new Date(dateString);
+                        targetDateObj.setHours(0, 0, 0, 0);
+
+                        if (snoozedDate > targetDateObj) {
+                            return;
                         }
+                        if (diff < twoHoursMs) status = 'snoozed';
+                        else status = 'missed';
+                    }
+                    else if (diff > twoHoursMs) status = 'missed';
+                    else status = 'upcoming';
 
-                        let status = 'upcoming';
-                        const now = new Date();
-                        const twoHoursMs = 2 * 60 * 60 * 1000;
-                        const diff = now.getTime() - checkDateTime.getTime();
+                    // Future safety
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const dObj = new Date(dateString);
+                    dObj.setHours(0, 0, 0, 0);
+                    if (dObj > today && status === 'missed') status = 'upcoming';
 
-                        if (log && log.status === 'taken') status = 'taken';
-                        else if (log && log.status === 'missed') status = 'missed';
-                        else if (r.status === 'done' && !log && r.frequency === 'Once') status = 'taken';
-                        else if (log && log.status === 'snoozed') {
-                             const snoozedDate = new Date(checkDateTime);
-                             snoozedDate.setHours(0, 0, 0, 0);
-                             const targetDateObj = new Date(dateString);
-                             targetDateObj.setHours(0, 0, 0, 0);
+                    let takenAt = log ? log.takenAt : null;
 
-                             if (snoozedDate > targetDateObj) {
-                                  return; 
-                             }
-                             if (diff < twoHoursMs) status = 'snoozed';
-                             else status = 'missed';
-                        }
-                        else if (diff > twoHoursMs) status = 'missed';
-                        else status = 'upcoming';
-
-                        // Future safety
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const dObj = new Date(dateString);
-                        dObj.setHours(0, 0, 0, 0);
-                        if (dObj > today && status === 'missed') status = 'upcoming';
-
-                        let takenAt = log ? log.takenAt : null;
-
-                        expanded.push({
-                            ...r,
-                            ...exception,
-                            files: (exception && exception.files && exception.files.length > 0) ? exception.files : (r.files || []),
-                            uniqueId: `${r.id}_${instanceKey}`,
-                            instanceKey: instanceKey,
-                            displayTime: displayTime,
-                            status: status,
-                            takenAt: takenAt,
-                            isVirtual: true,
-                            isMovedIn: false,
-                            targetDate: dateString
-                        });
+                    expanded.push({
+                        ...r,
+                        ...exception,
+                        files: (exception && exception.files && exception.files.length > 0) ? exception.files : (r.files || []),
+                        uniqueId: `${r.id}_${instanceKey}`,
+                        instanceKey: instanceKey,
+                        displayTime: displayTime,
+                        status: status,
+                        takenAt: takenAt,
+                        isVirtual: true,
+                        isMovedIn: false,
+                        targetDate: dateString
+                    });
                 });
             }
 
@@ -684,24 +721,24 @@ export const dataService = {
             if (r.logs) {
                 Object.entries(r.logs).forEach(([key, log]) => {
                     const originalDate = key.split('_')[0];
-                    if (originalDate === dateString) return; 
+                    if (originalDate === dateString) return;
 
                     if (log.status === 'snoozed' && log.snoozedUntil) {
-                         let snoozedDateStr = '';
-                         let displayTime = '';
-                         if (log.snoozedUntil.includes('T')) {
-                             const d = new Date(log.snoozedUntil);
-                             snoozedDateStr = d.toLocaleDateString('en-CA');
-                             displayTime = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-                         } else {
-                             return;
-                         }
+                        let snoozedDateStr = '';
+                        let displayTime = '';
+                        if (log.snoozedUntil.includes('T')) {
+                            const d = new Date(log.snoozedUntil);
+                            snoozedDateStr = d.toLocaleDateString('en-CA');
+                            displayTime = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+                        } else {
+                            return;
+                        }
 
-                         if (snoozedDateStr === dateString) {
-                             const alreadyExists = expanded.some(item => item.instanceKey === key);
-                             if (alreadyExists) return;
+                        if (snoozedDateStr === dateString) {
+                            const alreadyExists = expanded.some(item => item.instanceKey === key);
+                            if (alreadyExists) return;
 
-                              expanded.push({
+                            expanded.push({
                                 ...r,
                                 uniqueId: `${r.id}_${key}`,
                                 instanceKey: key,
@@ -714,7 +751,7 @@ export const dataService = {
                                 time: displayTime,
                                 title: `(Snoozed) ${r.title}`
                             });
-                         }
+                        }
                     }
                 });
             }
@@ -782,8 +819,41 @@ export const dataService = {
             }
         });
 
+        // Deduplicate by uniqueId - keep the first occurrence (prevents Missed+Completed duplicates)
+        // SMART DEDUPLICATION: Merge entries with same Title + Time + Date
+        // Priority: Taken > Snoozed > Missed > Upcoming
+        const smartMap = new Map();
+        const getPriority = (status) => {
+            if (status === 'taken') return 3;
+            if (status === 'snoozed') return 2;
+            if (status === 'missed') return 1;
+            return 0; // upcoming
+        };
+
+        expanded.forEach(e => {
+            // Create a logical key based on content, not just ID
+            const logicalKey = `${e.title || 'Untitled'}_${e.displayTime || '00:00'}_${e.targetDate}`;
+
+            if (!smartMap.has(logicalKey)) {
+                smartMap.set(logicalKey, e);
+            } else {
+                const existing = smartMap.get(logicalKey);
+                const existingPriority = getPriority(existing.status);
+                const newPriority = getPriority(e.status);
+
+                // If new one has higher priority (e.g. Taken vs Missed), replace it
+                if (newPriority > existingPriority) {
+                    smartMap.set(logicalKey, e);
+                }
+                // If same priority, maybe keep the one with an ID or more data? 
+                // For now, first wins if same priority (usually fine)
+            }
+        });
+
+        const deduped = Array.from(smartMap.values());
+
         // Sort by time
-        return expanded.sort((a, b) => {
+        return deduped.sort((a, b) => {
             if (!a.displayTime) return 1;
             if (!b.displayTime) return -1;
             return a.displayTime.localeCompare(b.displayTime);
@@ -1579,10 +1649,12 @@ export const dataService = {
 
     updateNote: async (id, updates) => {
         // V10.20: Optimistic Update
-        // 1. Update Local
-        if (store.notes) {
-            store.notes = store.notes.map(n => String(n.id) === String(id) ? { ...n, ...updates } : n);
-            save();
+        const targetStore = getCurrentStore();
+
+        // 1. Update Local / Cache
+        if (targetStore.notes) {
+            targetStore.notes = targetStore.notes.map(n => String(n.id) === String(id) ? { ...n, ...updates } : n);
+            if (!activeProfile) save(); // Only save to local storage if it's my data
             notifyListeners();
         }
 
@@ -1602,10 +1674,16 @@ export const dataService = {
     },
 
     deleteNote: async (id) => {
+        // Track deleted ID to prevent re-sync from cloud
+        deletedNoteIds.add(String(id));
+        saveDeletedIds();
+
+        const targetStore = getCurrentStore();
+
         // OPTIMISTIC: Update local store FIRST (so UI updates immediately)
-        if (store.notes) {
-            store.notes = store.notes.filter(n => String(n.id) !== String(id));
-            save();
+        if (targetStore.notes) {
+            targetStore.notes = targetStore.notes.filter(n => String(n.id) !== String(id));
+            if (!activeProfile) save(); // Only save if local
             notifyListeners(); // Trigger UI update immediately
         }
 
@@ -1749,6 +1827,7 @@ export const dataService = {
             checkMatch(n.title) ||
             checkMatch(n.content) ||
             checkMatch(n.type) ||
+            (n.items && n.items.some(i => checkMatch(i.text))) ||
             (n.tags && n.tags.some(tag => checkMatch(tag))) ||
             (n.files && n.files.some(f => checkMatch(f.name) || checkMatch(f.extractedText)))
         );

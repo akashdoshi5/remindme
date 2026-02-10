@@ -547,7 +547,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
         setIsSaving(true);
 
         try {
-            await Haptics.impact({ style: ImpactStyle.Light });
+            await Haptics.impact({ style: ImpactStyle.Medium });
             if (reminderToEdit && editScope === 'this') {
                 // Update specific instance ONLY
                 // Explicitly verify time is in passed data
@@ -644,30 +644,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                             </div>
                         </div>
 
-                        {/* Sound Type Selector */}
-                        <div className="bg-gray-50 dark:bg-gray-800/30 p-3 rounded-xl border border-gray-100 dark:border-gray-800 flex flex-col gap-2">
-                            <label className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Notification Sound</label>
-                            <div className="flex gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setSoundType('default')}
-                                    className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${soundType === 'default'
-                                        ? 'bg-white dark:bg-gray-700 border-orange-500 text-orange-600 dark:text-orange-400 shadow-sm'
-                                        : 'border-transparent text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-                                >
-                                    <Bell size={16} /> Standard Chime
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setSoundType('alarm')}
-                                    className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${soundType === 'alarm'
-                                        ? 'bg-red-50 dark:bg-red-900/20 border-red-500 text-red-600 dark:text-red-400 shadow-sm'
-                                        : 'border-transparent text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-                                >
-                                    <AlertTriangle size={16} /> Alarm (Long)
-                                </button>
-                            </div>
-                        </div>
+
 
                         {/* Medication Course Toggle */}
                         {type === 'Medication' && editScope !== 'this' && (

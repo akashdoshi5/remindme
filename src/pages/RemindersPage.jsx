@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useUI } from '../context/UIContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -45,6 +46,7 @@ const RemindersPage = () => {
 
     const handleTouchEnd = async () => {
         if (pullY > 80 && !isRefreshing) {
+            Haptics.impact({ style: ImpactStyle.Medium });
             setIsRefreshing(true);
             setPullY(0); // Reset position but show spinner
             await dataService.forceSync();
@@ -53,6 +55,13 @@ const RemindersPage = () => {
             setPullY(0);
         }
         touchStartRef.current = 0;
+    };
+
+    // Date Navigation Handler
+    const handleDateChange = (direction) => {
+        const newDate = new Date(selectedDate);
+        newDate.setDate(newDate.getDate() + direction);
+        setSelectedDate(newDate);
     };
 
     // Delete Confirmation State
@@ -144,12 +153,8 @@ const RemindersPage = () => {
         }
     }, [location.state, reminders, navigate, openReminderModal]);
 
-
-    const handleDateChange = (days) => {
-        // ...
-    };
-
     // handleSave REMOVED (Global modal handles it)
+
 
     const handleDeleteClick = (reminder) => {
         // ...
@@ -683,179 +688,118 @@ const RemindersPage = () => {
 
                                                     </div>
 
-                                                    {/* Actions Row - Moved to bottom for visibility */}
-                                                    <div className="w-full p-2 border-t border-gray-100 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/50">
-                                                        {/* User requested "2 columns of buttons" - using grid */}
-                                                        <div className="grid grid-cols-2 gap-2">
+                                                    {/* Actions Row */}
+                                                    <div className="w-full p-2 px-3 border-t border-gray-100 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/50 flex flex-row items-center gap-3">
+                                                        {(() => {
+                                                            // Lock Logic
+                                                            const yesterday = new Date();
+                                                            yesterday.setDate(yesterday.getDate() - 1);
+                                                            yesterday.setHours(0, 0, 0, 0);
+
+                                                            let checkDate = new Date(selectedDate);
+                                                            if (searchQuery) checkDate = new Date(reminder.targetDate || reminder.date || reminder.schedule?.startDate);
+                                                            checkDate.setHours(0, 0, 0, 0);
+
+                                                            const isLocked = checkDate < yesterday;
+
+                                                            if (isLocked) {
+                                                                return (
+                                                                    <button disabled className="p-2 rounded-lg text-gray-300 dark:text-gray-600 cursor-not-allowed" title="Deleted locked">
+                                                                        <Trash2 size={18} />
+                                                                    </button>
+                                                                );
+                                                            }
+
+                                                            return (
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); initiateDelete(reminder); }}
+                                                                    className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                                                    title="Delete"
+                                                                >
+                                                                    <Trash2 size={18} />
+                                                                </button>
+                                                            );
+                                                        })()}
+
+                                                        <div className="flex-1 flex justify-end">
                                                             {(() => {
-                                                                // Lock Logic: Disable delete for history older than Yesterday
-                                                                const yesterday = new Date();
-                                                                yesterday.setDate(yesterday.getDate() - 1);
-                                                                yesterday.setHours(0, 0, 0, 0);
-
-                                                                // V8 FIX: If Searching, check the REMINDER's date, not the selected calendar date
-                                                                let checkDate = new Date(selectedDate);
-                                                                if (searchQuery) {
-                                                                    if (reminder.targetDate) checkDate = new Date(reminder.targetDate);
-                                                                    else if (reminder.date) checkDate = new Date(reminder.date);
-                                                                    else if (reminder.schedule?.startDate) checkDate = new Date(reminder.schedule.startDate);
-                                                                }
-                                                                checkDate.setHours(0, 0, 0, 0);
-
-                                                                const isLocked = checkDate < yesterday;
-
-                                                                if (isLocked) {
+                                                                if (reminder.status === 'taken' || reminder.status === 'done') {
                                                                     return (
                                                                         <button
-                                                                            disabled
-                                                                            title="Cannot delete past history"
-                                                                            className="h-12 w-12 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed flex items-center justify-center shrink-0"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (confirm('Mark as NOT done?')) {
+                                                                                    dataService.logReminderStatus(reminder.id, reminder.instanceKey, 'upcoming');
+                                                                                    setTriggerReload(prev => prev + 1);
+                                                                                }
+                                                                            }}
+                                                                            className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm font-bold text-gray-600 dark:text-gray-300 flex items-center gap-2 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600"
                                                                         >
-                                                                            <Trash2 size={18} />
+                                                                            <RefreshCcw size={16} /> Undo
                                                                         </button>
                                                                     );
                                                                 }
 
-                                                                return (
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); initiateDelete(reminder); }}
-                                                                        className="h-12 w-12 rounded-xl bg-gray-100 dark:bg-gray-700 text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors flex items-center justify-center shrink-0"
-                                                                    >
-                                                                        <Trash2 size={18} />
-                                                                    </button>
-                                                                );
-                                                            })()}
-
-                                                            {(() => {
-                                                                // Action Window Logic
-                                                                if (reminder.status === 'taken' || reminder.status === 'done') return null;
-
                                                                 let isActionable = true;
                                                                 let reason = '';
-
-                                                                // Lock Logic: Disable action for history older than Yesterday
                                                                 const yesterday = new Date();
                                                                 yesterday.setDate(yesterday.getDate() - 1);
                                                                 yesterday.setHours(0, 0, 0, 0);
 
-                                                                // V8 FIX: If Searching, check the REMINDER's date
                                                                 let checkDate = new Date(selectedDate);
-                                                                if (searchQuery) {
-                                                                    if (reminder.targetDate) checkDate = new Date(reminder.targetDate);
-                                                                    else if (reminder.date) checkDate = new Date(reminder.date);
-                                                                    else if (reminder.schedule?.startDate) checkDate = new Date(reminder.schedule.startDate);
-                                                                }
+                                                                if (searchQuery) checkDate = new Date(reminder.targetDate || reminder.date || reminder.schedule?.startDate);
                                                                 checkDate.setHours(0, 0, 0, 0);
 
                                                                 const isLocked = checkDate < yesterday;
                                                                 if (isLocked) {
                                                                     isActionable = false;
                                                                     reason = 'History';
-                                                                } else {
-                                                                    // V10.17: Check time window
-                                                                    if (reminder.displayTime) {
-                                                                        const [h, m] = reminder.displayTime.split(':').map(Number);
-                                                                        const reminderDate = new Date(checkDate);
-                                                                        reminderDate.setHours(h, m, 0, 0);
-
-                                                                        const now = new Date();
-                                                                        const diffMs = now.getTime() - reminderDate.getTime();
-                                                                        const hoursDiff = diffMs / (1000 * 60 * 60);
-
-                                                                        // V10.22: Time Window Logic
-                                                                        if (hoursDiff < -2) {
-                                                                            // > 2 hours in FUTURE
-                                                                            isActionable = false;
-                                                                            reason = 'Too Early';
-                                                                        } else if (hoursDiff > 2) {
-                                                                            // > 2 hours in PAST (Missed)
-                                                                            // V10.24 FEATURE: Allow "Grace Period" (Undo/Take) for another 2 hours (Total 4h)
-                                                                            if (hoursDiff <= 4) {
-                                                                                // Status is Missed, but still actionable (Grace Period)
-                                                                                reason = 'Missed'; // Display as Missed, but actionable
-                                                                            } else {
-                                                                                isActionable = false;
-                                                                                reason = 'Missed';
-                                                                            }
-                                                                        }
-                                                                    }
+                                                                } else if (reminder.displayTime) {
+                                                                    const [h, m] = reminder.displayTime.split(':').map(Number);
+                                                                    const rDate = new Date(checkDate);
+                                                                    rDate.setHours(h, m, 0, 0);
+                                                                    const diff = (new Date() - rDate) / (1000 * 60 * 60);
+                                                                    if (diff < -2) { isActionable = false; reason = 'Too Early'; }
+                                                                    else if (diff > 4) { isActionable = false; reason = 'Missed'; }
+                                                                    else if (diff > 2) { reason = 'Missed'; } // Grace period
                                                                 }
 
-                                                                // Manual 'Missed' status check
-                                                                if (reminder.status === 'missed') {
-                                                                    // If manually missed (or auto), check grace period again?
-                                                                    // We re-calculated hoursDiff above.
-                                                                    // If we are here, isActionable might be true (from logic above)
-                                                                    // If hoursDiff is < 4, we allow it.
-                                                                    // But if hoursDiff is unknown (no time?), default lock?
-                                                                    if (!reminder.displayTime) {
-                                                                        isActionable = false;
-                                                                        reason = 'Missed';
-                                                                    }
-                                                                }
+                                                                if (reminder.status === 'missed' && !isActionable) reason = 'Missed';
 
                                                                 return (
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
                                                                             if (!isActionable) return;
-
-                                                                            // If it's a "Missed" item being taken late, maybe prompt or just take it?
-                                                                            // Just take it.
                                                                             dataService.logReminderStatus(reminder.id, reminder.instanceKey, 'taken');
                                                                             setTriggerReload(prev => prev + 1);
                                                                         }}
                                                                         disabled={!isActionable}
-                                                                        className={`h-12 w-12 md:w-auto md:px-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 font-bold ${isActionable
-                                                                            ? (reason === 'Missed'
-                                                                                ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20' // Missed but actionable
-                                                                                : 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/20')
-                                                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed shadow-none'
+                                                                        className={`px-4 py-2.5 rounded-xl font-bold text-sm shadow-md flex items-center gap-2 transition-transform active:scale-95 ${isActionable
+                                                                                ? (reason === 'Missed'
+                                                                                    ? 'bg-red-500 text-white shadow-red-500/20'
+                                                                                    : 'bg-orange-500 text-white shadow-orange-500/20 hover:bg-orange-600')
+                                                                                : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed shadow-none'
                                                                             }`}
                                                                     >
                                                                         {isActionable ? (
                                                                             <>
-                                                                                {/* Icon */}
-                                                                                {reason === 'Missed' ? <RefreshCcw size={18} className="md:hidden" /> : <Check size={20} className="md:hidden" />}
-
-                                                                                <span className="hidden md:inline font-bold">
-                                                                                    {reason === 'Missed'
-                                                                                        ? 'Take Late'
-                                                                                        : (reminder.type === 'Medication' ? 'Take' : 'Done')}
-                                                                                </span>
+                                                                                {reason === 'Missed' ? <RefreshCcw size={16} /> : <Check size={18} />}
+                                                                                <span>{reason === 'Missed' ? 'Take Late' : (reminder.type === 'Medication' ? 'Take' : 'Done')}</span>
                                                                             </>
                                                                         ) : (
                                                                             <>
-                                                                                {/* Mobile Icons for Status */}
-                                                                                <span className="md:hidden">
-                                                                                    {reason === 'Missed' && <XCircle size={20} className="text-red-400" />}
-                                                                                    {reason === 'Too Early' && <Clock size={20} />}
-                                                                                    {reason === 'History' && <Archive size={20} />}
-                                                                                    {!['Missed', 'Too Early', 'History'].includes(reason) && <AlertCircle size={20} />}
+                                                                                <span className="opacity-50">
+                                                                                    {reason === 'Missed' && <XCircle size={18} />}
+                                                                                    {reason === 'Too Early' && <Clock size={18} />}
+                                                                                    {reason === 'History' && <Archive size={18} />}
                                                                                 </span>
-                                                                                {/* Desktop: Text */}
-                                                                                <span className="hidden md:inline text-xs font-bold uppercase">{reason}</span>
+                                                                                <span>{reason || 'Action'}</span>
                                                                             </>
                                                                         )}
                                                                     </button>
                                                                 );
                                                             })()}
-
-                                                            {(reminder.status === 'taken' || reminder.status === 'done') && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        if (confirm('Mark this reminder as NOT done?')) {
-                                                                            dataService.logReminderStatus(reminder.id, reminder.instanceKey, 'upcoming');
-                                                                            setTriggerReload(prev => prev + 1);
-                                                                        }
-                                                                    }}
-                                                                    className="h-12 w-12 text-green-600 bg-green-100 rounded-xl hover:bg-green-200 transaction-colors flex items-center justify-center shrink-0"
-                                                                    title="Undo Completion"
-                                                                >
-                                                                    <RefreshCcw size={18} />
-                                                                </button>
-                                                            )}
                                                         </div>
                                                     </div>
                                                 </motion.div>

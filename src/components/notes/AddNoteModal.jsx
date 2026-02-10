@@ -496,8 +496,26 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                 return;
             }
 
-            let finalTitle = title.trim() || ((!content && !items.length && !files.length) ? "Untitled Note" : "");
-            if (!finalTitle && noteType === 'shopping') finalTitle = 'Checklist';
+            // Auto-Generate Title from Content if missing
+            let finalTitle = title.trim();
+
+            if (!finalTitle) {
+                if (noteType === 'text' && content?.trim()) {
+                    const firstLine = content.trim().split('\n')[0].trim();
+                    finalTitle = firstLine.substring(0, 50) + (firstLine.length > 50 ? '...' : '');
+                } else if (noteType === 'shopping' && items.some(i => i.text?.trim())) {
+                    const firstItem = items.find(i => i.text?.trim());
+                    // If checklist has items but all are empty, fallback to 'Checklist'
+                    // If it has a valid item, use it.
+                    finalTitle = firstItem ? firstItem.text.trim().substring(0, 50) : 'Checklist';
+                } else if (audioData) {
+                    finalTitle = 'Voice Note';
+                } else if (files.length > 0) {
+                    finalTitle = files[0].name || 'Attachment';
+                } else {
+                    finalTitle = 'Untitled Note';
+                }
+            }
 
             const finalFiles = files.map(f => f.storageData ? { id: f.storageData.id, name: f.name, type: f.type, url: f.storageData.url, path: f.storageData.path, extractedText: f.text } : f);
 

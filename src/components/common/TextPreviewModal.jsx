@@ -1,17 +1,35 @@
+import React, { useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-
-// ... imports
+import { Search, X } from 'lucide-react';
 
 const TextPreviewModal = ({ isOpen, onClose, title, text, searchQuery, imageUrl }) => {
-    // ... refs and effects
+    const contentRef = useRef(null);
+
+    // Scroll to first match on open
+    useEffect(() => {
+        if (isOpen && searchQuery && contentRef.current) {
+            const mark = contentRef.current.querySelector('mark');
+            if (mark) {
+                mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    }, [isOpen, searchQuery]);
 
     if (!isOpen) return null;
 
-    // ... helper
+    // Highlight search matches in text
+    const getHighlightedText = (text, query) => {
+        if (!query || !text) return text;
+        const parts = text.split(new RegExp(`(${query})`, 'gi'));
+        return parts.map((part, i) =>
+            part.toLowerCase() === query.toLowerCase() ? (
+                <mark key={i} className="bg-yellow-200 dark:bg-yellow-700 px-0.5 rounded">{part}</mark>
+            ) : part
+        );
+    };
 
     return ReactDOM.createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4" onClick={onClose}>
-            {/* ... content ... */}
             <div
                 className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200 border border-gray-200 dark:border-gray-700 overflow-hidden"
                 onClick={e => e.stopPropagation()}

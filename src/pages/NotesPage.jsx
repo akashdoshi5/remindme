@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { useShare } from '../hooks/useShare';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, Search, Mic, Image as ImageIcon, Edit2, Trash2, X, MoreVertical, Share2, FileText, ShoppingCart, StopCircle, Play, ArrowRightLeft, Paperclip, Download, Eye, Users, GripVertical, Pin, Maximize2, Minimize2, XCircle, RefreshCcw, Bell } from 'lucide-react';
@@ -70,8 +71,18 @@ const NotesPage = () => {
 
     // --- Load Notes ---
     useEffect(() => {
-        const allNotes = dataService.getNotes();
-        setNotes(allNotes);
+        const loadNotes = () => {
+            const allNotes = dataService.getNotes();
+            setNotes(allNotes);
+        };
+        loadNotes();
+
+        const handleStorageUpdate = () => {
+            loadNotes();
+        };
+
+        window.addEventListener('storage-update', handleStorageUpdate);
+        return () => window.removeEventListener('storage-update', handleStorageUpdate);
     }, [triggerReload]);
 
     const handleTouchStart = (e) => {
@@ -91,6 +102,7 @@ const NotesPage = () => {
 
     const handleTouchEnd = async () => {
         if (pullY > 80 && !isRefreshing) {
+            Haptics.impact({ style: ImpactStyle.Medium });
             setIsRefreshing(true);
             setPullY(0);
             await dataService.forceSync();

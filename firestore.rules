@@ -65,14 +65,10 @@ service cloud.firestore {
       // Allow delete: Owner by various identifier fields (handles legacy and migration cases)
       // Check ownerId, userId, ownerEmail, or if user is in sharedWith
       allow delete: if isAuthenticated() && (
-        // Primary owner check
-        (resource.data.keys().hasAny(['ownerId']) && resource.data.ownerId == request.auth.uid) ||
-        // Legacy userId check  
-        (resource.data.keys().hasAny(['userId']) && resource.data.userId == request.auth.uid) ||
-        // ownerEmail check (for notes synced with email but missing UID)
-        (resource.data.keys().hasAny(['ownerEmail']) && resource.data.ownerEmail == request.auth.token.email) ||
-        // Shared user can also delete
-        (resource.data.keys().hasAny(['sharedWith']) && request.auth.token.email in resource.data.sharedWith)
+        resource.data.ownerId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.ownerEmail == request.auth.token.email ||
+        request.auth.token.email in resource.data.sharedWith
       );
     }
   }
