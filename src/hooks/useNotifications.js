@@ -13,11 +13,11 @@ export const useNotifications = () => {
             // 1. Register Action Types (Buttons) - Do this first!
             LocalNotifications.registerActionTypes({
                 types: [{
-                    id: 'REMINDER_ACTIONS_V10',
+                    id: 'REMINDER_ACTIONS_V11',
                     actions: [
                         {
                             id: 'snooze',
-                            title: 'Snooze',
+                            title: 'Snooze 5 min',
                             foreground: true
                         },
                         {
@@ -45,7 +45,7 @@ export const useNotifications = () => {
             }).catch(e => console.error("Channel Create Error", e));
 
             LocalNotifications.createChannel({
-                id: 'reminders_alarm_v1',
+                id: 'reminders_alarm_v3', // Bumped version to force pattern update
                 name: 'Alarm Reminders',
                 description: 'High priority reminders',
                 importance: 5, // Max importance
@@ -53,7 +53,7 @@ export const useNotifications = () => {
                 sound: 'alarm.wav',
                 vibration: true,
                 lights: true,
-                vibrationPattern: [0, 1000, 500, 1000, 500, 1000, 500, 1000] // 4x Long Pulse for "Lot more vibration"
+                vibrationPattern: [0, 500, 200, 500, 200, 1000, 300, 500, 200, 500, 200, 1000] // Match Haptics.alarm()
             }).catch(e => console.error("Alarm Channel Create Error", e));
 
             // 3. Add Action Listener
@@ -102,7 +102,7 @@ export const useNotifications = () => {
                             id: new Date().getTime() % 2147483647,
                             schedule: { at: new Date(Date.now() + 100) },
                             sound: isAlarm ? 'alarm.wav' : 'chime.wav',
-                            channelId: isAlarm ? 'reminders_alarm_v1' : 'reminders_v10',
+                            channelId: isAlarm ? 'reminders_alarm_v2' : 'reminders_v10',
                             smallIcon: 'ic_notification_bell',
                             actionTypeId: 'REMINDER_ACTIONS_V10', // Bind actions
                             extra: options.data || null
@@ -219,9 +219,9 @@ export const useNotifications = () => {
                         allowWhileIdle: true
                     },
                     sound: isAlarm ? 'alarm.wav' : 'chime.wav',
-                    channelId: isAlarm ? 'reminders_alarm_v1' : 'reminders_v10',
+                    channelId: isAlarm ? 'reminders_alarm_v2' : 'reminders_v10',
                     smallIcon: 'ic_notification_bell',
-                    actionTypeId: 'REMINDER_ACTIONS_V10', // Ensure buttons appear
+                    actionTypeId: 'REMINDER_ACTIONS_V11', // Ensure buttons appear
                     extra: { uniqueId: r.uniqueId }
                 };
             });

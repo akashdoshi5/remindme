@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { haptics } from '../services/haptics';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useUI } from '../context/UIContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -54,7 +55,7 @@ const RemindersPage = () => {
 
     const handleTouchEnd = async () => {
         if (pullY > 80 && !isRefreshing) {
-            Haptics.impact({ style: ImpactStyle.Medium });
+            haptics.medium();
             setIsRefreshing(true);
             setPullY(0); // Reset position but show spinner
             await dataService.forceSync();
@@ -93,8 +94,8 @@ const RemindersPage = () => {
         const params = new URLSearchParams(location.search);
         if (location.state?.openAdd || params.get('add') === 'true') {
             openReminderModal();
-            // Clear state so it doesn't reopen on refresh, but keep other state if needed
-            window.history.replaceState({}, document.title);
+            // Clear state so it doesn't reopen on refresh
+            navigate(location.pathname, { replace: true });
         }
 
         return () => window.removeEventListener('storage-update', handleStorageUpdate);
@@ -159,6 +160,20 @@ const RemindersPage = () => {
             // Clear state
             window.history.replaceState({}, document.title);
         }
+
+        if (location.state?.convertFromNote) {
+            const note = location.state.convertFromNote;
+            openReminderModal({
+                reminderToEdit: {
+                    title: note.title,
+                    instructions: note.content || '',
+                    type: 'Other',
+                    isNew: true
+                }
+            });
+            // Clear state
+            window.history.replaceState({}, document.title);
+        }
     }, [location.state, reminders, navigate, openReminderModal]);
 
     // handleSave REMOVED (Global modal handles it)
@@ -191,12 +206,14 @@ const RemindersPage = () => {
         if (!deleteConfig) return;
         if (scope === 'series') {
             await dataService.deleteReminder(deleteConfig.id);
+            haptics.heavy();
         } else {
             if (deleteConfig.instanceKey) {
                 await dataService.updateReminder(deleteConfig.id, { status: 'cancelled' }, deleteConfig.instanceKey);
             } else {
                 await dataService.deleteReminder(deleteConfig.id);
             }
+            haptics.medium(); // Single delete is medium
         }
         setTriggerReload(prev => prev + 1);
         setIsDeleteModalOpen(false);
@@ -703,16 +720,17 @@ const RemindersPage = () => {
                                                     {/* Actions Row */}
                                                     <div className="w-full p-2 px-3 border-t border-gray-100 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/50 flex flex-row items-center gap-3">
                                                         {(() => {
-                                                            // Lock Logic
-                                                            const yesterday = new Date();
-                                                            yesterday.setDate(yesterday.getDate() - 1);
-                                                            yesterday.setHours(0, 0, 0, 0);
+                                                            // Lock Logic: Allow delete for yesterday, today, and future
+                                                            // Only lock dates BEFORE yesterday (i.e. 2+ days ago)
+                                                            const dayBeforeYesterday = new Date();
+                                                            dayBeforeYesterday.setDate(dayBeforeYesterday.getDate() - 2);
+                                                            dayBeforeYesterday.setHours(23, 59, 59, 999);
 
                                                             let checkDate = new Date(selectedDate);
                                                             if (searchQuery) checkDate = new Date(reminder.targetDate || reminder.date || reminder.schedule?.startDate);
                                                             checkDate.setHours(0, 0, 0, 0);
 
-                                                            const isLocked = checkDate < yesterday;
+                                                            const isLocked = checkDate <= dayBeforeYesterday;
 
                                                             if (isLocked) {
                                                                 return (
@@ -754,15 +772,16 @@ const RemindersPage = () => {
 
                                                                 let isActionable = true;
                                                                 let reason = '';
-                                                                const yesterday = new Date();
-                                                                yesterday.setDate(yesterday.getDate() - 1);
-                                                                yesterday.setHours(0, 0, 0, 0);
+                                                                // Lock Logic: Allow actions for yesterday, today, and future
+                                                                const dayBeforeYesterday = new Date();
+                                                                dayBeforeYesterday.setDate(dayBeforeYesterday.getDate() - 2);
+                                                                dayBeforeYesterday.setHours(23, 59, 59, 999);
 
                                                                 let checkDate = new Date(selectedDate);
                                                                 if (searchQuery) checkDate = new Date(reminder.targetDate || reminder.date || reminder.schedule?.startDate);
                                                                 checkDate.setHours(0, 0, 0, 0);
 
-                                                                const isLocked = checkDate < yesterday;
+                                                                const isLocked = checkDate <= dayBeforeYesterday;
                                                                 if (isLocked) {
                                                                     isActionable = false;
                                                                     reason = 'History';
@@ -785,13 +804,14 @@ const RemindersPage = () => {
                                                                                     e.stopPropagation();
                                                                                     // Default 5 minutes as requested
                                                                                     dataService.snoozeReminder(reminder.id, reminder.instanceKey, 5);
+                                                                                    haptics.medium();
                                                                                     setTriggerReload(prev => prev + 1);
                                                                                 }}
-                                                                                className="px-4 py-2.5 bg-slate-200 dark:bg-slate-700/80 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-xl text-slate-700 dark:text-slate-200 font-bold text-sm shadow-sm flex items-center gap-2 transition-transform active:scale-95 border border-slate-300 dark:border-slate-600"
+                                                                                className="px-3 py-2 bg-slate-200 dark:bg-slate-700/80 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-xl text-slate-700 dark:text-slate-200 font-bold text-xs sm:text-sm shadow-sm flex items-center gap-1.5 transition-transform active:scale-95 border border-slate-300 dark:border-slate-600 min-w-fit"
                                                                                 title="Snooze 5m"
                                                                             >
-                                                                                <Clock size={18} strokeWidth={2.5} />
-                                                                                <span className="hidden xs:inline">5m</span>
+                                                                                <Clock size={16} strokeWidth={2.5} />
+                                                                                <span>+5m</span>
                                                                             </button>
                                                                         )}
 

@@ -364,24 +364,34 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
                                 handlePlayAudio(note);
                             }}
                             className={`flex items-center gap-2 px-2 py-1 rounded-md text-[10px] font-bold transition-all border
-                                ${playingNoteId === note.id
-                                    ? 'bg-orange-100 text-orange-600 border-orange-200'
-                                    : 'bg-gray-50 dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700'
+								${playingNoteId === note.id
+                                    ? 'bg-orange-100 text-orange-600 border-orange-200 shadow-sm'
+                                    : 'bg-white dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-500 shadow-sm'
                                 }`}
                         >
-                            {playingNoteId === note.id ? <StopCircle size={10} className="animate-pulse" /> : <Play size={10} />}
-                            <span>Voice Note</span>
+                            <div className="shrink-0">
+                                {playingNoteId === note.id ? <StopCircle size={12} className="text-orange-600 animate-pulse" /> : <Play size={12} className="text-gray-400 group-hover:text-orange-500" fill="currentColor" />}
+                            </div>
+                            <span className={playingNoteId === note.id ? 'text-orange-700' : ''}>Voice Note</span>
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* Footer / Meta - REMOVED Date and Drag Handle as per request */}
-            {/* 
-            <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
-                 Date was here 
+            {/* Footer / Meta: Updated At Timestamp */}
+            <div className="px-3 py-1 text-[10px] text-gray-400 dark:text-gray-500 font-medium flex justify-between items-center mt-auto">
+                <span>
+                    {note.updatedAt && (() => {
+                        const date = new Date(note.updatedAt);
+                        const now = new Date();
+                        const diff = (now - date) / 1000; // seconds
+                        if (diff < 60) return 'Just now';
+                        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+                        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+                        return date.toLocaleDateString();
+                    })()}
+                </span>
             </div>
-            */}
 
         </CardComponent>
     );

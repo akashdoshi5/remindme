@@ -1,30 +1,40 @@
-import { useState, useCallback } from 'react';
+import { Share } from '@capacitor/share';
+import { useCallback } from 'react';
 
 export const useShare = () => {
-    const isSupported = typeof navigator !== 'undefined' && !!navigator.share;
+    // Capacitor Share plugin handles web fallback automatically if supported,
+    // or we can implement a custom fallback if needed. 
+    // Ideally, Share.canShare() checks if sharing is possible.
 
     const share = useCallback(async (data) => {
-        if (isSupported) {
-            try {
-                await navigator.share(data);
+        try {
+            const canShareResult = await Share.canShare();
+            if (canShareResult.value) {
+                await Share.share({
+                    title: data.title,
+                    text: data.text,
+                    url: data.url,
+                    dialogTitle: 'Share Note'
+                });
                 return true;
-            } catch (error) {
-                console.error('Error sharing:', error);
-                return false;
+            } else {
+                // Fallback: Copy to clipboard if sharing is not supported
+                // (e.g. some desktop browsers)
+                throw new Error('Sharing not supported');
             }
-        } else {
-            // Fallback: Copy to clipboard
+        } catch (error) {
+            console.warn('Share plugin failed or not supported, falling back to clipboard', error);
             try {
                 const text = `${data.title}\n${data.text}\n${data.url || ''}`;
                 await navigator.clipboard.writeText(text);
-                alert('Copied to clipboard!'); // Simple feedback for now
+                alert('Copied to clipboard!');
                 return true;
-            } catch (error) {
-                console.error('Error copying to clipboard:', error);
+            } catch (clipboardError) {
+                console.error('Error copying to clipboard:', clipboardError);
                 return false;
             }
         }
-    }, [isSupported]);
+    }, []);
 
-    return { share, isSupported };
+    return { share, isSupported: true }; // Always return true as we have fallback
 };

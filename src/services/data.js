@@ -121,10 +121,27 @@ export const dataService = {
 
         // 3. Sync-Up Check & Realtime Listeners
         if (uid) {
-            // A. Initial Migration (Push local to cloud ONLY ONCE per user)
+            // A. Fetch cloud-stored deleted note IDs (MOVED UP to prevent resurrection)
+            try {
+                const cloudDeletedIds = await firestoreService.fetchDeletedNoteIds();
+                if (cloudDeletedIds && cloudDeletedIds.length > 0) {
+                    cloudDeletedIds.forEach(id => deletedNoteIds.add(String(id)));
+                    saveDeletedIds();
+                    console.log(`Loaded ${cloudDeletedIds.length} deleted note IDs from cloud BEFORE MIGRATION.`);
+                }
+            } catch (e) {
+                console.warn("Failed to fetch cloud deleted IDs", e);
+            }
+
+            // A2. Initial Migration (Push local to cloud ONLY ONCE per user)
             const migrationKey = `remindme_migrated_${uid}`;
             const alreadyMigrated = localStorage.getItem(migrationKey);
-            if (!alreadyMigrated && ((store.reminders && store.reminders.length > 0) || (store.notes && store.notes.length > 0))) {
+
+            // Filter out deleted notes from migration candidacy
+            const localNotesCandidates = (store.notes || []).filter(n => !deletedNoteIds.has(String(n.id)));
+            const hasNotesToMigrate = localNotesCandidates.length > 0;
+
+            if (!alreadyMigrated && ((store.reminders && store.reminders.length > 0) || hasNotesToMigrate)) {
                 console.log("First login: Migrating local cache to Cloud...");
 
                 // V10: Ensure ownerId is attached to all migrated data
@@ -133,7 +150,8 @@ export const dataService = {
                     sanitizedStore.reminders = sanitizedStore.reminders.map(r => ({ ...r, ownerId: uid, ownerEmail: auth.currentUser?.email }));
                 }
                 if (sanitizedStore.notes) {
-                    sanitizedStore.notes = sanitizedStore.notes.map(n => ({ ...n, ownerId: uid, ownerEmail: auth.currentUser?.email }));
+                    // Use filtered list
+                    sanitizedStore.notes = localNotesCandidates.map(n => ({ ...n, ownerId: uid, ownerEmail: auth.currentUser?.email }));
                 }
 
                 try {
@@ -145,18 +163,6 @@ export const dataService = {
                 }
             } else if (alreadyMigrated) {
                 console.log("Migration already done for this user. Skipping.");
-            }
-
-            // A2. Fetch cloud-stored deleted note IDs (cross-device sync)
-            try {
-                const cloudDeletedIds = await firestoreService.fetchDeletedNoteIds();
-                if (cloudDeletedIds && cloudDeletedIds.length > 0) {
-                    cloudDeletedIds.forEach(id => deletedNoteIds.add(String(id)));
-                    saveDeletedIds();
-                    console.log(`Loaded ${cloudDeletedIds.length} deleted note IDs from cloud.`);
-                }
-            } catch (e) {
-                console.warn("Failed to fetch cloud deleted IDs", e);
             }
 
             // B. Setup Realtime Listeners (Pull cloud to local)
@@ -412,8 +418,181 @@ export const dataService = {
             });
         }
         else if (type === 'notes') {
-            // Filter out locally deleted notes to prevent re-sync
-            store.notes = data.filter(n => !deletedNoteIds.has(String(n.id)));
+            // ROBUST SMART MERGE for Notes: Field-Level Merging to prevent data loss
+            // Filter out locally deleted notes first
+            const validCloudNotes = data.filter(n => !deletedNoteIds.has(String(n.id)));
+            const localNotes = store.notes || [];
+
+            const mergedMap = new Map();
+
+            validCloudNotes.forEach(cloudNote => {
+                const localNote = localNotes.find(n => String(n.id) === String(cloudNote.id));
+
+                if (localNote) {
+                    const localTime = localNote.updatedAt ? new Date(localNote.updatedAt).getTime() : 0;
+                    const cloudTime = cloudNote.updatedAt ? new Date(cloudNote.updatedAt).getTime() : 0;
+
+                    // CONFLICT DETECTION:
+                    // If content differs AND widely different timestamps (handled by logic below)
+
+                    // 1. PINNED STATUS: Local UI state wins if set, else Cloud
+                    const mergedPinned = localNote.isPinned ?? cloudNote.isPinned;
+
+                    // 2. CONTENT MERGE
+                    let mergedContent = cloudNote.content;
+                    let mergedItems = cloudNote.items;
+                    let mergedFiles = cloudNote.files;
+                    let mergedAudio = cloudNote.audioData;
+                    let mergedType = cloudNote.type;
+                    let mergedUpdatedAt = cloudNote.updatedAt;
+
+                    // If Local is NEWER -> potentially keep Local, but we want to merge if Cloud also changed from what Local knew (hard to track base).
+                    // SIMPLIFIED ROBUST STRATEGY: 
+                    // If Local is newer, we normally trust it. 
+                    // BUT if Cloud is also "newish" (implying concurrency), we might overwrite.
+                    // The safest bet for Offline safety:
+                    // If Local > Cloud, Keep Local BUT append Cloud content if different (to be safe).
+                    // Actually, if Local > Cloud, it means Local was edited *after* the Cloud version was saved.
+                    // So usually Local matches the user's latest intent.
+                    // THE DANGER: User edits on Device A (offline), Device B syncs to Cloud. Device A acts.
+                    // Local time > Cloud time? Maybe.
+
+                    // User Request: "Local should store on local storage but it should merge with cloud as well. It should never happen that (old data appears)."
+                    // User also approved the plan: "Text: Concatenate".
+
+                    // MERGE LOGIC:
+                    // Only merge if content is DIFFERENT.
+                    const isContentDifferent = localNote.content !== cloudNote.content;
+                    const isItemsDifferent = JSON.stringify(localNote.items) !== JSON.stringify(cloudNote.items);
+
+                    if (localTime >= cloudTime) {
+                        // Local is newer (or equal). Local takes precedence, but we append Cloud if distinct to be safe?
+                        // Actually, if Local is newer, it likely supposedly overrides Cloud.
+                        // BUT if we want "Robust Merge (Concatenate)", we do it if Cloud is *also* recent? 
+                        // Let's assume strict merge for SAFETY.
+
+                        mergedContent = localNote.content;
+                        mergedItems = localNote.items;
+                        mergedFiles = localNote.files;
+                        mergedAudio = localNote.audioData;
+                        mergedType = localNote.type;
+                        mergedUpdatedAt = localNote.updatedAt;
+
+                        // DATA RECOVERY: If Cloud has textual content that is NOT in Local (and not just an old version), append it.
+                        // Heuristic: If Cloud content is long and significantly different, append it as a "Conflict Copy".
+                        // To avoid annoying duplication of just "fixed a typo", we can check Levenshtein or just simple "contains".
+                        // Use simple strategy: If both exist and different -> Concatenate.
+                        if (cloudNote.content && localNote.content && isContentDifferent && !localNote.content.includes(cloudNote.content)) {
+                            mergedContent = `${localNote.content}\n\n--- [Synced Version] ---\n${cloudNote.content}`;
+                        }
+
+                        // Merge Lists (Union)
+                        if (localNote.type === 'shopping' && cloudNote.type === 'shopping' && cloudNote.items) {
+                            // Create map by text matching
+                            const itemMap = new Map();
+                            (localNote.items || []).forEach(i => itemMap.set(i.text.trim().toLowerCase(), i));
+                            (cloudNote.items || []).forEach(i => {
+                                const key = i.text.trim().toLowerCase();
+                                if (!itemMap.has(key)) {
+                                    itemMap.set(key, i); // Add missing cloud items
+                                } else {
+                                    // If both have it, keep the one that is 'done' if either is done? Or trust local?
+                                    // Trust Local (Newer)
+                                }
+                            });
+                            mergedItems = Array.from(itemMap.values());
+                        }
+
+                        // Merge Files (Union by URL/Data)
+                        if (cloudNote.files && cloudNote.files.length > 0) {
+                            const existingUrls = new Set((localNote.files || []).map(f => f.url || f.data)); // Naive dedup
+                            const newFiles = [...(localNote.files || [])];
+                            cloudNote.files.forEach(f => {
+                                if (!existingUrls.has(f.url || f.data)) {
+                                    newFiles.push(f);
+                                }
+                            });
+                            mergedFiles = newFiles;
+                        }
+
+                    } else {
+                        // Cloud is NEWER. Normally Cloud wins.
+                        // BUT valid offline changes might be present in Local (with older TS if clock skew? Or just overwritten).
+                        // Actually, if Cloud is newer, we normally accept it. 
+                        // RECOVERY: If Local has content not in Cloud, keep it.
+
+                        mergedContent = cloudNote.content;
+                        mergedItems = cloudNote.items;
+                        mergedFiles = cloudNote.files;
+                        mergedAudio = cloudNote.audioData;
+                        mergedType = cloudNote.type;
+                        mergedUpdatedAt = cloudNote.updatedAt;
+
+                        if (localNote.content && cloudNote.content && isContentDifferent && !cloudNote.content.includes(localNote.content)) {
+                            mergedContent = `${cloudNote.content}\n\n--- [Local Unsynced] ---\n${localNote.content}`;
+                        }
+
+                        // Merge Lists
+                        if (cloudNote.type === 'shopping' && localNote.type === 'shopping' && localNote.items) {
+                            const itemMap = new Map();
+                            (cloudNote.items || []).forEach(i => itemMap.set(i.text.trim().toLowerCase(), i));
+                            (localNote.items || []).forEach(i => {
+                                const key = i.text.trim().toLowerCase();
+                                if (!itemMap.has(key)) {
+                                    itemMap.set(key, i);
+                                }
+                            });
+                            mergedItems = Array.from(itemMap.values());
+                        }
+
+                        // Merge Files
+                        if (localNote.files && localNote.files.length > 0) {
+                            const existingUrls = new Set((cloudNote.files || []).map(f => f.url || f.data));
+                            const newFiles = [...(cloudNote.files || [])];
+                            localNote.files.forEach(f => {
+                                if (!existingUrls.has(f.url || f.data)) {
+                                    newFiles.push(f);
+                                }
+                            });
+                            mergedFiles = newFiles;
+                        }
+                    }
+
+                    mergedMap.set(String(cloudNote.id), {
+                        ...cloudNote, // Base properties
+                        ...localNote, // Overlay Local properties? NO.
+                        // Construct carefully
+                        content: mergedContent,
+                        items: mergedItems,
+                        files: mergedFiles,
+                        audioData: mergedAudio, // Date-based winner logic was applied implicitly by choosing base note
+                        type: mergedType,
+                        updatedAt: mergedUpdatedAt, // ISO String
+                        isPinned: mergedPinned
+                    });
+
+                } else {
+                    mergedMap.set(String(cloudNote.id), cloudNote);
+                }
+            });
+
+            // Preserve local-only notes (Offline Created)
+            localNotes.forEach(localNote => {
+                // If not in cloud AND not deleted
+                if (!mergedMap.has(String(localNote.id)) && !deletedNoteIds.has(String(localNote.id))) {
+                    // Safe to keep. 
+                    // No "10s threshold" needed anymore because we trust local creation unless deleted.
+                    mergedMap.set(String(localNote.id), localNote);
+                }
+            });
+
+            store.notes = Array.from(mergedMap.values()).map(n => ({
+                ...n,
+                isPinned: !!n.isPinned
+            }));
+
+            // Sort by createdAt descending
+            store.notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         }
         else if (type === 'caregivers') store.caregivers = data;
 

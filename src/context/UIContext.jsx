@@ -28,6 +28,9 @@ export const UIProvider = ({ children }) => {
     const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
     const [reminderModalConfig, setReminderModalConfig] = useState(null); // { reminderToEdit, ... }
 
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [shareModalConfig, setShareModalConfig] = useState(null); // { note: ... }
+
     const openNoteModal = (config = {}) => {
         setNoteModalConfig(config);
         setIsNoteModalOpen(true);
@@ -46,6 +49,15 @@ export const UIProvider = ({ children }) => {
         setReminderModalConfig(null);
     };
 
+    const openShareModal = (note) => {
+        setShareModalConfig({ note });
+        setIsShareModalOpen(true);
+    };
+    const closeShareModal = () => {
+        setIsShareModalOpen(false);
+        setShareModalConfig(null);
+    };
+
     const value = {
         isSearchOpen, openSearch, closeSearch,
         isSettingsOpen, openSettings, closeSettings,
@@ -53,6 +65,7 @@ export const UIProvider = ({ children }) => {
         searchQuery, setSearchQuery,
         isNoteModalOpen, noteModalConfig, openNoteModal, closeNoteModal,
         isReminderModalOpen, reminderModalConfig, openReminderModal, closeReminderModal,
+        isShareModalOpen, shareModalConfig, openShareModal, closeShareModal,
     };
 
     return (

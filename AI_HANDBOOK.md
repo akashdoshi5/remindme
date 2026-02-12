@@ -1,31 +1,43 @@
-# RemindMeBuddy AI Handbook
+#**Current Version:** v1.3.10
+**Last Updated:** Feb 12, 2026
 
 ## 1. Project Overview
-**RemindMeBuddy** is a React (Vite) + Firebase application designed for caregivers and patients to manage medication and tasks. It includes a mobile app (Capacitor/Android) and a web dashboard.
+**RemindMeBuddy** is a productivity app for managing reminders, notes, and tasks.
+- **Tech Stack:** React (Vite), Capacitor (iOS/Android), Firebase (Auth, Firestore, Storage, Functions).
+- **Key Features:**
+    -   Smart Reminders (Time/Location based)
+    -   Rich Notes (Text, Voice, Checklist, Image)
+    -   Collaborative Sharing (Real-time sync)
+    -   Offline Capabilities (Firestore Persistence)
 
-### Core Tech Stack
-- **Frontend**: React, TailwindCSS, Framer Motion, Lucide React.
-- **Backend**: Firebase (Firestore, Auth, Storage).
-- **Mobile**: Capacitor (Android).
-- **State Management**: React Context (`AuthContext`, `ThemeContext`) + Local Component State.
-- **Services**: `dataService` (Singleton for Firestore/Local interactions).
+## 2. Recent Changes (v1.3.10)
+-   **Shared Permissions:** Restricted `Share` and `Delete` actions on notes to the owner only.
+-   **Checklist Conversion:** Fixed conversion of checklist items to reminder instructions (bulleted text).
+-   **Alarm Vibrations:** Harmonized vibration patterns between `haptics.alarm()` and `reminders_alarm_v3` channel to ensure consistent "double pulse".
+-   **UI:** Removed version number from Add Note modal.
+-   **Audio:** Enforced 5MB limit and fixed .webm OCR timeout.).
 
 ---
 
-## 2. Data Sync Architecture (CRITICAL)
+## 3. Data Sync Architecture (CRITICAL)
 
 ### Source of Truth
 - **Firestore is the source of truth.** Local storage (localStorage) is a cache for offline access.
-- On login, the app sets up realtime Firestore listeners that push cloud data → local cache.
+- On login, `setUserId()` in `data.js` sets up realtime Firestore listeners that push cloud data → local cache.
 - Local edits go: Local Store → `save()` → (async) Firestore. Firestore snapshot fires → merge back into local.
+
+### ⚠️ Single Listener Pattern (CRITICAL)
+- **ALL realtime listeners are managed ONLY in `setUserId()` (data.js).**
+- `useDataSync.js` only calls `setUserId()` — it MUST NOT set up its own listeners.
+- **NEVER create duplicate listeners** — this was the root cause of a sync conflict bug where two listener paths (one with smart merge, one with overwrite) would race and clobber data.
 
 ### Sync Flow
 ```
 [User Action] → Local Store → save() → UI Update
                       ↓ (async)
                 Firestore Write
-                      ↓ (realtime listener)
-                syncFromCloud() → Smart Merge → save() → UI Update
+                      ↓ (realtime listener in setUserId)
+                Smart Merge → save() → UI Update
 ```
 
 ### Smart Merge Rules
@@ -35,10 +47,24 @@
 - Tie-breaker: 'taken' status wins over 'missed'.
 - **NEVER full-overwrite** — always route through `syncFromCloud()`.
 
-#### Notes (Realtime Listener in `setUserId`)
-- **Cloud wins for content** (title, text, files, attachments).
-- **Local wins ONLY for `isPinned`** (ephemeral UI state).
-- Exception: If local edit is within 5 seconds of current time AND newer than cloud, keep local entirely (in-flight protection).
+#### Notes (`syncFromCloud('notes', data)` AND `setUserId` listener)
+- **Robust Field-Level Merge**:
+    - **Text**: If collision (both changed), **concatenate** both with a separator (`--- [Synced Version] ---`) to prevent data loss.
+    - **Checklists**: **Union** of items (merge by text content).
+    - **Attachments/Files**: **Union** of unique files (by name/size or URL).
+    - **Audio**: Keep version with **latest timestamp**.
+- **Local wins for `isPinned`** (ephemeral UI state).
+- **In-flight protection**: `AddNoteModal` uses `isDirtyRef` to prevent background sync from overwriting active user edits.
+- **Offline Creation**: Notes created offline are preserved and merged when online.
+- **Safety**: No "recent edit" threshold for merge; generally prefers **latest `updatedAt`** but safeguards data via concatenation/union.
+
+#### Cross-Device Conflict Prevention (AddNoteModal)
+- **Dirty Tracking**: `isDirtyRef` tracks whether the **user** has made a local edit.
+- **Sync Suppression**: `isSyncingRef` is `true` while applying remote sync updates from `getNoteRealtime`.
+- **Auto-save guard**: The 1.5s debounced auto-save **only fires** when `isDirtyRef.current === true`.
+- **Reset on init**: `isDirtyRef` resets to `false` when a note is opened/initialized.
+- **Reset on save**: `isDirtyRef` resets to `false` after a successful save.
+- **Why**: Without this, idle clients receiving remote updates would re-trigger auto-save, writing stale local state back to Firestore and overwriting the active device's changes.
 
 #### Deleted Notes
 - On delete: remove from local, delete Firestore doc, AND write to `users/{uid}/deletedNotes/{noteId}`.
@@ -46,8 +72,10 @@
 - Realtime listeners filter out any note whose ID is in `deletedNoteIds`.
 
 ### Migration
-- `migrateLocalData` runs **ONLY ONCE** per user (tracked by `remindme_migrated_{uid}` in localStorage).
-- Never pushes stale local data to cloud on subsequent logins.
+- **Step 1**: Fetch `deletedNoteIds` from Cloud. This prevents "zombie notes" (deleted on other devices) from being resurrected if they exist in stale local storage.
+- **Step 2**: Filter local `store.notes` against `deletedNoteIds`.
+- **Step 3**: `migrateLocalData` runs (if not already migrated). Pushes only valid, non-deleted local notes to Cloud.
+- Uses `merge: true` in `setDoc` — safe to run, but strictly filtered now.
 - Guest → User migration is separate and runs only when guest data exists.
 
 ---
@@ -69,7 +97,17 @@
 - **Exceptions**: `r.exceptions[instanceKey]` for per-instance overrides (time/title/cancelled).
     - Must include `updatedAt` for merge conflict resolution.
 
-### B. Notes & Attachments
+### B. Reminder Deletion Rules
+- **Single Instance Delete** ("Delete This Event Only"):
+    - Allowed for: **yesterday, today, and future** dates.
+    - Mechanism: Creates an exception with `status: 'cancelled'` via `updateReminder(id, { status: 'cancelled' }, instanceKey)`.
+    - Locked for: 2+ days ago (controlled by `dayBeforeYesterday` cutoff in `RemindersPage.jsx`).
+- **Series Delete** ("Delete Entire Series"):
+    - For past-started recurring reminders: **Soft delete** — sets `endDate` to `today - 2 days` to preserve history.
+    - For future/non-recurring: **Hard delete** — removes from store and Firestore.
+    - The soft-delete endDate ensures yesterday's instances still appear in history/reports.
+
+### C. Notes & Attachments
 - **Firestore Path**: Root `notes/{id}` collection (not subcollection — enables sharing).
 - **Types**: `text`, `voice`, `shopping`.
 - **Pinned Notes**: `isPinned` (boolean). Preserved across cloud syncs as local-only UI state.
@@ -111,8 +149,15 @@
     -   Global `window.speechSynthesis` and `new Audio()` instances must be managed to prevent overlapping sound.
 
 5.  **Migration Runs Once**:
-    -   `remindme_migrated_{uid}` flag in localStorage. If cleared, migration will re-run.
-    -   Use `merge: true` in `setDoc` to avoid data loss if re-run happens.
+    -   `remindme_migrated_{uid}` flag in localStorage. If cleared (e.g. new APK install clears app data), migration will re-run.
+    -   **Safe**: Uses `merge: true` in `setDoc`, so re-running migration won't overwrite newer cloud data.
+    -   Phone notes that weren't synced to web will be merged (not overwritten) on new APK install.
+
+6.  **Duplicate Listeners (FIXED)**:
+    -   **Bug**: `useDataSync.js` previously set up its own Firestore listeners IN ADDITION to `setUserId()` listeners.
+    -   The `useDataSync` listeners called `syncFromCloud('notes', ...)` which used simple overwrite.
+    -   The `setUserId` listeners used smart merge. Both ran simultaneously.
+    -   **Fix**: `useDataSync.js` now only calls `setUserId()`. `syncFromCloud` now also uses smart merge.
 
 ---
 
@@ -133,5 +178,151 @@
 
 ## 6. Deployment Checklist
 1.  **Web**: `npm run build` → `firebase deploy`.
-2.  **Android**: `npx cap sync android` → `Open Android Studio` → `Assemble Debug` → `Install`.
+2.  **Android**: `npx cap copy android` (to sync assets) OR `npx cap sync android` (to sync assets AND plugins) → `Open Android Studio` → `Assemble Debug` → `Install`.
+    - **CRITICAL**: If you only run `./gradlew assembleDebug` without `npx cap copy`, the APK will contain **STALE** web assets.
 3.  **Commit**: Ensure `task.md` and `walkthrough.md` are updated.
+
+---
+
+## 7. Haptics & Vibration
+- **Service**: `src/services/haptics.js` (Singleton).
+- **Philosophy**:
+    - **UI Feedback**: Use `Capacitor Haptics` (Taptic Engine). Crisp, short, localized.
+        - `haptics.light()`: Toggles, tabs, subtle interactions.
+        - `haptics.medium()`: Primary actions (Pull-to-refresh, Snooze, Complete).
+        - `haptics.heavy()` / `selection()`: Destructive actions, long-press, reorder.
+    - **Alarms**: Use `navigator.vibrate` (Web API).
+        - **Pattern**: `[500, 200, 500, 200, 1000]` (Aggressive Pulse).
+        - **Reason**: Taptic engine is too weak for wake-up alarms; `navigator.vibrate` allows long buzzing.
+- **Settings Preview**:
+    - "Standard": Plays `haptics.notification()` (Double buzz).
+    - "Alarm": Plays `haptics.alarm()` (Full aggressive pattern).
+
+---
+
+## 8. Recent Regression Fixes
+The following critical regressions were discovered and fixed during recent development:
+
+1.  **Mic Crash (APK)**:
+    - **Problem**: Repeatedly tapping the microphone button caused an `InvalidStateError`.
+    - **Fix**: Added a guard clause in `useVoice.js` to prevent starting if already listening.
+2.  **Share functionality Restoration**:
+    - **Problem**: Native OS share replaced the custom collaborative sharing modal.
+    - **Fix**: Centralized the `ShareModal` in `UIContext.jsx` and `App.jsx`, ensuring it is accessible via the "Share" button in Notes.
+3.  **Reminder Modal Loop**:
+    - **Problem**: Opening the modal from the Home Page via `?add=true` caused a navigation loop because `window.history.replaceState` didn't update React Router.
+    - **Fix**: Replaced `replaceState` with `navigate(location.pathname, { replace: true })`.
+4.  **ReferenceError in NotesPage**:
+    - **Problem**: Lingering `useEffect` block referenced `sharingNote` after it was moved to context.
+    - **Fix**: Removed obsolete `useEffect` in `NotesPage.jsx`.
+5.  **Cross-Device Note Overwrite (Idle Client)**:
+    - **Problem**: When the same note is open on web (idle) and phone, the idle web auto-saved stale state back to Firestore, overwriting changes/attachments made on the phone.
+    - **Root Cause**: `AddNoteModal`'s debounced auto-save fired on ANY state change, including remote sync updates from `getNoteRealtime`, creating a feedback loop.
+    - **Fix**: Added `isDirtyRef` + `isSyncingRef` in `AddNoteModal.jsx`. Auto-save now only triggers when the user has actually made a local edit. Remote sync state changes are suppressed from marking dirty.
+7.  **Mic Error on Mobile (Android)**:
+    - **Problem**: `window.SpeechRecognition` (Web Speech API) is unreliable/unsupported in standard Android WebViews, causing errors even with permissions granted.
+    - **Fix**: Integrated `@capacitor-community/speech-recognition` plugin. Refactored `useVoice.js` to use the native plugin on mobile (Hybrid implementation) while keeping Web Speech API for the PWA.
+    - **Problem**: Share modal appeared behind Note modal (z-index issue) and didn't update the list of shared users immediately.
+    - **Fix**: Increased `ShareModal` z-index to 200 and added local state tracking for immediate UI updates.
+7.  **Voice Note Playback Error**:
+    - **Problem**: `NoteCard` passed full note object to `handlePlayAudio`, but `NotesPage` expected `(noteId, audioData)`.
+    - **Fix**: Updated `NotesPage` handler to accept note object, extract audio data, and added toggle logic to stop playing if clicked again.
+8.  **Alarm Prominence**:
+    - **Problem**: Alarm sound/vibration was too subtle for some users on both Web and Android.
+    - **Fix**: Increased web audio gain to 0.7, doubled the alarm sound sequence per loop, and extended the native vibration pattern to a double-pulse sequence.
+10. **Mobile Microphone & Playback Robustness (v1.3.0)**:
+    - **Problem**: "Mic error" persisting on some devices; recordings lost due to temporary `blob:` URLs being saved to cloud.
+    - **Fix**: Refactored `AddNoteModal` to use synchronous upload-and-save logic. Ensuring native `capacitor-voice-recorder` permissions are checked EXPLICITLY before start. Added playback error handling in `NotesPage.jsx`.
+11. **Note Type Conversion Data Loss (v1.3.1)**:
+    - **Problem**: Switching between 'Text' and 'Checklist' modes in the Add Note modal caused the alternative content to be lost.
+    - **Fix**: Implemented bi-directional mapping in `AddNoteModal.jsx`. 
+        - **Text to Checklist**: Splits text lines into individual items.
+        - **Checklist to Text**: Joins all list items into a single block of text.
+12. **Conversion Crash & Close Button Accessibility (v1.3.2)**:
+    - **Problem**: Switching to checklist mode with empty content caused a `TypeError`. Also, the 'X' was hard to reach.
+    - **Fixes**: Added safety checks and a "Done" button at the bottom right.
+13. **Stability & Mobile UX (v1.3.5 - v1.3.7)**:
+    - **Problem**: Checklist-to-Note conversion logic was corrupted; "Done" button hidden on mobile.
+    - **Fixes**: 
+        - **Explicit Mode Conversion (v1.3.7)**: Switching between Text and Checklist now explicitly converts the data and **clears the alternative field**. This prevents stale cloud sync logs from overwriting converted data.
+        - **Visible Versioning**: Added `v1.3.7` badge for deployment tracking.
+        - **Mobile Layout**: Reduced modal height to `90dvh` and used `shrink-0` on toolbar to prevent clipping.
+14. **Android Asset Desync (v1.3.7)**:
+    - **Problem**: Web app was updated but Android APK still showed old version/bugs.
+    - **Root Cause**: Skipping `npx cap copy` or `npx cap sync` during build. Android Studio / Gradle does NOT automatically pull the latest `dist` folder changes unless synced via Capacitor CLI.
+    - **Fix**: Always run `npx cap copy android` before building the APK.
+15. **Capacitor Plugin / Java Version Conflict (v1.3.7)**:
+    - **Problem**: Build failed with `invalid source release: 21` or "VoiceRecorder plugin not implemented" alert on phone.
+    - **Root Cause**: `capacitor-voice-recorder@6.1.0` and above require Java 21, but the current build environment uses JDK 17.
+    - **Fix**: Downgraded to `capacitor-voice-recorder@6.0.1` which is compatible with Java 17. (See `node_modules/capacitor-voice-recorder/android/build.gradle` for `compileOptions` constraints).
+16. **Notes Filter Bug (v1.3.8)**:
+    - **Problem**: "Lists" tab showed only `shopping` type notes, missing `list` types created via checklist conversion.
+    - **Fix**: Updated filter to include both `shopping` and `list`.
+17. **Alarm Vibration Weakness (v1.3.8)**:
+    - **Problem**: Android notifications used standard vibration, which was too subtle for alarms.
+    - **Fix**: Implemented `reminders_alarm_v2` channel with a custom, aggressive vibration pattern matching `haptics.alarm()`.
+18. **Sync Data Loss (v1.3.8)**:
+    - **Problem**: Simple overwrite logic caused data loss when offline edits conflicted with cloud updates.
+    - **Fix**: Implemented robust merge strategy (concatenation for text, union for lists/files) in `data.js`.
+
+## 9. UI Improvements
+1.  **Note Title Relocation**:
+    - **Change**: Moved the Note Title input from the fixed header to the top of the content area.
+    - **Reasoning**: To declutter the header and provide a better focus on the content. The title is now bold and prominent within the note body.
+    - **Feature**: Added dynamic placeholder logic. If no title is entered, the input placeholder shows a preview of the derived title (from text/checklist).
+
+2.  **Search Scroll-to-Position**:
+    - **Change**: Clicking a search result for a Note now opens the note and automatically scrolls to the matched text.
+    - **Implementation**: `SearchModal` passes the query to `NotesPage`, which opens `AddNoteModal` with a `searchQuery` prop, triggering a scroll effect.
+    - **v1.2.8 Refinement**: Improved scroll reliability by explicitly calling `scrollIntoView` and adding a 500ms stabilization delay to ensure the modal layout is ready before highlighting.
+
+
+3.  **Snooze UI Refinements (v1.2.7)**:
+    - **Notification Label**: Changed to "Snooze 5 min" for better clarity.
+    - **Action ID**: Bumped from `REMINDER_ACTIONS_V10` to `V11` to force OS-level button updates on Android.
+    - **Reminder Card**: Updated Snooze button to always show "+5m" text next to the icon (removed responsive hide logic) to reduce user ambiguity.
+    - **Alarm Modal**: Prepending "+" to all snooze options (e.g., "+5m", "+10m") for visual consistency with the reminder list.
+
+---
+
+9.  **Deleted Notes Resurrection (Fresh Install)**:
+    - **Problem**: On new install/update, stale local notes (deleted on other devices) were "resurrected" because Migration ran *before* fetching the list of deleted IDs from cloud.
+    - **Fix**: Reordered `data.js` `setUserId` flow. Now fetches `deletedNoteIds` first, then filters local data, then runs Migration.
+    - **Fix**: Reordered `data.js` `setUserId` flow. Now fetches `deletedNoteIds` first, then filters local data, then runs Migration.
+
+## 10. Versioning Strategy
+- **Source of Truth**: `package.json` (`version` field).
+- **Usage**:
+    - **AddNoteModal.jsx**: Imports `package.json` to display version (e.g., "v1.3.8") in the saved indicator.
+    - **AppVersionManager.jsx**: Checks `package.json` against Firestore `config/app_version` to prompt updates.
+    - **SettingsModal.jsx**: Displays version in the footer.
+- **Update Process**:
+    1.  Bump version in `package.json`.
+    2.  Run `npm run build` (Vite embeds the JSON version).
+    3.  Deploy.
+
+To maintain stability across platforms (Web/Android), the AI must follow this strict SDLC process for every task:
+
+### 1. Planning & Understanding
+- **Understand the App**: Read the `AI_HANDBOOK.md` and codebase before making changes.
+- **Impact Analysis**: Ensure changes do not break existing functionality. If a change impacts other parts of the app, **reverify them all** and inform the user before proceeding.
+
+### 2. Implementation & Execution
+- **Refactor & Fix**: Fix the requested issue while refactoring for clarity according to established patterns.
+- **Resource Management**: Cleanup unused imports, variables, and temporary files after the fix.
+- **Security**: Always verify `firestore.rules` after any schema or collection changes.
+
+### 3. Verification & Testing
+- **Add Test Cases**: Write new tests in `src/services/tests/` for new functionality.
+- **Run All Tests**: Execute the full test suite (`node src/services/tests/comprehensive.test.js`) and fix any failures.
+- **Functionality Reverification**: Manually verify the specific fixed functionality on both Web and Android.
+
+### 4. Build & Deployment
+- **Build Verification**: Run `npm run build` locally. Fix any build/minification issues immediately.
+- **Web Deployment**: Deploy successfully to Firebase Hosting using `npx firebase deploy`.
+- **Android APK**: Create a fresh debug APK via Capacitor (`npx cap sync android` + `.\gradlew.bat assembleDebug`).
+
+### 5. Documentation & Handover
+- **Update Handbook**: Always update this `AI_HANDBOOK.md` with new architectural decisions, "gotchas," and regression fixes.
+- **Handover**: Maintain an accurate `task.md` and provide a detailed `walkthrough.md`.
+

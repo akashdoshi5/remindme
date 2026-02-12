@@ -7,6 +7,7 @@ import { useLanguage, LanguageProvider } from './context/LanguageContext';
 import SearchModal from './components/common/SearchModal';
 import AlarmModal from './components/reminders/AlarmModal';
 import SettingsModal from './components/settings/SettingsModal';
+import ShareModal from './components/common/ShareModal';
 import { firestoreService } from './services/firestoreService';
 import { useDataSync } from './hooks/useDataSync';
 import { useReminders } from './hooks/useReminders';
@@ -173,8 +174,10 @@ const AppContent = () => {
     openMobileMenu, closeMobileMenu, isMobileMenuOpen,
     // Global Modals
     isNoteModalOpen, noteModalConfig, openNoteModal, closeNoteModal,
-    isReminderModalOpen, reminderModalConfig, openReminderModal, closeReminderModal
+    isReminderModalOpen, reminderModalConfig, openReminderModal, closeReminderModal,
+    isShareModalOpen, shareModalConfig, openShareModal, closeShareModal
   } = useUI();
+  const { share } = useShare();
   const [activeAlarm, setActiveAlarm] = useState(null);
 
   // Initialize Firestore sync listeners
@@ -324,11 +327,7 @@ const AppContent = () => {
           window.dispatchEvent(new Event('storage-update'));
         }}
         onShare={(note) => {
-          share({
-            title: note.title || 'Note',
-            text: note.content || '',
-            url: window.location.href
-          });
+          openShareModal(note);
         }}
       />
 
@@ -350,6 +349,12 @@ const AppContent = () => {
           closeReminderModal();
           window.dispatchEvent(new Event('storage-update'));
         }}
+      />
+
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={closeShareModal}
+        note={shareModalConfig?.note}
       />
 
       <AlarmModal

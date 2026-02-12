@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Bell, Clock, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { haptics } from '../../services/haptics';
 
 const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
     // Alarm sound that repeats until stopped - more attention-grabbing than a single chime
@@ -19,7 +20,8 @@ const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
 
             const gainNode = ctx.createGain();
             gainNode.connect(ctx.destination);
-            gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+            gainNode.connect(ctx.destination);
+            gainNode.gain.setValueAtTime(0.7, ctx.currentTime); // Louder for alarm mode
 
             let isPlaying = true;
             let timerId = null;
@@ -32,6 +34,7 @@ const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
                 const beepDuration = 0.15;
                 const pause = 0.05;
 
+                // Play first sequence
                 frequencies.forEach((freq, i) => {
                     const osc = ctx.createOscillator();
                     const beepGain = ctx.createGain();
@@ -41,14 +44,34 @@ const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
                     beepGain.connect(gainNode);
 
                     const start = currentTime + (i * (beepDuration + pause));
-                    beepGain.gain.setValueAtTime(0, start);
-                    beepGain.gain.linearRampToValueAtTime(0.4, start + 0.02);
-                    beepGain.gain.setValueAtTime(0.4, start + beepDuration - 0.02);
-                    beepGain.gain.linearRampToValueAtTime(0, start + beepDuration);
-
-                    osc.start(start);
-                    osc.stop(start + beepDuration);
+                    playBeep(osc, beepGain, start, beepDuration, freq);
                 });
+
+                // Play second sequence immediately after (Double Alarm)
+                const sequenceDuration = frequencies.length * (beepDuration + pause);
+                const gap = 0.3; // Short gap between the two bursts
+
+                frequencies.forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const beepGain = ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.value = freq;
+                    osc.connect(beepGain);
+                    beepGain.connect(gainNode);
+
+                    const start = currentTime + sequenceDuration + gap + (i * (beepDuration + pause));
+                    playBeep(osc, beepGain, start, beepDuration, freq);
+                });
+            };
+
+            const playBeep = (osc, beepGain, start, duration, freq) => {
+                beepGain.gain.setValueAtTime(0, start);
+                beepGain.gain.linearRampToValueAtTime(0.4, start + 0.02);
+                beepGain.gain.setValueAtTime(0.4, start + duration - 0.02);
+                beepGain.gain.linearRampToValueAtTime(0, start + duration);
+
+                osc.start(start);
+                osc.stop(start + duration);
             };
 
             // CHIME SOUND (Single, Soft)
@@ -74,11 +97,11 @@ const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
             const isAlarm = reminder.soundType === 'alarm';
 
             if (isAlarm) {
-                // Play immediately and repeat every 1.5s
+                // Play immediately and repeat every 2.0s (longer gap due to double sequence)
                 playAlarmSequence();
                 timerId = setInterval(() => {
                     if (isPlaying) playAlarmSequence();
-                }, 1500);
+                }, 2000);
             } else {
                 // Play ONCE
                 playChime();
@@ -106,18 +129,12 @@ const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
         }
 
         // 1. Haptic Feedback (Vibration)
-        if (navigator.vibrate) {
-            try {
-                if (reminder.soundType === 'alarm') {
-                    // Aggressive vibration for Alarm
-                    navigator.vibrate([1000, 500, 1000, 500, 1000]);
-                } else {
-                    // Standard but High Intensity (Single Long Pulse)
-                    navigator.vibrate([800]);
-                }
-            } catch (err) {
-                console.warn("Vibration failed", err);
-            }
+        // 1. Haptic Feedback (Vibration)
+        if (reminder.soundType === 'alarm') {
+            haptics.alarm();
+        } else {
+            // Standard Notification Vibration
+            haptics.notification();
         }
 
         // 2. Play Sound
@@ -125,7 +142,7 @@ const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
 
         return () => {
             if (stopAlarm) stopAlarm();
-            if (navigator.vibrate) navigator.vibrate(0); // Stop vibration
+            haptics.stop(); // Stop vibration
         };
     }, [reminder?.uniqueId, reminder?.soundType, isSilent]); // Trigger on uniqueId change OR settings change
 
@@ -188,7 +205,7 @@ const AlarmModal = ({ reminder, onSnooze, onDone, onClose, isSilent }) => {
                                         className="flex flex-col items-center justify-center p-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-orange-200 hover:text-orange-600 transition-all font-medium text-sm"
                                     >
                                         <Clock size={20} className="mb-1" />
-                                        {min}m
+                                        +{min}m
                                     </button>
                                 ))}
                             </div>

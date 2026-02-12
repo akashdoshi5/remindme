@@ -9,6 +9,9 @@ import { useAuth } from '../../context/AuthContext';
 import { mergeService } from '../../services/mergeService';
 import { useUI } from '../../context/UIContext'; // Global UI Context
 import { BackButtonManager } from '../../services/BackButtonManager';
+import { Capacitor } from '@capacitor/core';
+import { VoiceRecorder } from 'capacitor-voice-recorder';
+import packageJson from '../../../package.json';
 
 // CUSTOM HOOK: useHistory
 const useHistory = (initialState) => {
@@ -106,6 +109,13 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
     const baseContentRef = useRef(''); // The last known sync state (Snapshot) for Text
     const baseFilesRef = useRef([]);   // Base state for Files
 
+    // CROSS-DEVICE CONFLICT PREVENTION: Dirty tracking
+    // isDirtyRef: true only when the USER has made a local edit (typing, file upload, pin, etc.)
+    // isSyncingRef: true while applying remote sync updates, to suppress auto-save trigger
+    const isDirtyRef = useRef(false);
+    const isSyncingRef = useRef(false);
+    const markDirty = useCallback(() => { if (!isSyncingRef.current) isDirtyRef.current = true; }, []);
+
 
     // --- REAL-TIME SYNC ---
     useEffect(() => {
@@ -113,7 +123,8 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
 
         // Start listening to the specific note
         const unsubscribe = dataService.getNoteRealtime(noteToEdit.id, (remoteNote) => {
-            if (!remoteNote) return; // Deleted?
+            isSyncingRef.current = true; // Suppress auto-save during remote sync
+            if (!remoteNote) { isSyncingRef.current = false; return; } // Deleted?
 
             // 1. Text Merge
             if (remoteNote.type === 'text') {
@@ -211,6 +222,9 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                 // Ideally check diff.
             }
 
+            // Re-enable dirty tracking after sync state updates have been applied
+            // Use setTimeout to ensure React state updates from this callback are batched first
+            setTimeout(() => { isSyncingRef.current = false; }, 0);
         });
 
         return () => {
@@ -231,6 +245,13 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
         // We will remove it to ensure we always load the latest props when the modal opens/note changes.
 
         if (noteToEdit) {
+            // v1.3.4: ID check must be strict. If same ID, only update IF NOT DIRTY.
+            // This prevents the "Conversion Data Loss" where a sync update clears the newly converted state.
+            if (localId && noteToEdit.id === localId && isDirtyRef.current) {
+                console.log("Skipping note re-initialization: local state is dirty.");
+                return;
+            }
+
             setTitle(noteToEdit.title && noteToEdit.title !== 'Untitled Note' ? noteToEdit.title : '');
 
             const initialContent = noteToEdit.content || '';
@@ -258,6 +279,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
 
             setLocalId(noteToEdit.id);
             setIsNew(false);
+            isDirtyRef.current = false; // Reset dirty on initialization
         } else {
             // New Note
             if (!isNew) { // Only reset if we weren't already in "New" mode
@@ -272,6 +294,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                 setAudioData(null);
                 setLocalId(crypto.randomUUID());
                 setIsNew(true);
+                isDirtyRef.current = false; // Reset dirty on new note
             }
         }
     }, [noteToEdit, isOpen]); // Removed localId/isNew from dependencies to prevent loops, added isOpen to refresh on open
@@ -325,40 +348,141 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
     useEffect(() => { document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = ''; }; }, []);
 
     // Search Focus
-    useEffect(() => { if (isOpen && noteType === 'text' && searchQuery && content && textareaRef.current) { const idx = content.toLowerCase().indexOf(searchQuery.toLowerCase()); if (idx !== -1) { setTimeout(() => { textareaRef.current?.focus(); textareaRef.current?.setSelectionRange(idx, idx + searchQuery.length); }, 300); } } }, [isOpen, noteType, searchQuery, content]);
+    useEffect(() => {
+        if (isOpen && noteType === 'text' && searchQuery && content && textareaRef.current) {
+            const idx = content.toLowerCase().indexOf(searchQuery.toLowerCase());
+            if (idx !== -1) {
+                // Use a slightly longer timeout to ensure modal transition and layout are finished
+                setTimeout(() => {
+                    if (textareaRef.current) {
+                        textareaRef.current.focus();
+                        textareaRef.current.setSelectionRange(idx, idx + searchQuery.length);
+                        // Ensure the line is visible if the note is very long
+                        const scrollPos = textareaRef.current.scrollHeight * (idx / content.length);
+                        textareaRef.current.scrollTop = Math.max(0, scrollPos - 100);
+
+                        // Also scroll the parent container to ensure the textarea itself is visible
+                        textareaRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    }
+                }, 500);
+            }
+        }
+    }, [isOpen, noteType, searchQuery, content]); // Trigger when content or query matches
 
     // Audio Recording
     const MAX_AUDIO_SIZE = 25 * 1024 * 1024;
     const startRecordingRobust = useCallback(async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            streamRef.current = stream;
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
-            const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
-            mediaRecorderRef.current = recorder;
-            audioChunksRef.current = [];
-            let size = 0;
-            recorder.ondataavailable = (e) => { if (e.data.size > 0) { size += e.data.size; if (size > MAX_AUDIO_SIZE) { stopRecordingAsync(); stopListening(); alert("Limit exceeded"); return; } audioChunksRef.current.push(e.data); } };
-            recorder.start();
-            setRecordingStatus('recording');
-        } catch (e) { console.error(e); stopListening(); setRecordingStatus('idle'); if (!autoStartListening) alert("Mic error"); }
-    }, [stopListening, autoStartListening]);
+            if (Capacitor.isNativePlatform()) {
+                // NATIVE RECORDING
+                const status = await VoiceRecorder.getCurrentStatus();
+                console.log("Current VoiceRecorder Status:", status);
 
-    const stopRecordingAsync = () => new Promise(resolve => {
-        if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') { setRecordingStatus('idle'); resolve(null); return; }
-        mediaRecorderRef.current.onstop = () => {
-            const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current.mimeType });
-            if (blob.size > MAX_AUDIO_SIZE) { alert("Limit exceeded"); setAudioData(null); resolve(null); }
-            else {
-                // FIX: Immediately set local audioData for UI playback
-                const url = URL.createObjectURL(blob);
-                setAudioData(url);
-                resolve(blob);
+                const perm = await VoiceRecorder.hasAudioRecordingPermission();
+                if (!perm.value) {
+                    const request = await VoiceRecorder.requestAudioRecordingPermission();
+                    if (!request.value) {
+                        throw new Error("Microphone permission denied. Please enable it in system settings.");
+                    }
+                }
+
+                await VoiceRecorder.startRecording();
+                setRecordingStatus('recording');
+            } else {
+                // WEB RECORDING
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                streamRef.current = stream;
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+                const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+                mediaRecorderRef.current = recorder;
+                audioChunksRef.current = [];
+                let size = 0;
+                recorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) {
+                        size += e.data.size;
+                        if (size > MAX_AUDIO_SIZE) {
+                            stopRecordingAsync();
+                            stopListening();
+                            alert("Limit exceeded");
+                            return;
+                        }
+                        audioChunksRef.current.push(e.data);
+                    }
+                };
+                recorder.start();
+                setRecordingStatus('recording');
             }
-            streamRef.current?.getTracks().forEach(t => t.stop());
+        } catch (e) {
+            console.group("CRITICAL MIC ERROR DEBUG");
+            console.error("Error Object:", e);
+            console.error("Message:", e.message);
+            console.groupEnd();
+
+            stopListening();
             setRecordingStatus('idle');
-        };
-        mediaRecorderRef.current.stop();
+
+            if (!autoStartListening) {
+                alert(`Mic Error: ${e.message || "Failed to start recording."}`);
+            }
+        }
+    }, [stopListening, autoStartListening, recordingStatus]);
+
+    const stopRecordingAsync = () => new Promise(async (resolve) => {
+        if (Capacitor.isNativePlatform()) {
+            // NATIVE STOP
+            try {
+                const result = await VoiceRecorder.stopRecording();
+                setRecordingStatus('idle');
+                if (result.value && result.value.recordDataBase64) {
+                    // Convert Base64 to Blob
+                    const byteCharacters = atob(result.value.recordDataBase64);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const mimeType = result.value.mimeType || 'audio/webm';
+                    const blob = new Blob([byteArray], { type: mimeType });
+
+                    const url = URL.createObjectURL(blob);
+                    setAudioData(url);
+                    resolve(blob);
+                } else {
+                    resolve(null);
+                }
+            } catch (e) {
+                console.error("Native stop error:", e);
+                setRecordingStatus('idle');
+                resolve(null);
+            }
+        } else {
+            // WEB STOP
+            if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+                setRecordingStatus('idle');
+                resolve(null);
+                return;
+            }
+            mediaRecorderRef.current.onstop = () => {
+                const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current.mimeType });
+
+                // Audio Size Limit Check (5MB)
+                const MAX_AUDIO_BYTES = 5 * 1024 * 1024;
+                if (blob.size > MAX_AUDIO_BYTES) {
+                    alert("Audio recording exceeded 5MB limit. Please record a shorter note.");
+                    setAudioData(null);
+                    setFiles(prev => prev.filter(f => !f.type?.startsWith('audio/'))); // Clear any partial uploads
+                    resolve(null);
+                }
+                else {
+                    const url = URL.createObjectURL(blob);
+                    setAudioData(url);
+                    resolve(blob);
+                }
+                streamRef.current?.getTracks().forEach(t => t.stop());
+                setRecordingStatus('idle');
+            };
+            mediaRecorderRef.current.stop();
+        }
     });
 
     useEffect(() => {
@@ -376,7 +500,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
     // Transcript
     useEffect(() => {
         if (!isListening && transcript) {
-            // Attach transcript to latest audio file if possible? 
+            // Attach transcript to latest audio file if possible?
             // Or just append to text for now as before.
             // User requested robust attachment to audio.
             // But for now, let's stick to appending to content for simplicity + robustness.
@@ -409,6 +533,11 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
             // User might want to replace.
             if (audioData) {
                 if (!window.confirm("Replace existing recording?")) return;
+
+                // Remove the old audio file from the 'files' list to avoid clutter
+                // We identify it by matching the URL or if it looks like a voice note
+                setFiles(prev => prev.filter(f => f.url !== audioData && f.data !== audioData));
+
                 setAudioData(null);
             }
             startListening();
@@ -420,12 +549,23 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
     const handleFileUpload = async (e) => {
         const selectedFiles = Array.from(e.target.files);
         if (!selectedFiles.length) return;
+
+        const MAX_ATTACHMENT_BYTES = 13 * 1024 * 1024; // 13MB limit for attachments
+        const oversizedFiles = selectedFiles.filter(file => file.size > MAX_ATTACHMENT_BYTES);
+
+        if (oversizedFiles.length > 0) {
+            alert(`One or more files exceed the 13MB attachment limit. Please select smaller files. (e.g., ${oversizedFiles[0].name})`);
+            return;
+        }
+
         const newFileEntries = selectedFiles.map(f => ({ tempId: crypto.randomUUID(), file: f, name: f.name, type: f.type, status: 'uploading', progress: 0, text: '', storageData: null }));
         setFiles(prev => [...prev, ...newFileEntries]);
         newFileEntries.forEach(async (entry) => {
             try {
                 const up = fileStorage.saveFile(entry.file, p => setFiles(prev => prev.map(f => f.tempId === entry.tempId ? { ...f, progress: Math.round(p) } : f)));
-                const ocr = (!entry.type.startsWith('audio/')) ? ocrService.extractText(entry.file) : Promise.resolve(''); // Skip OCR for audio
+                // SKIP OCR FOR AUDIO AND VIDEO (webm often comes as video/webm in Chrome)
+                const shouldSkipOCR = entry.type.startsWith('audio/') || entry.type.startsWith('video/');
+                const ocr = (!shouldSkipOCR) ? ocrService.extractText(entry.file) : Promise.resolve('');
                 const [sd, txt] = await Promise.all([up, ocr]);
                 setFiles(prev => prev.map(f => f.tempId === entry.tempId ? { ...f, status: 'ready', progress: 100, text: txt || '', storageData: sd } : f));
             } catch (e) { setFiles(prev => prev.map(f => f.tempId === entry.tempId ? { ...f, status: 'error' } : f)); }
@@ -438,6 +578,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
     const performSave = async (shouldClose = false) => {
         if (files.some(f => f.status === 'uploading')) { if (shouldClose) alert("Wait for upload"); return; }
         setSaveStatus('saving');
+        let recordingAudioUrl = null;
 
         // Logic check: If still recording when closing, stop and save
         if (recordingStatus === 'recording') {
@@ -457,10 +598,14 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
 
                 try {
                     const sd = await fileStorage.saveFile(file, () => { });
-                    // Update files list with result
-                    setFiles(prev => prev.map(f => f.tempId === tempId ? { ...f, status: 'ready', progress: 100, storageData: sd } : f));
+                    // Update local files list for UI
+                    const uploadedFile = { id: sd.id, name: filename, type: mimeType, url: sd.url, path: sd.path, status: 'ready', progress: 100 };
+                    setFiles(prev => prev.map(f => f.tempId === tempId ? uploadedFile : f));
 
-                    // Continue save...
+                    // CRITICAL: We need this URL for dataToSave below
+                    // If we just wait for state update, performSave will use stale 'audioData' (blob URL)
+                    // So we override 'audioData' locally for this save operation.
+                    recordingAudioUrl = sd.url;
                 } catch (e) {
                     alert("Failed to save recording.");
                     setSaveStatus('error');
@@ -468,6 +613,8 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                 }
             }
         }
+
+
 
         try {
             // Blank check - a note is blank if it has no title AND no meaningful content
@@ -520,9 +667,9 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
             const finalFiles = files.map(f => f.storageData ? { id: f.storageData.id, name: f.name, type: f.type, url: f.storageData.url, path: f.storageData.path, extractedText: f.text } : f);
 
             // FIX: Map local audioData blob to remote URL if available in files
-            let distinctAudioData = audioData;
+            let distinctAudioData = recordingAudioUrl || audioData;
             // If audioData is a local blob URL, try to find matching file in uploaded files
-            if (audioData && audioData.startsWith('blob:')) {
+            if (distinctAudioData && distinctAudioData.startsWith('blob:')) {
                 // Find the newest audio file
                 const audioFile = finalFiles.filter(f => f.type?.startsWith('audio/')).pop();
                 if (audioFile && audioFile.url) {
@@ -535,7 +682,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
             if (distinctAudioData && noteType === 'text') {
                 // Or just keep 'text' but with audio? User wants "Searchable as voice note".
                 // NotesPage filters by (n.type === 'voice' || n.audioData). So type change isn't strictly necessary but good for clarity.
-                // let's keep 'text' to avoid changing icon if they also have text? 
+                // let's keep 'text' to avoid changing icon if they also have text?
                 // Actually, NoteCard logic: note.type === 'voice' ? <Mic> : <FileText>.
                 // If it has audio, should it be a "Voice Note"? Probably.
                 distinctType = 'voice';
@@ -543,8 +690,8 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
 
             const dataToSave = {
                 title: finalTitle,
-                content: noteType === 'text' ? content : '',
-                items: noteType === 'shopping' ? items : undefined,
+                content: noteType === 'text' ? (content || '') : '',
+                items: noteType === 'shopping' ? (items || []) : [],
                 tags: tags.split(',').map(t => t.trim()).filter(Boolean),
                 type: distinctType,
                 date: noteToEdit ? noteToEdit.date : new Date().toLocaleString(),
@@ -567,6 +714,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
             if (saved?.id) setLocalId(saved.id);
             setIsNew(false);
             lastSavedData.current = dataToSave;
+            isDirtyRef.current = false; // Reset dirty flag after successful save
             setSaveStatus('saved');
 
             if (shouldClose) onClose();
@@ -578,7 +726,16 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
     };
 
     useEffect(() => { performSaveRef.current = performSave; }, [performSave]);
-    useEffect(() => { if (!isOpen || recordingStatus === 'recording') return; const t = setTimeout(() => performSave(false), 1500); return () => clearTimeout(t); }, [content, items, tags, files, audioData, title, isPinned]);
+    // CROSS-DEVICE FIX: Only auto-save when user has actually made local edits.
+    // Remote sync updates change state but should NOT trigger a save-back to Firestore.
+    useEffect(() => {
+        if (!isOpen || recordingStatus === 'recording') return;
+        // Mark dirty on user-initiated state changes (isSyncingRef guards against remote changes)
+        markDirty();
+        if (!isDirtyRef.current) return; // Skip save if nothing changed locally
+        const t = setTimeout(() => performSave(false), 1500);
+        return () => clearTimeout(t);
+    }, [content, items, tags, files, audioData, title, isPinned]);
 
     const displayContent = (content || '') + (isListening && transcript ? ' ' + transcript : '');
 
@@ -589,11 +746,23 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
         // Save first to ensure persistent ID
         await performSave();
 
-
         // Map Note -> Reminder
+        let instructions = content || '';
+
+        // FIX: If checklist, convert items to text for the reminder instructions
+        if (noteType === 'shopping' && items && items.length > 0) {
+            instructions = items
+                .filter(i => !i.done) // Optional: only active items? Or all? User likely wants all or active. Let's do all for completeness, or maybe just active. 
+                // Context: "checklist data is not transferred". Usually implies the list content. 
+                // Let's transfer ALL items, maybe marking done ones? 
+                // Simpler: Just transfer keys. 
+                .map(i => `- ${i.text} ${i.done ? '(Done)' : ''}`)
+                .join('\n');
+        }
+
         const noteData = {
             title: title || 'New Reminder from Note',
-            instructions: content || '',
+            instructions: instructions,
             files: files || [],
             audioData: audioData || null, // Pass legacy audio too
             type: 'Other', // Default category
@@ -612,16 +781,21 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[500] p-4 md:p-6 transition-all overflow-hidden">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[500] p-4 md:p-6 transition-all overflow-hidden touch-none">
 
-            <div className="bg-white dark:bg-gray-900 w-full max-w-2xl h-[85vh] md:h-[80vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800 animate-slide-up">
+            <div className="bg-white dark:bg-gray-900 w-full max-w-2xl h-[90vh] h-[90dvh] md:h-[80vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800 animate-slide-up relative">
 
                 {/* Header */}
                 <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md sticky top-0 z-10">
                     <div className="flex items-center gap-3 flex-1 mr-4">
-                        <input type="text" placeholder="Title" className="w-full text-lg font-bold bg-transparent outline-none text-gray-800 dark:text-gray-100" value={title} onChange={e => setTitle(e.target.value)} />
+                        {/* Title Input Removed from Header */}
                         {saveStatus === 'saving' && <Loader2 size={16} className="animate-spin text-orange-500" />}
-                        {saveStatus === 'saved' && <span className="text-xs text-green-500">Saved</span>}
+                        {saveStatus === 'saved' && (
+                            <div className="flex flex-col">
+                                <span className="text-xs text-green-500">Saved</span>
+                                <span className="text-[9px] text-gray-400 font-mono">v{packageJson.version}</span>
+                            </div>
+                        )}
                     </div>
                     <div className="flex items-center gap-1">
                         {/* Undo/Redo */}
@@ -651,6 +825,31 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                 <div onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`flex-1 overflow-y-auto p-6 custom-scrollbar relative transition-colors ${isDragging ? 'bg-orange-50 dark:bg-orange-900/20' : ''}`}>
                     {isDragging && <div className="absolute inset-0 z-50 flex items-center justify-center bg-orange-100/50 backdrop-blur-sm pointer-events-none text-orange-600 font-bold"><Paperclip size={48} /> Drop Files</div>}
 
+                    {/* Title Input Moved Here */}
+                    <input
+                        type="text"
+                        placeholder={
+                            // Dynamic Placeholder logic
+                            (() => {
+                                if (noteType === 'text' && content?.trim()) {
+                                    const firstLine = content.trim().split('\n')[0].trim();
+                                    return firstLine.substring(0, 30) + (firstLine.length > 30 ? '...' : '');
+                                } else if (noteType === 'shopping' && items.some(i => i.text?.trim())) {
+                                    const firstItem = items.find(i => i.text?.trim());
+                                    return firstItem ? firstItem.text.trim().substring(0, 30) : 'Checklist';
+                                } else if (audioData) {
+                                    return 'Voice Note';
+                                } else if (files.length > 0) {
+                                    return files[0].name || 'Attachment';
+                                }
+                                return 'Title';
+                            })()
+                        }
+                        className="w-full text-2xl font-bold bg-transparent outline-none text-gray-900 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 mb-4"
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
+                    />
+
                     {audioData && (
                         <div className="mb-6 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-2xl flex items-center gap-4 border border-orange-100">
                             <button onClick={handlePlayAudio} className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center">{isPlaying ? <Pause size={18} /> : <Play size={18} />}</button>
@@ -675,7 +874,46 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter') {
                                                     e.preventDefault();
-                                                    setItems([...items, { text: '', done: false, id: crypto.randomUUID() }]);
+                                                    const cursor = e.target.selectionStart;
+                                                    const text = item.text || '';
+                                                    const firstPart = text.slice(0, cursor);
+                                                    const secondPart = text.slice(cursor);
+
+                                                    const newItems = [...items];
+                                                    // Update current item
+                                                    newItems[idx].text = firstPart;
+                                                    // Insert new item after
+                                                    newItems.splice(idx + 1, 0, { text: secondPart, done: false, id: crypto.randomUUID() });
+                                                    setItems(newItems);
+                                                    markDirty();
+
+                                                    // Focus next item
+                                                    setTimeout(() => {
+                                                        const inputs = document.querySelectorAll('input[type="text"]');
+                                                        // Title is usually index 0, so list items start from 1. 
+                                                        // But let's be safer. We know the current input index in the list is 'idx'. 
+                                                        // The querySelectorAll might capture Title + Tags (if visible) + List Items.
+                                                        // Actually, we can just look for the inputs inside the Reorder.Group or relies on the fact that we rendered them.
+                                                        // A robust way is to focus by ID, but we generate random IDs. 
+                                                        // Let's rely on standard index logic matching the render order.
+                                                        // The inputs array will include the Title (idx 0). 
+                                                        // Checklist items are idx+1 (current), so next is idx+2.
+                                                        // Wait, in the DOM:
+                                                        // 1. Title Input
+                                                        // 2. Tag Input (if showTagInput is true)
+                                                        // 3. Checklist Item 0...N
+
+                                                        // To be safe, let's try to focus the element that has the new value.
+                                                        // Or just try focusing the next input in the DOM list relative to current target.
+                                                        const allInputs = Array.from(document.querySelectorAll('input[type="text"]:not([disabled])'));
+                                                        const currentInputIndex = allInputs.indexOf(e.target);
+                                                        if (currentInputIndex !== -1 && currentInputIndex + 1 < allInputs.length) {
+                                                            const nextInput = allInputs[currentInputIndex + 1];
+                                                            nextInput.focus();
+                                                            // If we split text, cursor should be at 0 of new item
+                                                            nextInput.setSelectionRange(0, 0);
+                                                        }
+                                                    }, 0);
                                                 }
                                             }}
                                             onChange={e => { const n = [...items]; n[idx].text = e.target.value; setItems(n); }}
@@ -797,17 +1035,65 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                     {showTagInput && <div className="mt-6 flex items-center gap-2"><Tag size={16} className="text-gray-400" /><input type="text" placeholder="Tags..." className="flex-1 bg-transparent outline-none text-sm text-gray-600 dark:text-gray-400" value={tags} onChange={e => setTags(e.target.value)} /></div>}
                 </div>
 
-                {/* Toolbar */}
-                <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-md flex justify-between relative">
+                {/* v1.3.5: Forced visibility and better mobile spacing */}
+                <div className="p-4 md:p-5 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between gap-4 shrink-0 z-50">
                     {recordingStatus !== 'idle' && <div className="absolute -top-10 left-0 right-0 flex justify-center"><div className="bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse">Recording ({formatTime(duration)})...</div></div>}
-                    <div className="flex gap-4">
-                        <button onClick={toggleRecording} className={`p-2.5 rounded-full transition-all ${recordingStatus !== 'idle' ? 'bg-red-100 text-red-600' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'}`}>{recordingStatus !== 'idle' ? <MicOff size={22} /> : <Mic size={22} />}</button>
-                        <label className="p-2.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 cursor-pointer transition-all">
+
+                    <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
+                        <button onClick={toggleRecording} className={`p-2.5 rounded-full transition-all shrink-0 ${recordingStatus !== 'idle' ? 'bg-red-100 text-red-600' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'}`}>{recordingStatus !== 'idle' ? <MicOff size={22} /> : <Mic size={22} />}</button>
+                        <label className="p-2.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 cursor-pointer transition-all shrink-0">
                             <Paperclip size={22} />
                             <input type="file" multiple className="hidden" onChange={handleFileUpload} />
                         </label>
-                        <button onClick={() => setNoteType(noteType === 'text' ? 'shopping' : 'text')} className="p-2.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-all">{noteType === 'text' ? <CheckSquare size={22} /> : <FileText size={22} />}</button>
+                        <button
+                            onClick={() => {
+                                // v1.3.4: Robust switching
+                                if (recordingStatus !== 'idle') {
+                                    stopListening();
+                                    stopRecordingAsync();
+                                }
+
+                                if (noteType === 'text') {
+                                    // Text -> Checklist
+                                    const newItems = (content || '').split('\n')
+                                        .map(line => line.trim())
+                                        .filter(line => line.length > 0)
+                                        .map(line => ({ text: line, done: false, id: crypto.randomUUID() }));
+
+                                    setItems(newItems.length > 0 ? newItems : [{ text: '', done: false, id: crypto.randomUUID() }]);
+                                    setNoteType('shopping');
+                                    // IMPORTANT: Clear content when switching to items to avoid sync confusion
+                                    setContent('');
+                                    console.log("v1.3.7: Converted Text -> Checklist");
+                                } else {
+                                    // Checklist -> Text
+                                    const newContent = items
+                                        .map(item => item.text?.toString().trim() || '')
+                                        .filter(text => text.length > 0)
+                                        .join('\n');
+
+                                    setContent(newContent);
+                                    setNoteType('text');
+                                    // IMPORTANT: Reset items when switching to text
+                                    setItems([{ text: '', done: false, id: crypto.randomUUID() }]);
+                                    console.log("v1.3.7: Converted Checklist -> Text");
+                                }
+                                markDirty();
+                            }}
+                            className="p-2.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-all shrink-0"
+                            title={noteType === 'text' ? 'Switch to Checklist' : 'Switch to Text'}
+                        >
+                            {noteType === 'text' ? <CheckSquare size={22} /> : <FileText size={22} />}
+                        </button>
                     </div>
+
+                    {/* Done button: High priority, never shrinks */}
+                    <button
+                        onClick={() => performSave(true)}
+                        className="px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg shadow-orange-200 dark:shadow-none transition-all active:scale-95 flex items-center gap-2 shrink-0 min-w-[80px] justify-center"
+                    >
+                        <span>Done</span>
+                    </button>
                 </div>
             </div>
 
@@ -950,7 +1236,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                     </div>
                 )
             }
-        </div>
+        </div >
     );
 };
 

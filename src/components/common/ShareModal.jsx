@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, UserPlus, Trash2, Users, Mail } from 'lucide-react';
 import { dataService } from '../../services/data';
 
@@ -11,7 +11,12 @@ const ShareModal = ({ isOpen, onClose, note }) => {
     const [errorMsg, setErrorMsg] = useState('');
 
     // Use derived state from props to ensure updates are reflected immediately
-    const sharedWith = note.sharedWith || [];
+    // FIX: Maintain local state for immediate feedback, sync with props when they change
+    const [localSharedWith, setLocalSharedWith] = useState(note.sharedWith || []);
+
+    useEffect(() => {
+        setLocalSharedWith(note.sharedWith || []);
+    }, [note.sharedWith]);
 
     const handleShare = async (e) => {
         e.preventDefault();
@@ -23,6 +28,7 @@ const ShareModal = ({ isOpen, onClose, note }) => {
             const result = await dataService.shareNote(note.id, email);
             if (result) {
                 setSuccessMsg(`Access granted to ${email}`);
+                setLocalSharedWith(prev => [...prev, email]); // Update list immediately
 
                 // Do NOT auto-open mailto (browser blocks/confuses)
                 // Just show success and the button.
@@ -44,6 +50,7 @@ const ShareModal = ({ isOpen, onClose, note }) => {
         if (!confirm(`Remove access for ${userEmail}?`)) return;
         try {
             await dataService.unshareNote(note.id, userEmail);
+            setLocalSharedWith(prev => prev.filter(e => e !== userEmail)); // Remove locally
             // Note: Parent component must handle the data refresh to update the 'note' prop
         } catch (err) {
             console.error(err);
@@ -52,7 +59,7 @@ const ShareModal = ({ isOpen, onClose, note }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[150] p-4 animate-fade-in">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4 animate-fade-in">
             <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
                 <div className="bg-orange-50 dark:bg-gray-700/50 px-6 py-4 flex justify-between items-center border-b border-orange-100 dark:border-gray-700">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -110,10 +117,10 @@ const ShareModal = ({ isOpen, onClose, note }) => {
                                 <span className="text-sm text-gray-600 dark:text-gray-300">You (Owner)</span>
                             </div>
                         </div>
-                        {sharedWith.length === 0 && (
+                        {localSharedWith.length === 0 && (
                             <p className="text-xs text-gray-400 italic p-2">Not shared with anyone yet.</p>
                         )}
-                        {sharedWith.map((userEmail) => (
+                        {localSharedWith.map((userEmail) => (
                             <div key={userEmail} className="flex justify-between items-center p-2 bg-white dark:bg-gray-700 border border-gray-100 dark:border-gray-600 rounded-lg shadow-sm">
                                 <span className="text-sm text-gray-800 dark:text-gray-200 truncate pr-2">{userEmail}</span>
                                 <button

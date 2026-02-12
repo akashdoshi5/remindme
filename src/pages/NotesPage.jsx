@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { haptics } from '../services/haptics';
 import { useShare } from '../hooks/useShare';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, Search, Mic, Image as ImageIcon, Edit2, Trash2, X, MoreVertical, Share2, FileText, ShoppingCart, StopCircle, Play, ArrowRightLeft, Paperclip, Download, Eye, Users, GripVertical, Pin, Maximize2, Minimize2, XCircle, RefreshCcw, Bell } from 'lucide-react';
@@ -9,14 +10,13 @@ import { fileStorage } from '../services/fileStorage';
 import AddNoteModal from '../components/notes/AddNoteModal';
 import TextPreviewModal from '../components/common/TextPreviewModal';
 import { dataService } from '../services/data';
-import ShareModal from '../components/common/ShareModal';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import NoteCard from '../components/notes/NoteCard';
 
 const NotesPage = () => {
     const { user } = useAuth();
-    const { openNoteModal } = useUI();
+    const { openNoteModal, openShareModal } = useUI();
     const location = useLocation();
     const navigate = useNavigate();
     const refs = useRef({});
@@ -32,6 +32,19 @@ const NotesPage = () => {
         // Check if navigating to a specific note ID
         if (location.state?.noteId) {
             setHighlightedId(location.state.noteId);
+
+            // Open Modal if coming from Search
+            if (location.state.searchQuery) {
+                // Notes are loaded in 'notes' state, but might not be ready on first render if dataService is async?
+                // dataService.getNotes() is sync (returns local cache).
+                const allNotes = dataService.getNotes();
+                const note = allNotes.find(n => n.id === location.state.noteId);
+                if (note) {
+                    // Pass searchQuery to auto-scroll
+                    openNoteModal({ noteToEdit: note, searchQuery: location.state.searchQuery });
+                }
+            }
+
             // Scroll into view after a tick
             setTimeout(() => {
                 refs.current[location.state.noteId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -61,8 +74,6 @@ const NotesPage = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [triggerReload, setTriggerReload] = useState(0);
     const [previewData, setPreviewData] = useState(null);
-    const [sharingNote, setSharingNote] = useState(null);
-    const { share } = useShare();
 
     // Pull to Refresh State
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -102,7 +113,7 @@ const NotesPage = () => {
 
     const handleTouchEnd = async () => {
         if (pullY > 80 && !isRefreshing) {
-            Haptics.impact({ style: ImpactStyle.Medium });
+            haptics.medium();
             setIsRefreshing(true);
             setPullY(0);
             await dataService.forceSync();
@@ -119,11 +130,14 @@ const NotesPage = () => {
     };
 
     const handleEdit = (note) => {
-        openNoteModal({ noteToEdit: note });
+        openNoteModal({ noteToEdit: note, searchQuery: searchQuery });
     };
 
     const handleSave = async (data) => {
-        // Global modal handles save
+        if (data.id) {
+            await dataService.updateNote(data.id, data);
+            setTriggerReload(prev => prev + 1); // Ensure UI refreshes
+        }
     };
 
     // handleDelete - Global modal handles it too? 
@@ -146,11 +160,28 @@ const NotesPage = () => {
     };
 
     // --- Audio Playback Handlers ---
-    const handlePlayAudio = (noteId, audioData) => {
-        // Stop any currently playing audio first
+    // --- Audio Playback Handlers ---
+    const handlePlayAudio = (note) => {
+        const noteId = note.id;
+        const audioData = note.audioData;
+
+        // Stop if currently playing
+        if (playingNoteId === noteId && audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current = null;
+            setPlayingNoteId(null);
+            return;
+        }
+
+        // Stop any other currently playing audio first
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current = null;
+        }
+
+        if (!audioData) {
+            console.error("No audio data found for note", noteId);
+            return;
         }
 
         const audio = new Audio(audioData);
@@ -162,9 +193,11 @@ const NotesPage = () => {
             audioRef.current = null;
         };
 
-        audio.onerror = () => {
+        audio.onerror = (e) => {
+            console.error("Audio playback error", e);
             setPlayingNoteId(null);
             audioRef.current = null;
+            alert("Playback failed. This could be due to a connection issue or unsupported audio format on this device.");
         };
 
         audio.play().catch(err => {
@@ -185,15 +218,7 @@ const NotesPage = () => {
 
     // AddNoteModal removed - using Global Modal from App.jsx
 
-    // Auto-update sharingNote if it changes (e.g. user unshared)
-    useEffect(() => {
-        if (sharingNote) {
-            const updated = notes.find(n => n.id === sharingNote.id);
-            if (updated) {
-                setSharingNote(updated);
-            }
-        }
-    }, [notes, sharingNote?.id]);
+
 
 
 
@@ -221,6 +246,7 @@ const NotesPage = () => {
 
     // --- Selection Handlers ---
     const handleToggleSelect = (noteId) => {
+        haptics.selection();
         setSelectedIds(prev => {
             const newSet = new Set(prev);
             if (newSet.has(noteId)) {
@@ -241,8 +267,8 @@ const NotesPage = () => {
 
         if (activeTab === 'Voice') {
             filtered = notes.filter(n => n.type === 'voice' || n.audioData);
-        } else if (activeTab === 'Checklist') {
-            filtered = notes.filter(n => n.type === 'shopping');
+        } else if (activeTab === 'Lists') {
+            filtered = notes.filter(n => n.type === 'shopping' || n.type === 'list');
         } else if (activeTab === 'Shared') {
             filtered = notes.filter(n => (n.ownerId && n.ownerId !== user?.uid) || (n.sharedWith && n.sharedWith.length > 0));
         } else if (activeTab === 'Text') {
@@ -281,9 +307,21 @@ const NotesPage = () => {
     };
 
     const handleBatchDelete = async () => {
+        // Enforce Ownership
+        const nonOwned = Array.from(selectedIds).some(id => {
+            const n = notes.find(note => note.id === id);
+            return n.ownerId && n.ownerId !== user?.uid;
+        });
+
+        if (nonOwned) {
+            alert("You cannot delete notes shared with you. Please deselect them.");
+            return;
+        }
+
         if (window.confirm(`Delete ${selectedIds.size} notes?`)) {
             // Wait for all delete operations to complete
             await Promise.all(Array.from(selectedIds).map(id => dataService.deleteNote(id)));
+            haptics.heavy();
             setTriggerReload(prev => prev + 1);
             handleClearSelection();
         }
@@ -296,6 +334,11 @@ const NotesPage = () => {
         const allPinned = selectedNotes.every(n => n.isPinned);
 
         selectedNotes.forEach(note => {
+            // Pinning is a local user preference usually, but in this app it's stored on the note.
+            // If it's stored on the note and synced, then a shared user pinning it pins it for everyone?
+            // Handbook says: "Local wins for isPinned (ephemeral UI state)". 
+            // So we can allow pinning shared notes if it's treated as local state or if we don't care about sync impact for now.
+            // Requirement was: "No share and delete button". Didn't mention Pin.
             dataService.updateNote(note.id, { isPinned: !allPinned });
         });
         setTriggerReload(prev => prev + 1);
@@ -303,15 +346,16 @@ const NotesPage = () => {
     };
 
     const handleBatchShare = () => {
-        // We can't really batch share nicely in UI without a Loop of prompts or a new Modal.
-        // User asked for "Share" in batch actions.
-        // "Share" usually implies opening the Share Modal. 
-        // If multiple selected, maybe we shouldn't support sharing multiple via Email link (mailto limit).
-        // If internal sharing, we can add a list of users.
-        // For now, let's disable Share if > 1 or show alert.
         if (selectedIds.size === 1) {
             const note = notes.find(n => n.id === Array.from(selectedIds)[0]);
-            setSharingNote(note);
+
+            // Enforce Ownership
+            if (note.ownerId && note.ownerId !== user?.uid) {
+                alert("You cannot share a note you don't own.");
+                return;
+            }
+
+            openShareModal(note);
             handleClearSelection();
         } else {
             alert("Batch sharing not supported yet. Please select one note.");
@@ -321,7 +365,17 @@ const NotesPage = () => {
     const handleBatchConvert = () => {
         if (selectedIds.size === 1) {
             const note = notes.find(n => n.id === Array.from(selectedIds)[0]);
-            navigate('/reminders', { state: { convertFromNote: note } });
+
+            // Format Content if Checklist
+            let convertedNote = { ...note };
+            if (note.type === 'shopping' && note.items && note.items.length > 0) {
+                convertedNote.content = note.items
+                    .filter(i => !i.done) // keep all or active? Let's keep active for reminders
+                    .map(i => `- ${i.text} ${i.done ? '(Done)' : ''}`)
+                    .join('\n');
+            }
+
+            navigate('/reminders', { state: { convertFromNote: convertedNote } });
             handleClearSelection();
         }
     };
@@ -411,9 +465,10 @@ const NotesPage = () => {
                                 const val = e.target.value;
                                 setSearchQuery(val);
                                 // FIX: Sync history state immediately so "Back" button doesn't restore stale search
+                                // ALSO: Clear noteId so we don't trigger "Open Note" effect while typing
                                 navigate(location.pathname, {
                                     replace: true,
-                                    state: { ...location.state, searchQuery: val || undefined }
+                                    state: { ...location.state, searchQuery: val || undefined, noteId: undefined }
                                 });
                             }}
                             placeholder="Search notes, text, files..."
@@ -463,12 +518,7 @@ const NotesPage = () => {
                 searchQuery={searchQuery}
             />
 
-            {/* Share Modal */}
-            <ShareModal
-                isOpen={!!sharingNote}
-                onClose={() => setSharingNote(null)}
-                note={sharingNote}
-            />
+            {/* Share Modal - Global in App.jsx now */}
 
             {/* Notes Grid */}
             <div className="mt-2 md:mt-0 space-y-4 md:space-y-8">
@@ -477,9 +527,6 @@ const NotesPage = () => {
                         {/* PINNED SECTION */}
                         {filteredNotes.some(n => n.isPinned) && (
                             <div className="space-y-4">
-                                <div className="flex items-center gap-2 px-1">
-                                    <span className="text-[10px] font-black tracking-widest text-gray-400 dark:text-gray-500 uppercase">Pinned</span>
-                                </div>
                                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     <AnimatePresence>
                                         {filteredNotes.filter(n => n.isPinned).map((note) => (
@@ -494,7 +541,7 @@ const NotesPage = () => {
                                                 onClick={handleNoteClick}
                                                 handleEdit={handleEdit}
                                                 handleSave={handleSave}
-                                                setSharingNote={setSharingNote}
+                                                setSharingNote={openShareModal}
                                                 setTriggerReload={setTriggerReload}
                                                 navigate={navigate}
                                                 playingNoteId={playingNoteId}
@@ -511,11 +558,6 @@ const NotesPage = () => {
 
                         {/* OTHERS SECTION */}
                         <div className="space-y-4">
-                            {filteredNotes.some(n => n.isPinned) && (
-                                <div className="flex items-center gap-2 px-1">
-                                    <span className="text-[10px] font-black tracking-widest text-gray-400 dark:text-gray-500 uppercase">Others</span>
-                                </div>
-                            )}
                             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 <AnimatePresence>
                                     {filteredNotes.filter(n => !n.isPinned).map((note) => (
@@ -530,7 +572,7 @@ const NotesPage = () => {
                                             onClick={handleNoteClick}
                                             handleEdit={handleEdit}
                                             handleSave={handleSave}
-                                            setSharingNote={setSharingNote}
+                                            setSharingNote={openShareModal}
                                             setTriggerReload={setTriggerReload}
                                             navigate={navigate}
                                             playingNoteId={playingNoteId}
@@ -560,7 +602,7 @@ const NotesPage = () => {
                                     onClick={handleNoteClick}
                                     handleEdit={handleEdit}
                                     handleSave={handleSave}
-                                    setSharingNote={setSharingNote}
+                                    setSharingNote={openShareModal}
                                     setTriggerReload={setTriggerReload}
                                     navigate={navigate}
                                     playingNoteId={playingNoteId}

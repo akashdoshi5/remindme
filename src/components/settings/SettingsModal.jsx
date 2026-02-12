@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { X, Moon, Sun, Save, Smartphone, LogOut, User, Trash2, Bell, RefreshCw, Activity, AlertCircle } from 'lucide-react';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { dataService } from '../../services/data';
+import packageJson from '../../../package.json';
+import { haptics } from '../../services/haptics';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { NotificationDebugPanel } from '../common/NotificationDebugPanel';
@@ -26,50 +28,19 @@ const SettingsModal = ({ isOpen, onClose }) => {
 
     const playPreview = (type) => {
         try {
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            if (!AudioContext) return;
-            const ctx = new AudioContext();
-            const gainNode = ctx.createGain();
-            gainNode.connect(ctx.destination);
-            gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+            // Stop any currently playing audio if we had a global ref (optional, simple for now)
 
+            const audioPath = type === 'alarm' ? '/sounds/alarm.wav' : '/sounds/chime.wav';
+            const audio = new Audio(audioPath);
+
+            // Haptics
             if (type === 'alarm') {
-                // Aggressive Loop Preview (Short)
-                const frequencies = [880, 660, 880];
-                const now = ctx.currentTime;
-                frequencies.forEach((freq, i) => {
-                    const osc = ctx.createOscillator();
-                    const bg = ctx.createGain();
-                    osc.type = 'square';
-                    osc.frequency.value = freq;
-                    osc.connect(bg);
-                    bg.connect(gainNode);
-                    const start = now + (i * 0.2);
-                    bg.gain.setValueAtTime(0, start);
-                    bg.gain.linearRampToValueAtTime(0.4, start + 0.02);
-                    bg.gain.setValueAtTime(0.4, start + 0.15 - 0.02);
-                    bg.gain.linearRampToValueAtTime(0, start + 0.15);
-                    osc.start(start);
-                    osc.stop(start + 0.15);
-                });
-                if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
+                haptics.alarm();
             } else {
-                // Chime Preview
-                const osc = ctx.createOscillator();
-                const cg = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.value = 660;
-                osc.connect(cg);
-                cg.connect(gainNode);
-                const now = ctx.currentTime;
-                cg.gain.setValueAtTime(0, now);
-                cg.gain.linearRampToValueAtTime(0.6, now + 0.1);
-                cg.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
-                osc.start(now);
-                osc.stop(now + 1.5);
-                if (navigator.vibrate) navigator.vibrate([200]);
+                haptics.notification();
             }
-            setTimeout(() => ctx.close(), 2000);
+
+            audio.play().catch(e => console.error("Audio play failed", e));
         } catch (e) {
             console.error("Preview failed", e);
         }
@@ -265,7 +236,19 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                         }
                                     }
 
-                                    // FORCE Channel Creation V10
+                                    // FORCE Channel Creation V11 (Ensure Alarm Channel Exists)
+                                    await LocalNotifications.createChannel({
+                                        id: 'reminders_alarm_v3', // Bumped version to force pattern update
+                                        name: 'Alarm Reminders',
+                                        description: 'High priority reminders',
+                                        importance: 5,
+                                        visibility: 1,
+                                        sound: 'alarm.wav',
+                                        vibration: true,
+                                        lights: true,
+                                        vibrationPattern: [0, 500, 200, 500, 200, 1000, 300, 500, 200, 500, 200, 1000] // Match Haptics.alarm()
+                                    });
+
                                     await LocalNotifications.createChannel({
                                         id: 'reminders_v10',
                                         name: 'Reminders (V10)',
@@ -286,9 +269,9 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                             schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
                                             smallIcon: 'ic_notification_bell',
                                             // DYNAMIC CHANNEL SELECTION
-                                            channelId: isAlarm ? 'reminders_alarm_v1' : 'reminders_v10',
+                                            channelId: isAlarm ? 'reminders_alarm_v2' : 'reminders_v10',
                                             sound: isAlarm ? 'alarm.wav' : 'chime.wav',
-                                            actionTypeId: 'REMINDER_ACTIONS_V10',
+                                            actionTypeId: 'REMINDER_ACTIONS_V11',
                                             extra: { uniqueId: 'test_manual' }
                                         }]
                                     });
@@ -341,19 +324,24 @@ const SettingsModal = ({ isOpen, onClose }) => {
                 </div>
 
                 {/* Fixed Footer */}
-                <div className="fixed bottom-0 left-0 right-0 md:static p-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 z-[110] flex gap-3">
-                    <button
-                        onClick={onClose}
-                        className="flex-1 py-3 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                    >
-                        Close
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        className="flex-[2] btn btn-primary py-3 md:py-2.5 text-lg md:text-base justify-center shadow-lg flex items-center gap-2 rounded-xl"
-                    >
-                        <Save size={20} /> Save Changes
-                    </button>
+                <div className="fixed bottom-0 left-0 right-0 md:static p-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 z-[110] flex flex-col gap-2">
+                    <div className="flex text-[10px] text-gray-400 justify-center">
+                        v{packageJson.version}
+                    </div>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={onClose}
+                            className="flex-1 py-3 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        >
+                            Close
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            className="flex-[2] btn btn-primary py-3 md:py-2.5 text-lg md:text-base justify-center shadow-lg flex items-center gap-2 rounded-xl"
+                        >
+                            <Save size={20} /> Save Changes
+                        </button>
+                    </div>
                 </div>
             </div>
             <NotificationDebugPanel isOpen={showDebug} onClose={() => setShowDebug(false)} />

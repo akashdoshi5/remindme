@@ -27,6 +27,9 @@ service cloud.firestore {
       match /caregivers/{caregiverId} {
         allow read, write: if isOwner(userId);
       }
+      match /deletedNotes/{noteId} {
+        allow read, write: if isOwner(userId);
+      }
     }
 
     // COLLECTION GROUP QUERY: CAREGIVERS

@@ -29,9 +29,23 @@ export const ocrService = {
 
 async function extractFromImage(file) {
     const worker = await Tesseract.createWorker('eng');
-    const ret = await worker.recognize(file);
-    await worker.terminate();
-    return ret.data.text;
+
+    // Timeout Promise
+    const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("OCR Validation Concatenated Timeout")), 15000)
+    );
+
+    try {
+        const ret = await Promise.race([
+            worker.recognize(file),
+            timeout
+        ]);
+        await worker.terminate();
+        return ret.data.text;
+    } catch (e) {
+        await worker.terminate();
+        throw e;
+    }
 }
 
 async function extractFromPDF(file) {

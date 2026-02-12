@@ -49,7 +49,7 @@ const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
 
                                 {/* DYNAMIC SYNC STATUS */}
                                 <p className={`text-xs font-medium flex items-center gap-1.5 mt-0.5 ${status === 'synced' ? 'text-green-600' :
-                                        status === 'syncing' ? 'text-blue-600' : 'text-gray-500'
+                                    status === 'syncing' ? 'text-blue-600' : 'text-gray-500'
                                     }`}>
                                     {status === 'synced' && <Cloud size={14} className="text-green-500" />}
                                     {status === 'syncing' && <RefreshCw size={14} className="animate-spin text-blue-500" />}
@@ -116,19 +116,7 @@ const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
 
 
 
-                    <button
-                        onClick={async () => {
-                            if (window.confirm('Log out?')) {
-                                await logout();
-                                onClose();
-                            }
-                        }}
-                        className="w-full flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/10 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors text-red-600 dark:text-red-400 font-medium mt-4"
-                    >
-                        <div className="flex items-center gap-3">
-                            <LogOut size={20} /> Log Out
-                        </div>
-                    </button>
+
                 </div>
             </div>
         </div>

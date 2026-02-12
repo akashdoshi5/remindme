@@ -196,7 +196,7 @@ const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
                                         {results.notes.map((n, idx) => (
                                             <div
                                                 key={`note-${n.id}-${idx}`}
-                                                onClick={() => handleNavigate('/notes', { state: { focusId: n.id, searchQuery: query } })}
+                                                onClick={() => handleNavigate('/notes', { state: { noteId: n.id, searchQuery: query } })}
                                                 className="flex items-center gap-4 p-3 hover:bg-teal-50 dark:hover:bg-teal-900/20 rounded-xl cursor-pointer group transition-colors border border-transparent hover:border-teal-100 dark:hover:border-teal-800"
                                             >
                                                 <div className="w-10 h-10 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center shrink-0">
