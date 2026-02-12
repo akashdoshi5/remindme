@@ -7,18 +7,21 @@ RemindMe Buddy ("we," "our," or "us") is committed to protecting your privacy. T
 
 ## 2. Information We Collect
 We collect the following types of information:
-- **Personal Information:** We may collect your email address if you sign up for an account to sync your reminders across devices.
-- **Microphone Usage:** Our app uses your device's microphone to allow you to record voice notes. These recordings are stored locally on your device or securely in our cloud database (Firebase) if you are logged in.
-- **Device Information:** We may collect non-personal information about your device, such as the model, operating system version, and unique device identifiers, to improve app performance and troubleshoot issues.
+- **Personal Information:** We collect your email address when you sign up for an account to sync your reminders and notes securely across devices.
+- **Microphone Usage:** Our app uses your device's microphone to allow you to record voice notes. 
+- **Notes & Content:** We store your notes (text, checklists, audio, and attachments) in Google Firebase. If you choose to share a note with others, your content will be accessible to those specific users.
+- **Device Information:** We may collect non-personal information like device model and operating system version to improve performance.
 
 ## 3. How We Use Your Information
 We use your information to:
-- Provide and maintain the App's functionality (e.g., storing and playing back voice notes).
-- Authenticate your account (if you choose to sign in).
-- Sync your data across multiple devices.
+- Provide and maintain the app's core features (Note-taking, Alarms, Reminders).
+- Authenticate and secure your account.
+- Enable collaborative sharing (sharing notes between users).
+- Sync your data in real-time across multiple devices.
 
 ## 4. Data Sharing and Disclosure
-We do not sell or rent your personal data to third parties. We may share data with trusted service providers (like Google Firebase) solely for the purpose of hosting our services and datastores.
+- **Collaboration:** If you share a note with another user, they will be able to view and edit that specific note depending on permissions.
+- **Service Providers:** We use Google Firebase for authentication, database hosting, and storage. We do not sell your data to any third parties.
 
 ## 5. Security
 We implement reasonable security measures to protect your information. However, no method of transmission over the internet or electronic storage is 100% secure.
