@@ -752,10 +752,6 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
         // FIX: If checklist, convert items to text for the reminder instructions
         if (noteType === 'shopping' && items && items.length > 0) {
             instructions = items
-                .filter(i => !i.done) // Optional: only active items? Or all? User likely wants all or active. Let's do all for completeness, or maybe just active. 
-                // Context: "checklist data is not transferred". Usually implies the list content. 
-                // Let's transfer ALL items, maybe marking done ones? 
-                // Simpler: Just transfer keys. 
                 .map(i => `- ${i.text} ${i.done ? '(Done)' : ''}`)
                 .join('\n');
         }
@@ -793,7 +789,6 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                         {saveStatus === 'saved' && (
                             <div className="flex flex-col">
                                 <span className="text-xs text-green-500">Saved</span>
-                                <span className="text-[9px] text-gray-400 font-mono">v{packageJson.version}</span>
                             </div>
                         )}
                     </div>
@@ -814,9 +809,9 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                         </button>
 
                         <button onClick={() => setIsPinned(!isPinned)} className={`p-2 rounded-full ${isPinned ? 'bg-orange-100 text-orange-600' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}><Pin size={20} className={isPinned ? "fill-current" : ""} /></button>
-                        {/* Share & Delete Logic kept same */}
-                        {noteToEdit && onShare && <button onClick={() => onShare(noteToEdit)} className={`p-2 rounded-full ${noteToEdit.sharedWith?.length ? 'text-green-600 bg-green-50' : 'text-gray-400 hover:text-green-600'}`}><Share2 size={20} /></button>}
-                        {localId && onDelete && <button onClick={() => window.confirm("Delete this note?") && onDelete(localId)} className="p-2 text-gray-400 hover:text-red-500 rounded-full"><Trash2 size={20} /></button>}
+                        {/* Share & Delete Logic with strict ownership check */}
+                        {noteToEdit && onShare && (!noteToEdit.ownerId || noteToEdit.ownerId === user?.uid) && <button onClick={() => onShare(noteToEdit)} className={`p-2 rounded-full ${noteToEdit.sharedWith?.length ? 'text-green-600 bg-green-50' : 'text-gray-400 hover:text-green-600'}`}><Share2 size={20} /></button>}
+                        {localId && onDelete && (!noteToEdit?.ownerId || noteToEdit.ownerId === user?.uid) && <button onClick={() => window.confirm("Delete this note?") && onDelete(localId)} className="p-2 text-gray-400 hover:text-red-500 rounded-full"><Trash2 size={20} /></button>}
                         <button onClick={() => performSave(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-gray-500 ml-2"><X size={20} /></button>
                     </div>
                 </div>

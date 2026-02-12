@@ -158,7 +158,7 @@ const RemindersPage = () => {
                 }
             });
             // Clear state
-            window.history.replaceState({}, document.title);
+            navigate(location.pathname, { replace: true, state: {} });
         }
 
         if (location.state?.convertFromNote) {
@@ -171,8 +171,8 @@ const RemindersPage = () => {
                     isNew: true
                 }
             });
-            // Clear state
-            window.history.replaceState({}, document.title);
+            // Clear state using navigate to ensure React Router syncs
+            navigate(location.pathname, { replace: true, state: {} });
         }
     }, [location.state, reminders, navigate, openReminderModal]);
 
