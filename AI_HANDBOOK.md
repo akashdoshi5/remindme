@@ -189,6 +189,15 @@
 ---
 
 ## 6. Deployment Checklist
+
+### Play Store Release (Signed AAB)
+1.  **Run Build Script**: `./scripts/build-release.ps1`
+2.  **Output**: `android/app/build/outputs/bundle/release/app-release.aab`
+3.  **Upload**: Drag to Play Console.
+    *   *Keystore*: `android/app/upload-keystore.jks`
+    *   *Password*: `remindme123` (See `android/gradle.properties`)
+
+### Web & Debug
 1.  **Web**: `npm run build` → `firebase deploy`.
 2.  **Android**: `npx cap copy android` (to sync assets) OR `npx cap sync android` (to sync assets AND plugins) → `Open Android Studio` → `Assemble Debug` → `Install`.
     - **CRITICAL**: If you only run `./gradlew assembleDebug` without `npx cap copy`, the APK will contain **STALE** web assets.
