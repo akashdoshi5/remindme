@@ -426,15 +426,29 @@ const NotesPage = () => {
                             <button onClick={handleBatchPin} title="Pin/Unpin" className="hover:text-orange-500 transition-colors">
                                 <Pin size={20} />
                             </button>
-                            <button onClick={handleBatchDelete} title="Delete" className="hover:text-red-500 transition-colors">
-                                <Trash2 size={20} />
-                            </button>
+                            {/* Only show Delete if ALL selected notes are owned by the user */}
+                            {Array.from(selectedIds).every(id => {
+                                const n = notes.find(note => note.id === id);
+                                return n && (!n.ownerId || n.ownerId === user?.uid);
+                            }) && (
+                                    <button onClick={handleBatchDelete} title="Delete" className="hover:text-red-500 transition-colors">
+                                        <Trash2 size={20} />
+                                    </button>
+                                )}
 
                             {selectedIds.size === 1 && (
                                 <>
-                                    <button onClick={handleBatchShare} title="Share" className="hover:text-blue-400 transition-colors">
-                                        <Share2 size={20} />
-                                    </button>
+                                    {/* Only show Share if the single selected note is owned by the user */}
+                                    {(() => {
+                                        const noteId = Array.from(selectedIds)[0];
+                                        const note = notes.find(n => n.id === noteId);
+                                        const isOwner = note && (!note.ownerId || note.ownerId === user?.uid);
+                                        return isOwner ? (
+                                            <button onClick={handleBatchShare} title="Share" className="hover:text-blue-400 transition-colors">
+                                                <Share2 size={20} />
+                                            </button>
+                                        ) : null;
+                                    })()}
                                     <button onClick={handleBatchConvert} title="Convert to Reminder" className="hover:text-orange-400 transition-colors">
                                         <Bell size={20} />
                                     </button>

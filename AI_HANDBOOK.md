@@ -11,11 +11,23 @@
     -   Offline Capabilities (Firestore Persistence)
 
 ## 2. Recent Changes (v1.3.10)
--   **Shared Permissions:** Restricted `Share` and `Delete` actions on notes to the owner only.
--   **Checklist Conversion:** Fixed conversion of checklist items to reminder instructions (bulleted text).
--   **Alarm Vibrations:** Harmonized vibration patterns between `haptics.alarm()` and `reminders_alarm_v3` channel to ensure consistent "double pulse".
--   **UI:** Removed version number from Add Note modal.
--   **Audio:** Enforced 5MB limit and fixed .webm OCR timeout.).
+- **Shared Note Permissions**:
+  - **Rule**: Collaborators (non-owners) **MUST NOT** see "Share" or "Delete" actions.
+  - **Implementation**:
+    - **Note Modal**: Hide buttons in the footer if `current_user.uid !== note.ownerId`.
+    - **Floating Action Bar (Selection Mode)**: Hide buttons if *any* selected note is not owned by the user.
+    - **Batch Actions**: Verify ownership on the server/handler side as a fallback.
+  - **Context**: Shared notes are "view-only" or "edit-content-only" for collaborators. Logic must be applied in **BOTH** places (Modal & List/Floating Bar).
+- **Checklist Conversion**:
+  - **Rule**: When converting a checklist note to a reminder, **ALL** items (checked and unchecked) must be transferred to the Reminder's "Instructions" field.
+  - **Format**: Use a bulleted list format (e.g., `- Item 1\n- Item 2 (Done)`).
+- **Alarm Vibration**:
+  - **Rule**: Native notifications must use the same aggressive vibration pattern as the in-app alarm (`[0, 500, 200, 500, 200, 1000]`).
+  - **Implementation**: Sync `NotificationChannel.vibrationPattern` with `haptics.alarm()`.
+- **UI Cleanup**:
+  - **Rule**: Do not display debug info (like version numbers) in user-facing modals (e.g., AddNoteModal footer).
+- **Audio Limits**:
+  - **Rule**: Skip transcription for `.webm` (video/mime) to prevent hangs. Max file size: 5MB for audio, 13MB for attachments.).
 
 ---
 
