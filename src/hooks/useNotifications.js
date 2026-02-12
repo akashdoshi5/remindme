@@ -102,7 +102,7 @@ export const useNotifications = () => {
                             id: new Date().getTime() % 2147483647,
                             schedule: { at: new Date(Date.now() + 100) },
                             sound: isAlarm ? 'alarm.wav' : 'chime.wav',
-                            channelId: isAlarm ? 'reminders_alarm_v2' : 'reminders_v10',
+                            channelId: isAlarm ? 'reminders_alarm_v3' : 'reminders_v10',
                             smallIcon: 'ic_notification_bell',
                             actionTypeId: 'REMINDER_ACTIONS_V10', // Bind actions
                             extra: options.data || null
@@ -219,7 +219,7 @@ export const useNotifications = () => {
                         allowWhileIdle: true
                     },
                     sound: isAlarm ? 'alarm.wav' : 'chime.wav',
-                    channelId: isAlarm ? 'reminders_alarm_v2' : 'reminders_v10',
+                    channelId: isAlarm ? 'reminders_alarm_v3' : 'reminders_v10',
                     smallIcon: 'ic_notification_bell',
                     actionTypeId: 'REMINDER_ACTIONS_V11', // Ensure buttons appear
                     extra: { uniqueId: r.uniqueId }

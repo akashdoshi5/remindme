@@ -269,7 +269,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                             schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
                                             smallIcon: 'ic_notification_bell',
                                             // DYNAMIC CHANNEL SELECTION
-                                            channelId: isAlarm ? 'reminders_alarm_v2' : 'reminders_v10',
+                                            channelId: isAlarm ? 'reminders_alarm_v3' : 'reminders_v10',
                                             sound: isAlarm ? 'alarm.wav' : 'chime.wav',
                                             actionTypeId: 'REMINDER_ACTIONS_V11',
                                             extra: { uniqueId: 'test_manual' }
