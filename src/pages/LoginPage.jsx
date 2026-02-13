@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Phone, ArrowRight } from 'lucide-react';
+import { Phone, ArrowRight } from 'lucide-react';
 
 const LoginPage = () => {
     const { login } = useAuth();
@@ -99,12 +99,14 @@ const LoginPage = () => {
                 animate={{ opacity: 1, y: 0 }}
                 className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8"
             >
-                <div className="text-center mb-10">
-                    <div className="w-20 h-20 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto mb-6 text-orange-600">
-                        <Activity size={40} />
-                    </div>
-                    <h1 className="text-3xl font-bold mb-2 text-gray-900">RemindMe Buddy</h1>
-                    <p className="text-gray-500">Your personal health companion</p>
+                <div className="text-center mb-10 mt-4">
+                    <img
+                        src="/icon-512.png"
+                        alt="RemindMe Logo"
+                        className="w-24 h-24 mx-auto mb-6 rounded-3xl shadow-xl shadow-orange-500/10 transition-transform hover:rotate-3 duration-300"
+                    />
+                    <h1 className="text-4xl font-black mb-2 text-gray-900 tracking-tight">RemindMe</h1>
+                    <p className="text-gray-500 font-medium tracking-wide uppercase text-xs">Your Personal Guardian</p>
                 </div>
 
                 <div className="space-y-4">

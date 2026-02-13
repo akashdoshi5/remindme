@@ -96,7 +96,7 @@ const ShareModal = ({ isOpen, onClose, note }) => {
                             <p className="text-sm text-green-700 dark:text-green-300 font-medium">✓ {successMsg}</p>
                             <p className="text-xs text-green-600 dark:text-green-400">Note: User must log in to see this note.</p>
                             <a
-                                href={`mailto:${email || ''}?subject=Shared Note: ${note.title}&body=I've shared a note with you on RemindMe Buddy.%0D%0A%0D%0AYou can view it here: https://remindme-app-9988.web.app/notes`}
+                                href={`mailto:${email || ''}?subject=Shared Note: ${note.title}&body=I've shared a note with you on RemindMe.%0D%0A%0D%0AYou can view it here: https://remindme-app-9988.web.app/notes`}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-xs flex items-center justify-center gap-2 bg-green-600 text-white py-2 px-3 rounded-lg hover:bg-green-700 font-bold transition-colors shadow-sm"

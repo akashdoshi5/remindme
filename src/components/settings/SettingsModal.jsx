@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Moon, Sun, Save, Smartphone, LogOut, User, Trash2, Bell, RefreshCw, Activity, AlertCircle } from 'lucide-react';
+import { X, Moon, Sun, Save, Smartphone, LogOut, User, Trash2, Bell, RefreshCw, BarChart2, AlertCircle } from 'lucide-react';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { dataService } from '../../services/data';
 import packageJson from '../../../package.json';
@@ -299,7 +299,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
                                 onClick={() => setShowDebug(true)}
                                 className="w-full p-3 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium text-sm flex items-center justify-center gap-2 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-orange-600 transition-colors"
                             >
-                                <Activity size={16} /> Advanced Debug
+                                <BarChart2 size={16} /> Advanced Debug
                             </button>
                         </div>
                     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, Calendar as CalendarIcon, ChevronLeft, ChevronRight, TrendingUp, AlertCircle, CheckCircle, Clock, Edit2, X, PlayCircle } from 'lucide-react';
+import { BarChart2, Calendar as CalendarIcon, ChevronLeft, ChevronRight, TrendingUp, AlertCircle, CheckCircle, Clock, Edit2, X, PlayCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { dataService } from '../services/data';
@@ -362,7 +362,7 @@ const ReportsPage = () => {
             {isReadOnly && (
                 <div className="mb-6 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 p-3 rounded-xl flex items-center gap-3 text-indigo-700 dark:text-indigo-300 transform transition-all animate-fade-in">
                     <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-800 flex items-center justify-center shrink-0">
-                        <Activity size={16} />
+                        <BarChart2 size={16} />
                     </div>
                     <div>
                         <p className="text-sm font-bold">Contributor View</p>
@@ -612,7 +612,7 @@ const ReportsPage = () => {
                     >
                         <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-gray-900 dark:text-gray-100">
                             <div className="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 flex items-center justify-center">
-                                <Activity size={18} />
+                                <BarChart2 size={18} />
                             </div>
                             {selectedDate ? (
                                 <span>

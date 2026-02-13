@@ -18,7 +18,7 @@ export const translations = {
         signup: 'Sign Up',
     },
     hi: {
-        appTitle: 'रिमाइंडमी',
+        appTitle: 'RemindMe',
         welcome: 'स्वागत हे',
         greeting: 'नमस्ते',
         upcomingReminders: 'आगामी रिमाइंडर्स',
@@ -27,7 +27,7 @@ export const translations = {
         myNotes: 'मेरे नोट्स',
     },
     mr: {
-        appTitle: 'रिमाइंडमी',
+        appTitle: 'RemindMe',
         welcome: 'स्वागत आहे',
         greeting: 'नमस्कार',
         upcomingReminders: 'येणारे रिमाइंडर्स',

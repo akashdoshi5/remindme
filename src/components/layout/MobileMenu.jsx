@@ -1,13 +1,13 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Activity, Users, Settings, X, LogOut, Globe, ChevronRight, User, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { BarChart2, Users, Settings, X, LogOut, Globe, ChevronRight, User, Cloud, CloudOff, RefreshCw, BookOpen } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import ProfileSwitcher from '../caregiver/ProfileSwitcher';
 import { useSyncStatus } from '../../hooks/useSyncStatus';
 
-const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
-    const { logout } = useAuth();
+const MobileMenu = ({ isOpen, onClose, onSettingsClick, onHelpClick }) => {
+    const { user, logout } = useAuth();
     const { language, setLanguage } = useLanguage();
     const navigate = useNavigate();
     const { status, isOnline } = useSyncStatus();
@@ -34,17 +34,17 @@ const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
                 {/* AUTH STATUS HEADER */}
                 <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl flex items-center gap-4">
                     <div className="w-12 h-12 rounded-full overflow-hidden bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center border-2 border-orange-200 dark:border-orange-800">
-                        {useAuth().user?.photoURL ? (
-                            <img src={useAuth().user.photoURL} alt="User" className="w-full h-full object-cover" />
+                        {user?.photoURL ? (
+                            <img src={user.photoURL} alt="User" className="w-full h-full object-cover" />
                         ) : (
                             <User size={24} className="text-orange-500" />
                         )}
                     </div>
                     <div className="flex-1 min-w-0">
-                        {useAuth().user ? (
+                        {user ? (
                             <>
                                 <h3 className="font-bold text-gray-900 dark:text-white truncate">
-                                    {useAuth().user.displayName || 'Logged In'}
+                                    {user.displayName || 'Logged In'}
                                 </h3>
 
                                 {/* DYNAMIC SYNC STATUS */}
@@ -59,7 +59,7 @@ const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
                                         status === 'syncing' ? 'Syncing...' : 'Offline (Saved Locally)'}
                                 </p>
 
-                                <p className="text-xs text-gray-400 truncate mt-0.5">{useAuth().user.email}</p>
+                                <p className="text-xs text-gray-400 truncate mt-0.5">{user.email}</p>
                             </>
                         ) : (
                             <>
@@ -86,7 +86,7 @@ const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
                         className="bg-green-50 dark:bg-green-900/20 p-4 rounded-2xl border border-green-100 dark:border-green-800 flex flex-col items-center gap-2 hover:scale-105 transition-transform"
                     >
                         <div className="w-10 h-10 bg-green-100 dark:bg-green-800 rounded-full flex items-center justify-center text-green-600 dark:text-green-300">
-                            <Activity size={20} />
+                            <BarChart2 size={20} />
                         </div>
                         <span className="font-bold text-gray-800 dark:text-gray-200">Reports</span>
                     </Link>
@@ -112,6 +112,16 @@ const MobileMenu = ({ isOpen, onClose, onSettingsClick }) => {
                             <Settings size={20} /> Settings
                         </div>
                         <ChevronRight size={16} className="text-gray-400" />
+                    </button>
+
+                    <button
+                        onClick={() => { onClose(); onHelpClick(); }}
+                        className="w-full flex items-center justify-between p-4 bg-orange-50 dark:bg-orange-900/10 rounded-xl hover:bg-orange-100 dark:hover:bg-orange-900/20 transition-colors"
+                    >
+                        <div className="flex items-center gap-3 text-orange-600 dark:text-orange-400 font-medium">
+                            <BookOpen size={20} /> How to use
+                        </div>
+                        <ChevronRight size={16} className="text-orange-400" />
                     </button>
 
 

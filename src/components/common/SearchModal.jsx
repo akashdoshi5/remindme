@@ -71,11 +71,11 @@ const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
                 className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] border border-gray-200 dark:border-gray-700"
             >
                 <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-3">
-                    <Search className={`transition-colors ${isListening ? 'text-orange-500 animate-pulse' : 'text-gray-400'}`} size={24} />
+                    <Search className={`shrink-0 transition-colors ${isListening ? 'text-orange-500 animate-pulse' : 'text-gray-400'}`} size={24} />
                     <input
                         type="text"
                         placeholder={isListening ? "Listening..." : "Search reminders, notes, instructions..."}
-                        className="flex-1 text-xl outline-none placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-800 dark:text-gray-100 bg-transparent"
+                        className="flex-1 min-w-0 text-xl outline-none placeholder:text-gray-300 dark:placeholder:text-gray-600 text-gray-800 dark:text-gray-100 bg-transparent"
                         autoFocus
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
@@ -83,12 +83,12 @@ const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
                     {isSupported && (
                         <button
                             onClick={isListening ? stopListening : startListening}
-                            className={`p-2 rounded-full transition-colors mr-1 ${isListening ? 'bg-red-50 dark:bg-red-900/20 text-red-500' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400'}`}
+                            className={`shrink-0 p-2 rounded-full transition-colors mr-1 ${isListening ? 'bg-red-50 dark:bg-red-900/20 text-red-500' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400'}`}
                         >
                             {isListening ? <MicOff size={20} /> : <Mic size={20} />}
                         </button>
                     )}
-                    <button onClick={() => { stopListening(); onClose(); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
+                    <button onClick={() => { stopListening(); onClose(); }} className="shrink-0 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
                         <X size={20} className="text-gray-500 dark:text-gray-400" />
                     </button>
                 </div>
@@ -247,7 +247,7 @@ const SearchModal = ({ isOpen, onClose, autoStartListening = false }) => {
                     )}
                 </div>
 
-                <div className="bg-gray-50 dark:bg-gray-700/50 p-3 text-xs text-center text-gray-400 border-t border-gray-100 dark:border-gray-700">
+                <div className="hidden md:block bg-gray-50 dark:bg-gray-700/50 p-3 text-xs text-center text-gray-400 border-t border-gray-100 dark:border-gray-700">
                     Press <kbd className="bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded px-1 font-sans text-gray-500 dark:text-gray-300">Esc</kbd> to close
                 </div>
             </motion.div>

@@ -1,9 +1,9 @@
-# Privacy Policy for RemindMe Buddy
+# Privacy Policy for RemindMe
 
 **Effective Date:** 2026-01-27
 
 ## 1. Introduction
-RemindMe Buddy ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how our mobile application collects, uses, and safeguards your information.
+RemindMe ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how our mobile application collects, uses, and safeguards your information.
 
 ## 2. Information We Collect
 We collect the following types of information:

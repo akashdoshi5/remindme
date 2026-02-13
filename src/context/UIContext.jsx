@@ -10,6 +10,7 @@ export const UIProvider = ({ children }) => {
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
     const openSearch = () => setIsSearchOpen(true);
@@ -17,6 +18,9 @@ export const UIProvider = ({ children }) => {
 
     const openSettings = () => setIsSettingsOpen(true);
     const closeSettings = () => setIsSettingsOpen(false);
+
+    const openHelp = () => setIsHelpOpen(true);
+    const closeHelp = () => setIsHelpOpen(false);
 
     const openMobileMenu = () => setIsMobileMenuOpen(true);
     const closeMobileMenu = () => setIsMobileMenuOpen(false);
@@ -61,6 +65,7 @@ export const UIProvider = ({ children }) => {
     const value = {
         isSearchOpen, openSearch, closeSearch,
         isSettingsOpen, openSettings, closeSettings,
+        isHelpOpen, openHelp, closeHelp,
         isMobileMenuOpen, openMobileMenu, closeMobileMenu, toggleMobileMenu,
         searchQuery, setSearchQuery,
         isNoteModalOpen, noteModalConfig, openNoteModal, closeNoteModal,

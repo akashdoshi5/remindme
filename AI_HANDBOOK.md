@@ -2,7 +2,7 @@
 **Last Updated:** Feb 12, 2026
 
 ## 1. Project Overview
-**RemindMeBuddy** is a productivity app for managing reminders, notes, and tasks.
+**RemindMe** is a productivity app for managing reminders, notes, and tasks.
 - **Tech Stack:** React (Vite), Capacitor (iOS/Android), Firebase (Auth, Firestore, Storage, Functions).
 - **Key Features:**
     -   Smart Reminders (Time/Location based)
@@ -98,7 +98,28 @@
 - **Data Model**: `users/{uid}/reminders/{id}` in Firestore.
 - **Frequencies**: 'Once', 'Daily', 'Weekly', 'Monthly', 'Every X Hours'.
 - **Fixed Term**: Reminders can have a `durationDays` or `medDuration`.
+- **Advanced Scheduling Logic (v1.3.11)**:
+    - **"Every X Hours"**:
+        - **Daily Reset**: Schedules reset to the user's "Wake Up Time" (calculated from `sleepEnd`, default ~08:00 AM) on each new day. This ensures medication schedules don't drift overnight.
+        - **Timestamp Accuracy**: Auto-completed past instances MUST use `inst.displayTime` (the specific scheduled slot, e.g., "14:00") for the `takenAt` timestamp, NOT the current time or the series start time.
+    - **Weekly/Monthly/Custom**:
+        - **Weekly**: Matches only if `currentDate.getDay() === startDate.getDay()`.
+        - **Monthly**: Matches only if `currentDate.getDate() === startDate.getDate()`.
+        - **Custom**: Parses "Mon, Wed, Fri" strings and matches against `currentDate`'s short day name.
+        - **Legacy Fallback**: If frequency is unknown, defaults to Daily (safe fallback).
+
+### B. Input Validation (AddReminderModal)
+- **Meal Times**:
+    - **Ranges**: Breakfast (07-11), Lunch (11-16), Dinner (18-22).
+    - **Strict Enforcement**: An `onBlur` handler automatically clamps invalid times (e.g., 03:00) to the nearest valid boundary (e.g., 07:00).
+- **Time Input Visibility**:
+    - **Rule**: The standard Time input must ALWAYS be visible if `type !== 'Medication'`, even if the "Complex Schedule" toggle was previously enabled.
+- **Duration**:
+    - **Manual Input**: Users can type a specific number of days alongside the slider.
+    - **Minimum**: Enforced to 1 day.
     - **Critical Logic**: End Date is calculated as `StartDate + Duration`.
+- **Anchor Time Logic**: For "Every X Hours" intervals, the system resets the anchor to `sleepEnd` (default 08:00) on all *subsequent* days to align with the wake window.
+    - *Note*: Only the Start Date respects the specific `r.time` (e.g. 12:00 PM start). Days 2+ start at 08:00 AM.
 - **Status Tracking**:
     - **Logs**: `r.logs` map stores completion status per instance.
     - **Keys**: 

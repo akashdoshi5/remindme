@@ -857,10 +857,39 @@ export const dataService = {
                             }
                         } else {
                             // Daily/Weekly/etc
-                            // Simplified check: assume 'Daily' for now if not 'Once' and not 'Every'
-                            // Real app likely has day check. 
-                            // Assuming daily for simple migration or existing logic:
-                            times.push(r.time || '09:00');
+                            let shouldAdd = false;
+
+                            if (r.frequency === 'Weekly') {
+                                // V10.39 CHECK: Weekly Day Matching
+                                const startDate = new Date(r.date);
+                                const checkDate = new Date(dateString);
+                                if (startDate.getDay() === checkDate.getDay()) {
+                                    shouldAdd = true;
+                                }
+                            } else if (r.frequency === 'Monthly') {
+                                // V10.40 CHECK: Monthly Date Matching
+                                // Robustly parse date components
+                                const [sy, sm, sd] = r.date.split('-').map(Number);
+                                const [cy, cm, cd] = dateString.split('-').map(Number);
+                                if (sd === cd) shouldAdd = true;
+                            } else if (r.frequency && r.frequency.includes(',')) {
+                                // V10.41 CHECK: Custom Days (e.g., "Mon, Wed, Fri")
+                                const [cy, cm, cd] = dateString.split('-').map(Number);
+                                const checkDate = new Date(cy, cm - 1, cd);
+                                const dayName = checkDate.toLocaleDateString('en-US', { weekday: 'short' });
+                                if (r.frequency.includes(dayName)) shouldAdd = true;
+                            } else if (r.frequency === 'Daily' || !r.frequency || r.frequency === 'Once') {
+                                shouldAdd = true;
+                            } else if (r.frequency.startsWith('Every')) {
+                                shouldAdd = true;
+                            } else {
+                                // Fallback
+                                shouldAdd = true;
+                            }
+
+                            if (shouldAdd) {
+                                times.push(r.time || '09:00');
+                            }
                         }
                     }
                 }
@@ -1195,9 +1224,30 @@ export const dataService = {
                         }
 
                         if (isPast) {
+                            // V10.38 FIX: Robust Date Construction for 'takenAt'
+                            // Avoids string parsing issues (Invalid Date) which caused fallback to Now
+                            let scheduledTimeIdx = new Date().toISOString();
+
+                            const timeToUse = inst.displayTime || inst.time;
+                            if (timeToUse && timeToUse.includes(':')) {
+                                try {
+                                    // Manual YYYY-MM-DD construction to avoid locale issues
+                                    const y = parseInt(dStr.split('-')[0]);
+                                    const m = parseInt(dStr.split('-')[1]);
+                                    const d = parseInt(dStr.split('-')[2]);
+                                    const [h, min] = timeToUse.split(':').map(Number);
+
+                                    // Robust Date Construction (Month is 0-indexed)
+                                    const robustDate = new Date(y, m - 1, d, h, min, 0);
+                                    scheduledTimeIdx = robustDate.toISOString();
+                                } catch (e) {
+                                    console.error("Date parsing error in auto-complete", e);
+                                }
+                            }
+
                             logs[inst.instanceKey] = {
-                                status: 'taken', // V10.11 FIX: Must be 'taken' to match expandReminders status logic
-                                takenAt: new Date().toISOString()
+                                status: 'taken',
+                                takenAt: scheduledTimeIdx
                             };
                             hasUpdates = true;
                         }
@@ -1447,9 +1497,28 @@ export const dataService = {
                                 }
 
                                 if (isPast) {
+                                    // V10.38 FIX: Robust Date Construction
+                                    let scheduledTimeIdx = new Date().toISOString();
+
+                                    if (inst.time && inst.time.includes(':')) {
+                                        try {
+                                            // Manual YYYY-MM-DD construction to avoid locale issues
+                                            const y = parseInt(dStr.split('-')[0]);
+                                            const m = parseInt(dStr.split('-')[1]);
+                                            const d = parseInt(dStr.split('-')[2]);
+                                            const [h, min] = (inst.displayTime || inst.time).split(':').map(Number);
+
+                                            // Robust Date Construction (Month is 0-indexed)
+                                            const robustDate = new Date(y, m - 1, d, h, min, 0);
+                                            scheduledTimeIdx = robustDate.toISOString();
+                                        } catch (e) {
+                                            console.error("Date parsing error in update split", e);
+                                        }
+                                    }
+
                                     logs[inst.instanceKey] = {
                                         status: 'taken',
-                                        takenAt: new Date().toISOString()
+                                        takenAt: scheduledTimeIdx
                                     };
                                     hasUpdates = true;
                                 }
@@ -1523,9 +1592,26 @@ export const dataService = {
                                         }
 
                                         if (isPast && (!reminder.logs || !reminder.logs[inst.instanceKey])) {
+                                            // V10.38 FIX: Robust Date Construction
+                                            let scheduledTimeIdx = new Date().toISOString();
+
+                                            if (inst.time && inst.time.includes(':')) {
+                                                try {
+                                                    const y = parseInt(dStr.split('-')[0]);
+                                                    const m = parseInt(dStr.split('-')[1]);
+                                                    const d = parseInt(dStr.split('-')[2]);
+                                                    const [h, min] = (inst.displayTime || inst.time).split(':').map(Number);
+
+                                                    const robustDate = new Date(y, m - 1, d, h, min, 0);
+                                                    scheduledTimeIdx = robustDate.toISOString();
+                                                } catch (e) {
+                                                    console.error("Date parsing error in update normal", e);
+                                                }
+                                            }
+
                                             logs[inst.instanceKey] = {
                                                 status: 'taken',
-                                                takenAt: new Date().toISOString()
+                                                takenAt: scheduledTimeIdx
                                             };
                                             hasUpdates = true;
                                         }

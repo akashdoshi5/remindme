@@ -1,23 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Bell, Users, FileText, ChevronRight, Activity, Plus, Clock, Search } from 'lucide-react';
+import { Bell, Users, FileText, ChevronRight, BarChart2, Plus, Clock, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { dataService } from '../services/data';
 import { firestoreService } from '../services/firestoreService'; // For caregiver query
 import { useAuth } from '../context/AuthContext';
-import HelpGuide from '../components/common/HelpGuide'; // Import
+// HelpGuide removed (moved to Header)
 
 const HomePage = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [stats, setStats] = useState({ upcoming: 0, taken: 0, missed: 0 });
     const [nextReminder, setNextReminder] = useState(null);
+    const [dateGreeting, setDateGreeting] = useState('');
+    const [healthTip, setHealthTip] = useState('');
     const [caregivers, setCaregivers] = useState([]);
     const [notes, setNotes] = useState([]);
-    const [dateGreeting, setDateGreeting] = useState('');
-    const [showHelp, setShowHelp] = useState(false); // State for Guide
+
+    const healthTips = [
+        "Hydration is key! Don't forget to drink water.",
+        "A 5-minute stretch can boost your energy.",
+        "Consistency is the secret to health success.",
+        "Taking your meds on time keeps you in control.",
+        "Small steps lead to big health goals!",
+        "Rest is as important as activity.",
+        "Fresh air does wonders for the mind.",
+        "You're doing great—keep going!",
+        "Health is wealth, and you're investing well."
+    ];
 
     useEffect(() => {
+        // Pick a random tip
+        setHealthTip(healthTips[Math.floor(Math.random() * healthTips.length)]);
+
         // 1. Greeting
         const hour = new Date().getHours();
         if (hour < 12) setDateGreeting('Good Morning');
@@ -90,32 +105,15 @@ const HomePage = () => {
 
     return (
         <div className="p-6 pb-24 space-y-6 max-w-4xl mx-auto animate-fade-in">
-            {/* Help Guide Modal */}
-            <HelpGuide isOpen={showHelp} onClose={() => setShowHelp(false)} />
-
             {/* Header */}
-            <div className="flex justify-between items-center">
-                <div>
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-                            {dateGreeting}, {user?.displayName?.split(' ')[0] || 'Friend'}
-                        </h1>
-                        <button
-                            onClick={() => setShowHelp(true)}
-                            className="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 p-1.5 rounded-full hover:scale-105 transition-transform"
-                            title="How to use"
-                        >
-                            <span className="text-xs font-bold">?</span>
-                        </button>
-                    </div>
-                    <p className="text-gray-500 dark:text-gray-400">Here is your daily snapshot</p>
-                </div>
-                <div onClick={() => navigate('/settings')} className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 cursor-pointer border-2 border-white dark:border-gray-800 shadow-sm">
-                    {user?.photoURL ? (
-                        <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xl">👤</div>
-                    )}
+            <div className="flex justify-between items-start gap-4">
+                <div className="flex-1 min-w-0">
+                    <h1 className="text-3xl font-black bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent tracking-tight">
+                        {dateGreeting}, {user?.displayName?.split(' ')[0] || 'Friend'}
+                    </h1>
+                    <p className="text-orange-600 dark:text-orange-400 font-medium text-sm mt-1 animate-fade-in italic">
+                        "{healthTip}"
+                    </p>
                 </div>
             </div>
 
@@ -133,7 +131,7 @@ const HomePage = () => {
 
                     <div className="relative z-10">
                         <h2 className="text-orange-100 text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
-                            <Activity size={14} /> Up Next
+                            <BarChart2 size={14} /> Up Next
                         </h2>
                         {nextReminder ? (
                             <div>
@@ -156,7 +154,7 @@ const HomePage = () => {
                     className="bg-white dark:bg-gray-800 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-center shadow-sm relative overflow-hidden"
                 >
                     <div className="absolute top-2 right-2 text-gray-300 dark:text-gray-600">
-                        <Activity size={20} />
+                        <BarChart2 size={20} />
                     </div>
                     <div className="w-20 h-20 relative flex items-center justify-center mb-2">
                         <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">

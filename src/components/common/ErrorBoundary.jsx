@@ -35,7 +35,7 @@ class ErrorBoundary extends React.Component {
                         </div>
                         <h1 className="text-2xl font-bold mb-2 text-gray-900">Something went wrong</h1>
                         <p className="text-gray-500 mb-6">
-                            RemindMe Buddy encountered an unexpected error.
+                            RemindMe encountered an unexpected error.
                         </p>
 
                         <div className="bg-gray-100 p-4 rounded-xl text-left mb-6 overflow-auto max-h-40 text-xs font-mono text-gray-600">

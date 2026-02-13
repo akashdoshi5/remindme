@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
-import { Bell, X, RefreshCw, Play, Shield, Activity } from 'lucide-react';
+import { Bell, X, RefreshCw, Play, Shield, BarChart2 } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications'; // Import hook
 import { dataService } from '../../services/data';
 import pkg from '../../../package.json'; // Import version
@@ -129,7 +129,7 @@ export const NotificationDebugPanel = ({ isOpen, onClose }) => {
                         <Shield size={16} /> Check Perms
                     </button>
                     <button onClick={loadPending} className="flex items-center justify-center gap-2 bg-gray-600 text-white p-2 rounded-lg text-sm font-medium hover:bg-gray-700">
-                        <Activity size={16} /> Refresh List
+                        <BarChart2 size={16} /> Refresh List
                     </button>
                 </div>
 

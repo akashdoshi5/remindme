@@ -1,80 +1,116 @@
-# Play Store Publishing Guide (v1.3.11)
+# Play Store Publishing Guide (v1.3.12)
 
-This guide provides everything you need to fill out the Google Play Console for **RemindMe Buddy**.
+This guide provides everything you need to fill out the Google Play Console for **RemindMe**.
 
 ---
 
-## 1. Main Store Listing
+### 📁 Asset Folder
+All required graphics are located in: `docs/play_store_assets/`
+
+**Store Graphics:**
+- `app_icon_512.png`: 512x512 Main Icon.
+- `feature_graphic_1024x500.png`: Feature Graphic with seamless background.
+
+**App Screenshots (Professional Framed Mockups):**
+1. `mockup_1_home.png`: Home Dashboard - "Your Daily Health Dashboard"
+2. `mockup_2_reminders.png`: Reminders - "Never Miss a Medication"
+3. `mockup_3_settings.png`: Settings - "Private & Personal Settings"
+4. `mockup_4_notes.png`: Notes - "Shared Notes & Family Lists"
+5. `mockup_5_search.png`: Search - "Search Attachments & Voice"
+6. `mockup_6_features.png`: Features - "Powerful Features for Modern Care"
+7. `mockup_7_reports.png`: Reports - "Track Adherence & Progress"
+8. `mockup_8_caregivers.png`: Caregivers - "Coordinate Care with Family"
+9. `mockup_9_complex_schedule.png`: Add Reminder - "Complex Schedules Made Easy"
+
+---
+
+## 1. Main Store Listing (English)
 Copy these into the **Store presence > Main store listing** section.
 
 **App Name:**
-`RemindMe Buddy - Voice & Lists`
+`RemindMe: Smart Care & Records`
 
 **Short Description (80 chars max):**
-`Simple voice notes, checklists & reminders for family. Speak, Sync, and Share!`
+`One stop for health records, family care, smart reminders & voice notes.`
 
 **Full Description (4000 chars max):**
-```text
-RemindMe Buddy is the simplest way to manage your life. Designed for seniors, families, and busy individuals, it combines voice notes, checklists, and smart reminders into one easy-to-use app.
+`RemindMe: Smart Care & Records is your all-in-one assistant for organized family living and health management. Designed with simplicity and privacy in mind, it helps you stay on top of daily tasks while maintaining a secure digital archive of your most important records.
 
 Key Features:
-🎙️ Voice Notes: Just speak to save your thoughts. Perfect for quick ideas!
-📝 Checklists & Lists: Organize groceries, tasks, and to-dos easily.
-⏰ Reliable Alarms: Set pill reminders, appointments, or daily tasks that you won't miss.
-🤝 Collaborative Sharing: Share notes and lists with family or caregivers in real-time.
-🔒 Cloud Sync: Securely access your data from any device, anywhere.
-🎨 Clean & Simple: Large text, high contrast, and a frustration-free interface.
+- Smart Reminders & Checklists: Set recurring alarms for medications, appointments, or simple daily habits.
+- Health & Care Records: Securely store and categorize medical reports, prescriptions, and insurance documents using folders.
+- Voice Notes: Capture quick thoughts or record memories on the go with the built-in high-quality voice recorder.
+- Cloud Sync & Backup: Your data is safely synced across devices using Google Firebase, ensuring you never lose a record.
+- Collaborative Sharing: Shared notes allow family members to collaborate on grocery lists, care plans, or household tasks with granular permissions.
+- Advanced Search: Instantly find content inside your notes, attachments, or specific date ranges.
 
-Why choose RemindMe Buddy?
-We believe technology should be helpful, not confusing. Whether it's managing health, staying in touch with family, or just organizing your day, RemindMe Buddy is your personal digital assistant.
+Experience a more disciplined and organized lifestyle with RemindMe: Smart Care & Records.`
 
-Features included in v1.3.11:
-- Real-time cloud sync with Firebase.
-- Native Android notification channels for Alarms.
-- Secure Gmail-based authentication.
-- Shared notes with ownership-based permissions.
+---
 
-Download RemindMe Buddy and stay on top of what matters most!
+## 2. Global Store Presence (Translations)
+You can add these translations in **Store presence > Main store listing > Manage translations**.
+
+### Hindi (hi-IN)
+**App Name:** `RemindMe: स्मार्ट केयर और रिकॉर्ड`
+**Short Description:** `स्वास्थ्य रिकॉर्ड, परिवार देखभाल, स्मार्ट रिमाइंडर और वॉयस नोट्स के लिए एक जगह`
+**Full Description:**
+```text
+RemindMe आपके जीवन को व्यवस्थित करने का सबसे आसान तरीका है। विशेष रूप से वरिष्ठ नागरिकों और परिवारों के लिए डिज़ाइन किया गया।
+
+मुख्य विशेषताएं:
+🎙️ आवाज़ नोट: बस बोलें और अपनी यादें सुरक्षित करें।
+📝 चेकलिस्ट: किराने की सूची और कार्यों को आसानी से व्यवस्थित करें।
+⏰ अलार्म: दवा के रिमाइंडर और महत्वपूर्ण नियुक्तियों को कभी न भूलें।
+🤝 साझा करना: परिवार के साथ रीयल-टाइम में नोट्स साझा करें।
+🌍 बहुभाषी: अंग्रेजी, हिंदी और मराठी का समर्थन।
+```
+
+### Marathi (mr-IN)
+**App Name:** `RemindMe: स्मार्ट केअर आणि रेकॉर्ड्स`
+**Short Description:** `आरोग्य रेकॉर्ड, फॅमिली केअर, स्मार्ट रिमाइंडर आणि व्हॉइस नोट्ससाठी एक थांबा`
+**Full Description:**
+```text
+RemindMe आपल्या जीवनाचे नियोजन करण्याचा सर्वात सोपा मार्ग आहे. ज्येष्ठ नागरिक आणि कुटुंबांसाठी बनविलेले.
+
+ठळक वैशिष्ट्ये:
+🎙️ आवाज नोट: फक्त बोला आणि आपल्या नोंदी सुरक्षित करा.
+📝 चेकलिस्ट: किराणा मालाची यादी आणि कामे सहजपणे व्यवस्थापित करा।
+⏰ अलार्म: औषधांचे रिमाइंडर आणि महत्त्वाची कामे कधीही विसरू नका.
+🤝 शेअरिंग: कुटुंबासोबत रीयल-टाइममध्ये नोट्स शेअर करा.
+🌍 बहुभाषिक: इंग्रजी, हिंदी आणि मराठी सपोर्ट.
 ```
 
 ---
 
-## 2. App Content (Mandatory Disclosures)
+## 3. App Content (Mandatory Disclosures)
 Google Play requires you to answer these in the **Policy > App content** section.
 
 ### A. Privacy Policy
 **URL:** `https://remindme-app-9988.web.app/privacy.html`
-(I have hosted this for you on your Firebase project site).
+
+**Account Deletion URL:** `https://remindme-app-9988.web.app/privacy.html#deletion`
 
 ### B. Data Safety
-When asked about what data you collect:
-- **Email Address:** Yes (Collected for authentication).
-- **Audio Files:** Yes (Stored for voice notes functionality).
-- **Files/Docs:** Yes (If you add attachments).
-- **Is data encrypted in transit?** Yes (Firebase uses HTTPS/SSL).
-- **Can users request data deletion?** Yes.
-
-### C. Permissions
-- **Record Audio:** Used for Voice Notes.
-- **Notifications:** Used for Reminders & Alarms.
-- **Exact Alarms:** Used for time-critical medication reminders.
+- **Email Address:** Yes (For auth).
+- **Audio Files:** Yes (For voice notes).
+- **Files/Docs:** Yes (For attachments).
+- **Encryption:** Yes (HTTPS/SSL).
+- **Deletion:** Yes.
 
 ---
 
-## 3. How to Release (The Technical Part)
-1.  **Go to Production**: On the left menu, select **Release > Production**.
-2.  **Create New Release**:
-    - **App Bundles**: Upload the file at `android/app/build/outputs/bundle/release/app-release.aab`.
-    - **Release Name**: `1.3.11`
+## 4. How to Release (v1.3.12)
+1.  **Generate AAB**: Run the `scripts/build-release.ps1` script.
+2.  **Go to Production**: In Play Console, select **Release > Production**.
+3.  **Create New Release**:
+    - **App Bundles**: Upload `android/app/build/outputs/bundle/release/app-release.aab`.
+    - **Release Name**: `1.3.12`
     - **Release Notes**:
       ```text
-      - Critical fix for notification alarms on Android.
-      - Improved note sharing permissions.
-      - Robust cloud sync for offline edits.
-      - Performance and UI refinements.
+      - Added Hindi and Marathi translations for the Help Guide.
+      - Enhanced search for file content and start/end dates.
+      - Clarified Reports edit window (today/yesterday logs).
+      - Performance and stability improvements.
       ```
-3.  **Review & Rollout**: Click **Review release** → **Start rollout to Production**.
-
----
-
-**Tip:** If you need help hosting the Privacy Policy on your website, let me know!
+4.  **Review & Rollout**: Click **Review release** → **Start rollout**.

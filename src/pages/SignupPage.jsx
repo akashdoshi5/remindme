@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
-import { Activity, User, Mail, Lock, ArrowRight } from 'lucide-react';
+import { User, Mail, Lock, ArrowRight } from 'lucide-react';
 
 const SignupPage = () => {
     const { register } = useAuth();
@@ -36,11 +36,13 @@ const SignupPage = () => {
                 className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8"
             >
                 <div className="text-center mb-10">
-                    <div className="w-20 h-20 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto mb-6 text-orange-600">
-                        <Activity size={40} />
-                    </div>
-                    <h1 className="text-3xl font-bold mb-2 text-gray-900">Create Account</h1>
-                    <p className="text-gray-500">Join RemindMe Buddy today</p>
+                    <img
+                        src="/icon-512.png"
+                        alt="RemindMe Logo"
+                        className="w-20 h-20 mx-auto mb-6 rounded-2xl shadow-xl shadow-orange-500/10"
+                    />
+                    <h1 className="text-3xl font-black mb-2 text-gray-900 tracking-tight">Create Account</h1>
+                    <p className="text-gray-500 font-medium">Join RemindMe today</p>
                 </div>
 
                 <form onSubmit={handleSignup} className="space-y-4">

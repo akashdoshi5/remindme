@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Bell, FileText, Users, Mic, Search, Activity, Settings } from 'lucide-react';
+import { Home, Bell, FileText, Users, Mic, Search, BarChart2, Settings } from 'lucide-react';
 import { useNotifications } from './hooks/useNotifications';
 import { dataService } from './services/data';
 import { useLanguage, LanguageProvider } from './context/LanguageContext';
 import SearchModal from './components/common/SearchModal';
+import HelpGuide from './components/common/HelpGuide';
 import AlarmModal from './components/reminders/AlarmModal';
 import SettingsModal from './components/settings/SettingsModal';
 import ShareModal from './components/common/ShareModal';
@@ -19,6 +20,8 @@ import { BackButtonManager } from './services/BackButtonManager';
 import PermissionBanner from './components/common/PermissionBanner';
 import AppVersionManager from './components/common/AppVersionManager';
 import ProfileSwitcher from './components/caregiver/ProfileSwitcher';
+import AddNoteModal from './components/notes/AddNoteModal';
+import AddReminderModal from './components/reminders/AddReminderModal';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -56,20 +59,22 @@ const NavLink = ({ to, icon: Icon, label }) => {
 const Header = ({ searchQuery, setSearchQuery }) => {
   const { language, setLanguage, t } = useLanguage();
   const { user } = useAuth();
-  const { openSearch, openSettings } = useUI();
+  const { openSearch, openSettings, openHelp } = useUI();
   const location = useLocation();
 
   const isActive = (path) => location.pathname === path;
 
   return (
     <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50 dark:bg-gray-900/80 dark:border-gray-800 transition-colors duration-300">
-      <div className="w-full px-4 h-16 md:h-20 flex items-center justify-between mx-auto max-w-7xl gap-4">
+      <div className="w-full px-4 h-16 md:h-20 flex items-center justify-between mx-auto max-w-7xl gap-2 md:gap-4">
 
         {/* LEFT: Logo & Brand */}
         <Link to="/" className="flex items-center gap-2 md:gap-3 group shrink-0 min-w-fit">
-          <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-gradient-to-tr from-green-400 to-emerald-600 flex items-center justify-center text-white shadow-md shadow-green-500/20 transition-transform group-hover:scale-110 duration-300 shrink-0">
-            <span className="text-lg md:text-xl">🔔</span>
-          </div>
+          <img
+            src="/icon-192.png"
+            alt="RemindMe Logo"
+            className="w-9 h-9 md:w-10 md:h-10 rounded-xl shadow-md shadow-green-500/20 transition-transform group-hover:scale-110 duration-300"
+          />
           <span className="hidden md:block text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-300">
             {t('appTitle')}
           </span>
@@ -114,7 +119,7 @@ const Header = ({ searchQuery, setSearchQuery }) => {
           {/* Management Links (Desktop Only) */}
           <div className="hidden lg:flex items-center gap-1 border-l border-gray-200 dark:border-gray-700 pl-4">
             <Link to="/reports" className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors" title="Reports">
-              <Activity size={20} className={isActive('/reports') ? 'text-green-600 fill-current' : ''} />
+              <BarChart2 size={20} className={isActive('/reports') ? 'text-green-600 fill-current' : ''} />
             </Link>
             <Link to="/caregivers" className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-full transition-colors" title="Caregivers">
               <Users size={20} className={isActive('/caregivers') ? 'text-purple-600 fill-current' : ''} />
@@ -124,15 +129,24 @@ const Header = ({ searchQuery, setSearchQuery }) => {
           <div className="h-8 w-[1px] bg-gray-200 dark:bg-gray-800 hidden md:block mx-2"></div>
 
           {/* Settings / Profile */}
-          <button onClick={openSettings} className="w-10 h-10 md:w-10 md:h-10 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-800 transition-all shadow-sm overflow-hidden" title="Settings">
-            {user?.photoURL ? (
-              <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-600 dark:text-orange-400 font-bold text-sm">
-                {user?.displayName ? user.displayName.charAt(0).toUpperCase() : (user?.email?.charAt(0).toUpperCase() || <Settings size={18} className="md:w-5 md:h-5" />)}
-              </div>
-            )}
-          </button>
+          <div className="flex items-center gap-1.5 md:gap-2">
+            <button
+              onClick={openHelp}
+              className="w-9 h-9 md:w-10 md:h-10 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 hover:text-orange-600 dark:hover:bg-gray-800 transition-all shadow-sm"
+              title="Help"
+            >
+              <span className="text-base md:text-lg font-bold">?</span>
+            </button>
+            <button onClick={openSettings} className="w-9 h-9 md:w-10 md:h-10 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-800 transition-all shadow-sm overflow-hidden" title="Settings">
+              {user?.photoURL ? (
+                <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-600 dark:text-orange-400 font-bold text-xs md:text-sm">
+                  {user?.displayName ? user.displayName.charAt(0).toUpperCase() : (user?.email?.charAt(0).toUpperCase() || <Settings size={16} className="md:w-5 md:h-5" />)}
+                </div>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -159,11 +173,7 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-// Modals
-import AddNoteModal from './components/notes/AddNoteModal';
-import AddReminderModal from './components/reminders/AddReminderModal';
-
-// ... (existing imports)
+// Modals (moved to top)
 
 const AppContent = () => {
   const { user } = useAuth();
@@ -171,7 +181,9 @@ const AppContent = () => {
   const {
     openSearch, closeSearch, isSearchOpen,
     openSettings, closeSettings, isSettingsOpen,
+    openHelp, closeHelp, isHelpOpen,
     openMobileMenu, closeMobileMenu, isMobileMenuOpen,
+    searchQuery, setSearchQuery,
     // Global Modals
     isNoteModalOpen, noteModalConfig, openNoteModal, closeNoteModal,
     isReminderModalOpen, reminderModalConfig, openReminderModal, closeReminderModal,
@@ -186,13 +198,11 @@ const AppContent = () => {
   // Initialize reminder alarm checking (triggers AlarmModal when reminder time arrives)
   useReminders(setActiveAlarm);
 
-  // ... (existing hooks)
 
   const handleFloatingMic = () => {
     openNoteModal({ autoStart: true });
   };
 
-  // ... (existing hooks)
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -260,14 +270,14 @@ const AppContent = () => {
 
   return (
     <div className="h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200 flex flex-col font-sans overflow-hidden">
-      <Header />
+      <Header searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
 
       {/* Permission Warning */}
       <PermissionBanner permission={permission} onCheckAgain={checkPermissions} />
 
       <AppVersionManager />
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden relative z-0 container pt-2 md:pt-4 pb-24 md:pb-10" id="main-content">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden relative z-0 container pb-24 md:pb-10" id="main-content">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -283,7 +293,7 @@ const AppContent = () => {
       {/* Global FAB for Desktop (optional, or rely on Header) */}
       {/* Mobile Nav handles bottom bar */}
       {/* Mobile Nav handles bottom bar - Hide when Modals are open to prevent overlap */}
-      {(!isNoteModalOpen && !isReminderModalOpen && !activeAlarm && !isSearchOpen && !isSettingsOpen) && (
+      {(!isNoteModalOpen && !isReminderModalOpen && !activeAlarm && !isSearchOpen && !isSettingsOpen && !isHelpOpen) && (
         <MobileNav onMenuClick={openMobileMenu} onMicClick={handleFloatingMic} />
       )}
 
@@ -291,6 +301,7 @@ const AppContent = () => {
         isOpen={isMobileMenuOpen}
         onClose={closeMobileMenu}
         onSettingsClick={openSettings}
+        onHelpClick={openHelp}
       />
 
       {/* Global Modals */}
@@ -301,6 +312,11 @@ const AppContent = () => {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={closeSettings}
+      />
+
+      <HelpGuide
+        isOpen={isHelpOpen}
+        onClose={closeHelp}
       />
 
       {/* Note Modal (Global) */}

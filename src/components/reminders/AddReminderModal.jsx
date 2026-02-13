@@ -748,7 +748,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                     </p>
                                 </div>
 
-                                {!isCourse && (
+                                {(!isCourse || type !== 'Medication') && (
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Time</label>
                                         <input
@@ -800,9 +800,9 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Take With</label>
                                                 <div className="grid grid-cols-3 gap-2">
                                                     {[
-                                                        { id: 'breakfast', label: 'Breakfast', icon: <Coffee size={16} /> },
-                                                        { id: 'lunch', label: 'Lunch', icon: <Sun size={16} /> },
-                                                        { id: 'dinner', label: 'Dinner', icon: <Moon size={16} /> }
+                                                        { id: 'breakfast', label: 'Breakfast', icon: <Coffee size={16} />, min: '07:00', max: '11:00' },
+                                                        { id: 'lunch', label: 'Lunch', icon: <Sun size={16} />, min: '11:00', max: '16:00' },
+                                                        { id: 'dinner', label: 'Dinner', icon: <Moon size={16} />, min: '18:00', max: '22:00' }
                                                     ].map(slot => (
                                                         <div
                                                             key={slot.id}
@@ -827,9 +827,20 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                                                     <input
                                                                         type="time"
                                                                         value={medTimes[slot.id]}
+                                                                        min={slot.min}
+                                                                        max={slot.max}
                                                                         onChange={(e) => setMedTimes(prev => ({ ...prev, [slot.id]: e.target.value }))}
+                                                                        onBlur={(e) => {
+                                                                            const val = e.target.value;
+                                                                            if (!val) return;
+                                                                            if (val < slot.min) setMedTimes(prev => ({ ...prev, [slot.id]: slot.min }));
+                                                                            if (val > slot.max) setMedTimes(prev => ({ ...prev, [slot.id]: slot.max }));
+                                                                        }}
                                                                         className="w-full text-xs p-1 bg-white border border-orange-200 rounded text-center font-mono text-gray-700 focus:outline-none focus:border-orange-500 dark:bg-gray-900 dark:border-orange-800 dark:text-white"
                                                                     />
+                                                                    <div className="text-[10px] text-center text-gray-400 mt-0.5 scale-90">
+                                                                        {slot.min}-{slot.max}
+                                                                    </div>
                                                                 </div>
                                                             )}
                                                         </div>
@@ -857,7 +868,20 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                                         onChange={e => setMedDuration(parseInt(e.target.value))}
                                                         className="flex-1 accent-orange-500 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
                                                     />
-                                                    <span className="w-12 text-right font-bold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700">{medDuration}d</span>
+                                                    <div className="flex items-center gap-1 bg-white dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 w-20">
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            max="90"
+                                                            value={medDuration}
+                                                            onChange={e => {
+                                                                const val = parseInt(e.target.value);
+                                                                if (!isNaN(val) && val >= 1 && val <= 365) setMedDuration(val);
+                                                            }}
+                                                            className="w-full text-right font-bold text-gray-700 dark:text-gray-300 bg-transparent outline-none p-0"
+                                                        />
+                                                        <span className="text-gray-500 dark:text-gray-400 font-medium select-none">d</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </>
@@ -929,7 +953,11 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                                                         disabled={frequency === 'Once'}
                                                     >
                                                         <option value="1">1 Day</option>
+                                                        <option value="2">2 Days</option>
                                                         <option value="3">3 Days</option>
+                                                        <option value="4">4 Days</option>
+                                                        <option value="5">5 Days</option>
+                                                        <option value="6">6 Days</option>
                                                         <option value="7">1 Week</option>
                                                         <option value="14">2 Weeks</option>
                                                         <option value="30">1 Month</option>

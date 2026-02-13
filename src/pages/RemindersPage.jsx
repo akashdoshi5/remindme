@@ -311,7 +311,6 @@ const RemindersPage = () => {
 
 
             {/* Header & Filters */}
-            {/* Header & Filters */}
             <div className="sticky top-0 z-40 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-md -mx-4 px-4 py-2 border-b border-gray-200 dark:border-gray-700/50 md:px-0 md:mx-0 md:rounded-b-2xl md:mb-6 transition-all shadow-sm">
                 <div className="flex flex-col gap-3">
 
