@@ -756,7 +756,6 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                 audioData: distinctAudioData,
                 id: localId,
                 ownerId: noteToEdit?.ownerId,
-                sharedWith: isNew ? [] : noteToEdit?.sharedWith,
                 isPinned: isPinned
             };
 

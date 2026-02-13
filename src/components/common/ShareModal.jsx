@@ -3,8 +3,6 @@ import { X, UserPlus, Trash2, Users, Mail } from 'lucide-react';
 import { dataService } from '../../services/data';
 
 const ShareModal = ({ isOpen, onClose, note }) => {
-    if (!isOpen || !note) return null;
-
     const [email, setEmail] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [successMsg, setSuccessMsg] = useState('');
@@ -12,7 +10,16 @@ const ShareModal = ({ isOpen, onClose, note }) => {
 
     // Use derived state from props to ensure updates are reflected immediately
     // FIX: Maintain local state for immediate feedback, sync with props when they change
-    const [localSharedWith, setLocalSharedWith] = useState(note.sharedWith || []);
+    const [localSharedWith, setLocalSharedWith] = useState([]);
+
+    // Sync initial state when note changes
+    useEffect(() => {
+        if (note?.sharedWith) {
+            setLocalSharedWith(note.sharedWith);
+        } else {
+            setLocalSharedWith([]);
+        }
+    }, [note?.id, note?.sharedWith]);
 
     // NEW: Robust Sync: Subscribe to the note in realtime to handle any state mismatches or stale objects from parent
     useEffect(() => {
@@ -28,6 +35,8 @@ const ShareModal = ({ isOpen, onClose, note }) => {
         return () => unsub();
     }, [note?.id]);
 
+    if (!isOpen || !note) return null;
+
     const handleShare = async (e) => {
         e.preventDefault();
         if (!email) return;
@@ -38,10 +47,12 @@ const ShareModal = ({ isOpen, onClose, note }) => {
             const result = await dataService.shareNote(note.id, email);
             if (result) {
                 setSuccessMsg(`Access granted to ${email}`);
-                setLocalSharedWith(prev => [...prev, email]); // Update list immediately
 
-                // Do NOT auto-open mailto (browser blocks/confuses)
-                // Just show success and the button.
+                // Optimistic update with deduplication check
+                setLocalSharedWith(prev => {
+                    if (prev.includes(email)) return prev;
+                    return [...prev, email];
+                });
 
                 setEmail('');
                 setTimeout(() => setSuccessMsg(''), 8000);

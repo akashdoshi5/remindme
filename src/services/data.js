@@ -464,6 +464,9 @@ export const dataService = {
                     // Only merge if content is DIFFERENT.
                     const isContentDifferent = localNote.content !== cloudNote.content;
                     const isItemsDifferent = JSON.stringify(localNote.items) !== JSON.stringify(cloudNote.items);
+                    const isSharingDifferent = JSON.stringify(localNote.sharedWith || []) !== JSON.stringify(cloudNote.sharedWith || []);
+
+                    let mergedSharedWith = [];
 
                     if (localTime >= cloudTime) {
                         // Local is newer (or equal). Local takes precedence, but we append Cloud if distinct to be safe?
@@ -515,6 +518,11 @@ export const dataService = {
                             mergedFiles = newFiles;
                         }
 
+                        // Merge sharedWith (Union)
+                        const sharingSet = new Set(localNote.sharedWith || []);
+                        (cloudNote.sharedWith || []).forEach(email => sharingSet.add(email));
+                        mergedSharedWith = Array.from(sharingSet);
+
                     } else {
                         // Cloud is NEWER. Normally Cloud wins.
                         // BUT valid offline changes might be present in Local (with older TS if clock skew? Or just overwritten).
@@ -556,6 +564,11 @@ export const dataService = {
                             });
                             mergedFiles = newFiles;
                         }
+
+                        // Merge sharedWith (Union)
+                        const sharingSet = new Set(cloudNote.sharedWith || []);
+                        (localNote.sharedWith || []).forEach(email => sharingSet.add(email));
+                        mergedSharedWith = Array.from(sharingSet);
                     }
 
                     mergedMap.set(String(cloudNote.id), {
@@ -565,6 +578,7 @@ export const dataService = {
                         content: mergedContent,
                         items: mergedItems,
                         files: mergedFiles,
+                        sharedWith: mergedSharedWith, // PERSIST SHARING
                         audioData: mergedAudio, // Date-based winner logic was applied implicitly by choosing base note
                         type: mergedType,
                         updatedAt: mergedUpdatedAt, // ISO String

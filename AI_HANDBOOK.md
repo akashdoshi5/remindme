@@ -1,4 +1,4 @@
-#**Current Version:** v1.3.19
+#**Current Version:** v1.3.22
 **Last Updated:** Feb 13, 2026
 
 ## 1. Project Overview
@@ -10,7 +10,19 @@
     -   Collaborative Sharing (Real-time sync)
     -   Offline Capabilities (Firestore Persistence)
 
-## 2. Recent Changes (v1.3.19)
+## 2. Recent Changes (v1.3.22)
+- **Note Sharing Persistence & Stability Fix**:
+  - **Robust Merging (data.js)**: Enhanced `syncFromCloud` to merge and deduplicate `sharedWith` arrays during cloud sync, preventing data loss.
+  - **Save Protection (AddNoteModal)**: Removed `sharedWith` from the `performSave` payload to prevent overwriting cloud state with stale local data.
+  - **Deduplication (ShareModal)**: Added client-side deduplication during optimistic updates to prevent duplicate emails in the list.
+  - **Stability Fix**: Resolved a critical React hook violation in `ShareModal.jsx` that was causing internal errors ("Expected static flag was missing").
+- **UI Refinement**:
+  - **Compact Shared Indicator**: Reverted to original small icons (10px) on `NoteCard.jsx` based on user preference, maintaining a clean and minimalist UI.
+- **Build & Deployment**:
+  - **APK Download Fix**: Performed a full clean build and synchronized the fresh `app-release.apk` to `public/android-app-release.apk` to resolve stale download issues on the Web version.
+  - **Version Bump**: Increment to `v1.3.22` (Code `22`) across `package.json` and `build.gradle`.
+
+## 2.1. Recent Changes (v1.3.19)
 - **Keyboard-Aware Layout (Modals)**:
   - **Dynamic Viewport**: Switched to `h-[100dvh]` for `AddNoteModal` and `AddReminderModal` to handle viewport resizing when the virtual keyboard appears.
   - **Sticky Footers**: Replaced fixed-bottom positioning with sticky/statical flow for footers.
