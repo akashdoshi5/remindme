@@ -1,4 +1,4 @@
-# Play Store Publishing Guide (v1.3.12)
+# Play Store Publishing Guide (v1.3.13)
 
 This guide provides everything you need to fill out the Google Play Console for **RemindMe**.
 
@@ -7,11 +7,14 @@ This guide provides everything you need to fill out the Google Play Console for 
 ### 📁 Asset Folder
 All required graphics are located in: `docs/play_store_assets/`
 
+**Tip:** If you are looking for an image you previously uploaded or generated, they are all organized in this folder.
+
 **Store Graphics:**
-- `app_icon_512.png`: 512x512 Main Icon.
+- `app_icon_512.png`: 512x512 Main Icon (Clock & Bell).
 - `feature_graphic_1024x500.png`: Feature Graphic with seamless background.
 
 **App Screenshots (Professional Framed Mockups):**
+*Upload at least 4 of these under "Phone Screenshots":*
 1. `mockup_1_home.png`: Home Dashboard - "Your Daily Health Dashboard"
 2. `mockup_2_reminders.png`: Reminders - "Never Miss a Medication"
 3. `mockup_3_settings.png`: Settings - "Private & Personal Settings"
@@ -37,12 +40,14 @@ Copy these into the **Store presence > Main store listing** section.
 `RemindMe: Smart Care & Records is your all-in-one assistant for organized family living and health management. Designed with simplicity and privacy in mind, it helps you stay on top of daily tasks while maintaining a secure digital archive of your most important records.
 
 Key Features:
-- Smart Reminders & Checklists: Set recurring alarms for medications, appointments, or simple daily habits.
-- Health & Care Records: Securely store and categorize medical reports, prescriptions, and insurance documents using folders.
-- Voice Notes: Capture quick thoughts or record memories on the go with the built-in high-quality voice recorder.
-- Cloud Sync & Backup: Your data is safely synced across devices using Google Firebase, ensuring you never lose a record.
-- Collaborative Sharing: Shared notes allow family members to collaborate on grocery lists, care plans, or household tasks with granular permissions.
-- Advanced Search: Instantly find content inside your notes, attachments, or specific date ranges.
+- 🔍 Advanced Search: Instantly find content inside your notes, attachments, or specific date ranges.
+- 📅 Smart Reminders & Checklists: Set recurring alarms for medications, appointments, or simple daily habits.
+- 📝 Checklists & Lists: Organize groceries, tasks, and to-dos easily.
+- ⏰ Reliable Alarms: Set pill reminders, appointments, or daily tasks that you won't miss.
+- 🤝 Collaborative Sharing: Shared notes allow family members to collaborate on grocery lists, care plans, or household tasks with granular permissions.
+- 🔒 Cloud Sync: Securely access your data from any device, anywhere.
+- 🎨 Clean & Simple: Large text, high contrast, and a frustration-free interface.
+- 🎙️ Voice Notes: Just speak to save your thoughts. Perfect for quick ideas!
 
 Experience a more disciplined and organized lifestyle with RemindMe: Smart Care & Records.`
 
@@ -71,14 +76,14 @@ RemindMe आपके जीवन को व्यवस्थित करन�
 **Short Description:** `आरोग्य रेकॉर्ड, फॅमिली केअर, स्मार्ट रिमाइंडर आणि व्हॉइस नोट्ससाठी एक थांबा`
 **Full Description:**
 ```text
-RemindMe आपल्या जीवनाचे नियोजन करण्याचा सर्वात सोपा मार्ग आहे. ज्येष्ठ नागरिक आणि कुटुंबांसाठी बनविलेले.
+RemindMe आपल्या जीवनाचे नियोजन करण्याचा सर्वात सोपा मार्ग आहे। ज्येष्ठ नागरिक आणि कुटुंबांसाठी बनविलेले।
 
 ठळक वैशिष्ट्ये:
-🎙️ आवाज नोट: फक्त बोला आणि आपल्या नोंदी सुरक्षित करा.
+🎙️ आवाज नोट: फक्त बोला आणि आपल्या नोंदी सुरक्षित करा।
 📝 चेकलिस्ट: किराणा मालाची यादी आणि कामे सहजपणे व्यवस्थापित करा।
-⏰ अलार्म: औषधांचे रिमाइंडर आणि महत्त्वाची कामे कधीही विसरू नका.
-🤝 शेअरिंग: कुटुंबासोबत रीयल-टाइममध्ये नोट्स शेअर करा.
-🌍 बहुभाषिक: इंग्रजी, हिंदी आणि मराठी सपोर्ट.
+⏰ अलार्म: औषधांचे रिमाइंडर आणि महत्त्वाची कामे कधीही विसरू नका।
+🤝 शेअरिंग: कुटुंबासोबत रीयल-टाइममध्ये नोट्स शेअर करा।
+🌍 बहुभाषिक: इंग्रजी, हिंदी आणि मराठी सपोर्ट।
 ```
 
 ---
@@ -100,17 +105,20 @@ Google Play requires you to answer these in the **Policy > App content** section
 
 ---
 
-## 4. How to Release (v1.3.12)
+## 4. How to Release (v1.3.13)
 1.  **Generate AAB**: Run the `scripts/build-release.ps1` script.
 2.  **Go to Production**: In Play Console, select **Release > Production**.
 3.  **Create New Release**:
     - **App Bundles**: Upload `android/app/build/outputs/bundle/release/app-release.aab`.
-    - **Release Name**: `1.3.12`
+    - **Release Name**: `1.3.13`
     - **Release Notes**:
       ```text
+      - Fixed recurring schedules (Weekly, Monthly, and Custom days now work correctly).
+      - Added daily reset for "Every X Hours" reminders to align with wake windows.
+      - Enforced strict meal time validation (Breakfast, Lunch, Dinner).
+      - Fixed Time Input visibility bugs in the Add Reminder modal.
       - Added Hindi and Marathi translations for the Help Guide.
-      - Enhanced search for file content and start/end dates.
-      - Clarified Reports edit window (today/yesterday logs).
       - Performance and stability improvements.
       ```
-4.  **Review & Rollout**: Click **Review release** → **Start rollout**.
+4.  **Review & Rollout**: Click **Review release** → **Start rollout (100%)**.
+
