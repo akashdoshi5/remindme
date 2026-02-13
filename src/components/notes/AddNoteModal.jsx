@@ -1204,8 +1204,29 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                                 className="max-w-full max-h-full object-contain"
                             />
                         ) : (
-                            <div className="text-center p-8">
-                                <p className="mb-4 text-gray-400">Preview not available for this file type.</p>
+                            <div className="text-center p-8 flex flex-col items-center">
+                                <div className="w-20 h-20 bg-gray-900 rounded-3xl flex items-center justify-center mb-6 border border-gray-800">
+                                    <FileText size={40} className="text-gray-500" />
+                                </div>
+                                <p className="mb-8 text-gray-400 text-lg">Preview not available for this file type.</p>
+
+                                <button
+                                    onClick={() => {
+                                        const url = previewFile.url || (previewFile.fileObj instanceof File ? URL.createObjectURL(previewFile.fileObj) : (previewFile instanceof File ? URL.createObjectURL(previewFile) : previewFile.data));
+                                        if (url) {
+                                            if (Capacitor.isNativePlatform()) {
+                                                // On mobile, opening in system browser is more reliable for downloads/PDFs
+                                                window.open(url, '_system');
+                                            } else {
+                                                window.open(url, '_blank');
+                                            }
+                                        }
+                                    }}
+                                    className="px-10 py-5 bg-orange-500 hover:bg-orange-600 text-white font-black text-lg rounded-3xl shadow-2xl shadow-orange-500/20 flex items-center gap-3 transition-all active:scale-95"
+                                >
+                                    <Download size={24} />
+                                    <span>Download / Open External</span>
+                                </button>
                             </div>
                         )}
                     </div>

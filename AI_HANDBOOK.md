@@ -1,4 +1,4 @@
-#**Current Version:** v1.3.16
+#**Current Version:** v1.3.17
 **Last Updated:** Feb 13, 2026
 
 ## 1. Project Overview
@@ -10,7 +10,13 @@
     -   Collaborative Sharing (Real-time sync)
     -   Offline Capabilities (Firestore Persistence)
 
-## 2. Recent Changes (v1.3.16)
+## 2. Recent Changes (v1.3.17)
+- **File Preview Restoration**:
+  - **Download / Open External**: Re-added the missing button to the file preview overlay when a preview is not available (regressed in v1.3.16 cleanup).
+  - **Native Support**: Uses `window.open(url, '_system')` on mobile to trigger system-level handling for PDFs and other non-image files.
+  - **Visuals**: Added `FileText` and `Download` icons to the "Preview not available" state for better UX.
+
+## 2.1. Recent Changes (v1.3.16)
 - **UI Architecture Refinement (AddNoteModal)**:
   - **Audio Recorder (Disc)**: Relocated to the header beside the Pin icon for grouping with meta-actions.
   - **Dictation Consolidation**: Removed duplicate Mic from the footer. A single, larger **Floating Mic** button now sits above the footer area, clearing the mobile toolbar overlay.
