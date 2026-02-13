@@ -385,7 +385,7 @@ const NotesPage = () => {
 
     return (
         <div
-            className="max-w-6xl mx-auto pb-24 md:pb-10 relative min-h-screen"
+            className="max-w-6xl mx-auto pt-safe pb-28 md:pb-10 pb-safe relative min-h-screen px-4 md:px-0"
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
@@ -416,7 +416,7 @@ const NotesPage = () => {
                         initial={{ y: 100, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: 100, opacity: 0 }}
-                        className="fixed bottom-24 md:bottom-10 left-0 right-0 mx-auto w-fit bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 border border-gray-100 dark:border-gray-800"
+                        className="fixed bottom-24 md:bottom-10 pb-safe left-0 right-0 mx-auto w-fit bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 border border-gray-100 dark:border-gray-800"
                     >
                         <span className="font-bold text-sm whitespace-nowrap text-gray-900 dark:text-white">{selectedIds.size} Selected</span>
 

@@ -1,4 +1,4 @@
-# Play Store Publishing Guide (v1.3.13)
+# Play Store Publishing Guide (v1.3.14)
 
 This guide provides everything you need to fill out the Google Play Console for **RemindMe**.
 
@@ -105,12 +105,12 @@ Google Play requires you to answer these in the **Policy > App content** section
 
 ---
 
-## 4. How to Release (v1.3.13)
+## 4. How to Release (v1.3.14)
 1.  **Generate AAB**: Run the `scripts/build-release.ps1` script.
 2.  **Go to Production**: In Play Console, select **Release > Production**.
 3.  **Create New Release**:
     - **App Bundles**: Upload `android/app/build/outputs/bundle/release/app-release.aab`.
-    - **Release Name**: `1.3.13`
+    - **Release Name**: `1.3.14`
     - **Release Notes**:
       ```text
       - Fixed recurring schedules (Weekly, Monthly, and Custom days now work correctly).
@@ -121,4 +121,11 @@ Google Play requires you to answer these in the **Policy > App content** section
       - Performance and stability improvements.
       ```
 4.  **Review & Rollout**: Click **Review release** → **Start rollout (100%)**.
+
+---
+
+## 🛠️ Future Improvements / Optimization
+- **[ ] R8 Deobfuscation Mapping**: To get readable crash reports in the Play Console, we should eventually upload the `mapping.txt` file generated during builds.
+  - **Location**: `android/app/build/outputs/mapping/release/mapping.txt`
+  - **Action**: Upload this to the Play Console under **Bundle Details** for each release to turn obfuscated stack traces back into readable code.
 

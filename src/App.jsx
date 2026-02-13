@@ -65,7 +65,7 @@ const Header = ({ searchQuery, setSearchQuery }) => {
   const isActive = (path) => location.pathname === path;
 
   return (
-    <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50 dark:bg-gray-900/80 dark:border-gray-800 transition-colors duration-300">
+    <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50 dark:bg-gray-900/80 dark:border-gray-800 transition-colors duration-300 pt-safe pt-2">
       <div className="w-full px-4 h-16 md:h-20 flex items-center justify-between mx-auto max-w-7xl gap-2 md:gap-4">
 
         {/* LEFT: Logo & Brand */}
@@ -292,7 +292,7 @@ const AppContent = () => {
 
       {/* Global FAB for Desktop (optional, or rely on Header) */}
       {/* Mobile Nav handles bottom bar */}
-      {/* Mobile Nav handles bottom bar - Hide when Modals are open to prevent overlap */}
+      {/* Mobile Nav handles bottom bar - Hide when Modals are open to prevent overlap and interaction issues */}
       {(!isNoteModalOpen && !isReminderModalOpen && !activeAlarm && !isSearchOpen && !isSettingsOpen && !isHelpOpen) && (
         <MobileNav onMenuClick={openMobileMenu} onMicClick={handleFloatingMic} />
       )}
