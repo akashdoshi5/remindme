@@ -1,4 +1,4 @@
-#**Current Version:** v1.3.18
+#**Current Version:** v1.3.19
 **Last Updated:** Feb 13, 2026
 
 ## 1. Project Overview
@@ -10,7 +10,13 @@
     -   Collaborative Sharing (Real-time sync)
     -   Offline Capabilities (Firestore Persistence)
 
-## 2. Recent Changes (v1.3.18)
+## 2. Recent Changes (v1.3.19)
+- **Keyboard-Aware Layout (Modals)**:
+  - **Dynamic Viewport**: Switched to `h-[100dvh]` for `AddNoteModal` and `AddReminderModal` to handle viewport resizing when the virtual keyboard appears.
+  - **Sticky Footers**: Replaced fixed-bottom positioning with sticky/statical flow for footers.
+  - **Padding Optimization**: Reduced excessive bottom padding (`pb-48` reduced to `pb-10`) to ensure footer buttons stick to the top of the keyboard.
+
+## 2.1. Recent Changes (v1.3.18)
 - **UI Layout Fix (FAB Positioning)**:
   - **Reminders & Notes**: Increased floating action button offset from `bottom-24` to `bottom-32` and added `pb-safe`.
   - **Reasoning**: Ensures buttons clear the mobile navigation bar and system safe areas on all devices.

@@ -835,7 +835,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[500] p-0 md:p-6 transition-all overflow-hidden touch-none">
 
-            <div className="bg-white dark:bg-gray-900 w-full max-w-2xl h-full md:h-[80vh] flex flex-col rounded-none md:rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800 animate-slide-up relative">
+            <div className="bg-white dark:bg-gray-900 w-full max-w-2xl h-[100dvh] md:h-[80vh] flex flex-col rounded-none md:rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800 animate-slide-up relative">
 
                 {/* Header */}
                 <div className="px-6 py-4 pt-[calc(env(safe-area-inset-top)+16px)] flex items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md sticky top-0 z-10">
@@ -1083,7 +1083,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                 </div>
 
                 {/* v1.3.5: Footer Controls Layout Refined */}
-                <div className="fixed bottom-0 left-0 right-0 p-4 md:p-5 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between gap-4 z-[60] md:static md:z-auto">
+                <div className="px-6 py-4 pb-[calc(env(safe-area-inset-bottom)+16px)] md:pb-6 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between sticky bottom-0 z-10">
 
                     <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
                         {/* Convert to Reminder Button */}
