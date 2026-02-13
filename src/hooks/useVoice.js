@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 
@@ -7,6 +7,7 @@ export const useVoice = (config = {}) => {
     const [transcript, setTranscript] = useState('');
     const [error, setError] = useState(null);
     const [recognition, setRecognition] = useState(null);
+    const isListeningRef = useRef(false);
 
     // Initial Setup
     useEffect(() => {
@@ -37,8 +38,14 @@ export const useVoice = (config = {}) => {
             recognitionInstance.interimResults = true;
             recognitionInstance.lang = 'en-US';
 
-            recognitionInstance.onstart = () => setIsListening(true);
-            recognitionInstance.onend = () => setIsListening(false);
+            recognitionInstance.onstart = () => {
+                setIsListening(true);
+                isListeningRef.current = true;
+            };
+            recognitionInstance.onend = () => {
+                setIsListening(false);
+                isListeningRef.current = false;
+            };
             recognitionInstance.onerror = (event) => {
                 console.error('Speech recognition error', event.error);
                 if (event.error !== 'no-speech') {
@@ -46,6 +53,7 @@ export const useVoice = (config = {}) => {
                 }
                 if (event.error === 'not-allowed') {
                     setIsListening(false);
+                    isListeningRef.current = false;
                 }
             };
 
@@ -57,22 +65,36 @@ export const useVoice = (config = {}) => {
             };
 
             setRecognition(recognitionInstance);
+
+            return () => {
+                recognitionInstance.onstart = null;
+                recognitionInstance.onend = null;
+                recognitionInstance.onerror = null;
+                recognitionInstance.onresult = null;
+                try {
+                    recognitionInstance.abort();
+                } catch (e) {
+                    // Ignore abort errors
+                }
+            };
         } else if (!Capacitor.isNativePlatform()) {
             setError('Voice recognition is not supported in this browser.');
         }
     }, [config.continuous]);
 
-    const startListening = useCallback(async () => {
-        if (isListening) return;
+    const startListening = useCallback(async (lang = 'en-US') => {
+        // Prevent multiple start calls
+        if (isListeningRef.current) return;
+
+        // Optimistic update: Show "Listening" immediately
+        setIsListening(true);
+        isListeningRef.current = true;
         setTranscript('');
         setError(null);
 
         try {
             if (Capacitor.isNativePlatform()) {
                 // Native Start
-                setIsListening(true); // Optimistic
-
-                // Permission Check
                 const hasPermission = await SpeechRecognition.checkPermissions();
                 if (hasPermission.speechRecognition !== 'granted') {
                     const status = await SpeechRecognition.requestPermissions();
@@ -80,28 +102,47 @@ export const useVoice = (config = {}) => {
                         throw new Error("Microphone permission denied");
                     }
                 }
-
                 await SpeechRecognition.start({
-                    language: "en-US",
+                    language: lang,
                     partialResults: true,
                     popup: false
                 });
             } else {
                 // Web Start
-                recognition?.start();
+                if (recognition) {
+                    // Safe guard: Abort before starting to ensure clean state
+                    try { recognition.abort(); } catch (e) { }
+
+                    recognition.lang = lang;
+                    try {
+                        await recognition.start();
+                    } catch (err) {
+                        if (err.name === 'InvalidStateError' || err.message?.includes('already started')) {
+                            console.log("Recognition already active, ignoring start call.");
+                            // State is already true, so we are good.
+                        } else {
+                            throw err;
+                        }
+                    }
+                }
             }
         } catch (e) {
             console.error("Mic start error:", e);
-            setError(e.message || "Failed to start microphone");
-            setIsListening(false);
+            if (e.name !== 'InvalidStateError' && !e.message?.includes('already started')) {
+                setError(e.message || "Failed to start microphone");
+                setIsListening(false);
+                isListeningRef.current = false;
+            }
         }
-    }, [recognition, isListening]);
+    }, [recognition]);
 
     const stopListening = useCallback(async () => {
+        // Optimistically update UI to avoid "hanging" state if native plugin is slow
+        setIsListening(false);
+        isListeningRef.current = false;
         try {
             if (Capacitor.isNativePlatform()) {
                 await SpeechRecognition.stop();
-                setIsListening(false);
             } else {
                 recognition?.stop();
             }

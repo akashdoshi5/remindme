@@ -305,7 +305,11 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
         } else {
             setActiveField(field);
             resetTranscript();
-            startListening();
+            startListening().catch(err => {
+                console.error("Failed to start dictation:", err);
+                alert("Could not start microphone. Please try again.");
+                setActiveField(null);
+            });
         }
     };
 

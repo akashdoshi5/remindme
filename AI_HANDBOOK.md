@@ -1,5 +1,5 @@
-#**Current Version:** v1.3.10
-**Last Updated:** Feb 12, 2026
+#**Current Version:** v1.3.16
+**Last Updated:** Feb 13, 2026
 
 ## 1. Project Overview
 **RemindMe** is a productivity app for managing reminders, notes, and tasks.
@@ -10,7 +10,15 @@
     -   Collaborative Sharing (Real-time sync)
     -   Offline Capabilities (Firestore Persistence)
 
-## 2. Recent Changes (v1.3.10)
+## 2. Recent Changes (v1.3.16)
+- **UI Architecture Refinement (AddNoteModal)**:
+  - **Audio Recorder (Disc)**: Relocated to the header beside the Pin icon for grouping with meta-actions.
+  - **Dictation Consolidation**: Removed duplicate Mic from the footer. A single, larger **Floating Mic** button now sits above the footer area, clearing the mobile toolbar overlay.
+  - **Footer Layout**: Simplified the footer row. The language selector (EN/HI/MR) is now placed compactly next to the "Done" button.
+  - **Crash Resolution**: Fixed a critical "Unterminated JSX contents" error caused by mismatched `div` tags during icon moves.
+  - **Checklist Stability**: Restored Enter-key behavior and auto-focus for new checklist items.
+
+## 2.5. Recent Changes (v1.3.10)
 - **Shared Note Permissions**:
   - **Rule**: Collaborators (non-owners) **MUST NOT** see "Share" or "Delete" actions.
   - **Implementation**:
