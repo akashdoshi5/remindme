@@ -876,7 +876,7 @@ const RemindersPage = () => {
                 )}
             </div>
 
-            <div className="fixed bottom-24 md:bottom-10 right-6 md:right-10 z-50 flex flex-col gap-3 items-center">
+            <div className="fixed bottom-32 md:bottom-10 right-6 md:right-10 z-50 flex flex-col gap-3 items-center pb-safe">
                 <button
                     onClick={() => openReminderModal({ autoStart: true })}
                     className="w-12 h-12 bg-white dark:bg-gray-800 text-orange-600 shadow-lg rounded-full flex items-center justify-center border border-gray-100 dark:border-gray-700 hover:scale-105 transition-transform"

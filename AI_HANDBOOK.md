@@ -1,4 +1,4 @@
-#**Current Version:** v1.3.17
+#**Current Version:** v1.3.18
 **Last Updated:** Feb 13, 2026
 
 ## 1. Project Overview
@@ -10,7 +10,12 @@
     -   Collaborative Sharing (Real-time sync)
     -   Offline Capabilities (Firestore Persistence)
 
-## 2. Recent Changes (v1.3.17)
+## 2. Recent Changes (v1.3.18)
+- **UI Layout Fix (FAB Positioning)**:
+  - **Reminders & Notes**: Increased floating action button offset from `bottom-24` to `bottom-32` and added `pb-safe`.
+  - **Reasoning**: Ensures buttons clear the mobile navigation bar and system safe areas on all devices.
+
+## 2.1. Recent Changes (v1.3.17)
 - **File Preview Restoration**:
   - **Download / Open External**: Re-added the missing button to the file preview overlay when a preview is not available (regressed in v1.3.16 cleanup).
   - **Native Support**: Uses `window.open(url, '_system')` on mobile to trigger system-level handling for PDFs and other non-image files.
