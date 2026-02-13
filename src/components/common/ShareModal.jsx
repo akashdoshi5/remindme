@@ -14,9 +14,19 @@ const ShareModal = ({ isOpen, onClose, note }) => {
     // FIX: Maintain local state for immediate feedback, sync with props when they change
     const [localSharedWith, setLocalSharedWith] = useState(note.sharedWith || []);
 
+    // NEW: Robust Sync: Subscribe to the note in realtime to handle any state mismatches or stale objects from parent
     useEffect(() => {
-        setLocalSharedWith(note.sharedWith || []);
-    }, [note.sharedWith]);
+        if (!note?.id) return;
+
+        // Use dataService to get realtime updates for this specific note
+        const unsub = dataService.getNoteRealtime(note.id, (updatedNote) => {
+            if (updatedNote && updatedNote.sharedWith) {
+                setLocalSharedWith(updatedNote.sharedWith);
+            }
+        });
+
+        return () => unsub();
+    }, [note?.id]);
 
     const handleShare = async (e) => {
         e.preventDefault();
