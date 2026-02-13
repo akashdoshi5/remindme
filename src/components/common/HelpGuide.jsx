@@ -173,14 +173,14 @@ const HelpGuide = ({ isOpen, onClose }) => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/60 z-[1000] flex items-end sm:items-center justify-center p-4 backdrop-blur-sm pb-24 sm:pb-4"
+                className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center p-0 sm:p-4 backdrop-blur-sm"
                 onClick={onClose}
             >
                 <motion.div
                     initial={{ y: '100%' }}
                     animate={{ y: 0 }}
                     exit={{ y: '100%' }}
-                    className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+                    className="bg-white dark:bg-gray-900 w-full max-w-lg h-full sm:h-auto sm:max-h-[90vh] sm:rounded-3xl p-6 shadow-2xl overflow-hidden flex flex-col pt-[calc(env(safe-area-inset-top)+24px)] sm:pt-6"
                     onClick={e => e.stopPropagation()}
                 >
                     <div className="flex flex-col gap-4 mb-6 shrink-0">
@@ -240,7 +240,7 @@ const HelpGuide = ({ isOpen, onClose }) => {
                     </button>
                 </motion.div>
             </motion.div>
-        </AnimatePresence>
+        </AnimatePresence >
     );
 };
 

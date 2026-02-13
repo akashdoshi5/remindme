@@ -62,7 +62,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] md:p-4 animate-fade-in backdrop-blur-sm">
             <div className="bg-white dark:bg-gray-900 w-full md:max-w-md flex flex-col h-full md:h-auto md:max-h-[85vh] shadow-2xl overflow-hidden transition-colors duration-300 md:rounded-2xl relative z-[100]">
                 {/* ... header ... */}
-                <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+                <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-4 pt-[calc(env(safe-area-inset-top)+16px)] border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
                     <h2 className="text-xl font-bold dark:text-white">Settings</h2>
                     <button onClick={onClose} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors">
                         <X size={24} className="text-gray-500 dark:text-gray-400" />

@@ -104,7 +104,7 @@ const HomePage = () => {
     }, [user]);
 
     return (
-        <div className="p-6 pt-safe pb-28 md:pb-10 pb-safe space-y-6 max-w-4xl mx-auto animate-fade-in">
+        <div className="p-6 pb-28 md:pb-10 space-y-6 max-w-4xl mx-auto animate-fade-in">
             {/* Header */}
             <div className="flex justify-between items-start gap-4">
                 <div className="flex-1 min-w-0">

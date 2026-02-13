@@ -385,7 +385,7 @@ const NotesPage = () => {
 
     return (
         <div
-            className="max-w-6xl mx-auto pt-safe pb-28 md:pb-10 pb-safe relative min-h-screen px-4 md:px-0"
+            className="max-w-6xl mx-auto pb-28 md:pb-10 pb-safe relative min-h-screen px-4 md:px-0"
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}

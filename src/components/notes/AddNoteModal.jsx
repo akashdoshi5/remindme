@@ -777,12 +777,12 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[500] p-4 md:p-6 transition-all overflow-hidden touch-none">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[500] p-0 md:p-6 transition-all overflow-hidden touch-none">
 
-            <div className="bg-white dark:bg-gray-900 w-full max-w-2xl h-[90vh] h-[90dvh] md:h-[80vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800 animate-slide-up relative">
+            <div className="bg-white dark:bg-gray-900 w-full max-w-2xl h-full md:h-[80vh] flex flex-col rounded-none md:rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800 animate-slide-up relative">
 
                 {/* Header */}
-                <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md sticky top-0 z-10">
+                <div className="px-6 py-4 pt-[calc(env(safe-area-inset-top)+16px)] flex items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md sticky top-0 z-10">
                     <div className="flex items-center gap-3 flex-1 mr-4">
                         {/* Title Input Removed from Header */}
                         {saveStatus === 'saving' && <Loader2 size={16} className="animate-spin text-orange-500" />}
@@ -1097,7 +1097,7 @@ const AddNoteModal = ({ isOpen, onClose, onSave, onDelete, onShare, noteToEdit, 
                 previewFile && (
                     <div className="fixed inset-0 z-[200] bg-black text-white flex flex-col animate-fade-in h-[100dvh]">
                         {/* Header */}
-                        <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-md z-50">
+                        <div className="flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+16px)] bg-black/50 backdrop-blur-md z-50">
                             <button
                                 onClick={() => setPreviewFile(null)}
                                 className="mr-3 p-2 bg-white/10 rounded-full hover:bg-white/20 text-white transition-all"

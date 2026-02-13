@@ -579,7 +579,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[500] md:p-4">
             <div className="bg-white dark:bg-gray-900 w-full md:max-w-md flex flex-col h-full md:h-auto md:max-h-[85vh] animate-fade-in shadow-2xl transition-colors duration-300 md:rounded-2xl border border-gray-100 dark:border-gray-800 relative z-[500] overflow-hidden">
-                <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center shrink-0">
+                <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-4 pt-[calc(env(safe-area-inset-top)+16px)] border-b border-gray-100 dark:border-gray-800 flex justify-between items-center shrink-0">
                     <h2 className="text-xl font-bold dark:text-white">{reminderToEdit ? 'Edit Reminder' : 'Add Reminder'}</h2>
                     <button onClick={onClose} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors">
                         <X size={24} className="text-gray-500 dark:text-gray-400" />
@@ -1180,7 +1180,7 @@ const AddReminderModal = ({ isOpen, onClose, onSave, onDelete, reminderToEdit, a
                 previewFile && (
                     <div className="fixed inset-0 z-[200] bg-black text-white flex flex-col animate-fade-in h-[100dvh]">
                         {/* Header */}
-                        <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-md z-50">
+                        <div className="flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+16px)] bg-black/50 backdrop-blur-md z-50">
                             <button
                                 onClick={() => setPreviewFile(null)}
                                 className="mr-3 p-2 bg-white/10 rounded-full hover:bg-white/20 text-white transition-all"
