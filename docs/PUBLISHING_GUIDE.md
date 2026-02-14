@@ -109,7 +109,7 @@ Google Play requires you to answer these in the **Policy > App content** section
 1.  **Generate AAB**: Run the `scripts/build-release.ps1` script.
 2.  **Go to Production**: In Play Console, select **Release > Production**.
 3.  **Create New Release**:
-    - **App Bundles**: Upload `android/app/build/outputs/bundle/release/app-release.aab`.
+    - **App Bundles**: Upload ``android/app/build/outputs/bundle/release/app-release.aab.
     - **Release Name**: `1.3.14`
     - **Release Notes**:
       ```text
@@ -121,6 +121,9 @@ Google Play requires you to answer these in the **Policy > App content** section
       - Performance and stability improvements.
       ```
 4.  **Review & Rollout**: Click **Review release** → **Start rollout (100%)**.
+5.  **🚨 CRITICAL LAST STEP**: Go to the **Publishing Overview** page in the left sidebar. Even after rolling out, you MUST click the blue button that says **"Send changes for review"**. 
+    - Google will NOT start reviewing your app until this button is clicked.
+    - If "Managed publishing" is **OFF**, your app will publish automatically the moment review is complete.
 
 ---
 
