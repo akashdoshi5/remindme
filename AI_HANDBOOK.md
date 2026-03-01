@@ -10,7 +10,13 @@
     -   Collaborative Sharing (Real-time sync)
     -   Offline Capabilities (Firestore Persistence)
 
-## 2. Recent Changes (v1.3.22)
+## 2. Recent Changes (v1.3.23)
+- **Play Store Policy Compliance (WebViews and Affiliate Spam)**:
+  - **Issue**: The Play Store rejected the app because file attachments (PDFs/Images) were being opened within an `iframe` inside the app's WebView, confusing reviewers about domain ownership and violating the "In-app experience" policy.
+  - **Code Fix (`NoteCard.jsx`)**: Replaced the inline `<iframe />` file previewer with Capacitor's native system launcher. Clicking an attachment now conditionally calls `window.open(url, '_system')` on native devices to force the link to open in the user's external default browser, proving the app is not merely a web wrapper for the content.
+  - **Appeals Process**: Documented the exact appeal text required to prove domain ownership of `remindme-app-9988.web.app` in `docs/PUBLISHING_GUIDE.md`.
+
+## 2.1. Recent Changes (v1.3.22)
 - **Note Sharing Persistence & Stability Fix**:
   - **Robust Merging (data.js)**: Enhanced `syncFromCloud` to merge and deduplicate `sharedWith` arrays during cloud sync, preventing data loss.
   - **Save Protection (AddNoteModal)**: Removed `sharedWith` from the `performSave` payload to prevent overwriting cloud state with stale local data.

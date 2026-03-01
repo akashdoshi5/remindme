@@ -132,3 +132,38 @@ Google Play requires you to answer these in the **Policy > App content** section
   - **Location**: `android/app/build/outputs/mapping/release/mapping.txt`
   - **Action**: Upload this to the Play Console under **Bundle Details** for each release to turn obfuscated stack traces back into readable code.
 
+---
+
+## 5. Play Store Appeals & Policy Violations
+If the app is suspended or rejected (e.g., for "Webviews and Affiliate Spam" policy), follow these steps to appeal:
+
+### Context: Webviews & Affiliate Spam
+Google Play flags apps that appear to be web wrappers without proof of domain ownership, or apps that open external links within an in-app browser instead of the system browser.
+
+**The Fixes Implemented:**
+1. Code change: Attachments and external links now use `window.open(url, '_system')` to break out of the WebView.
+2. Administrative step: You MUST provide an Advance Notice/Appeal to prove you own `remindme-app-9988.web.app`.
+
+### How to Submit the Appeal
+1. Go to the **Google Play Console** > **Policy status**.
+2. Click on the issue regarding "Webviews and Affiliate Spam" or the **Submit an appeal** button shown in the policy warning.
+3. Select **"I understand what led to this issue and will fix it"** (or similar option acknowledging the fix/providing context).
+4. In the appeal text box, provide the following explanation:
+
+   ```text
+   Dear Google Play Review Team,
+
+   We are writing to appeal the suspension of RemindMe related to the "Webviews and Affiliate Spam" policy.
+
+   1. Domain Ownership: We are the sole owners and developers of the backend and web application hosted at remindme-app-9988.web.app. This domain is our own Firebase project used specifically for this app's backend and web variant. I have attached a screenshot of our Firebase Console proving ownership of this domain.
+
+   2. Code Compliance: We have updated our application code in the latest release (v1.3.22) to ensure that all external links and file attachments opened by users are launched in the user's default system browser (e.g., Chrome) and NOT within the app's internal WebView. 
+
+   The app is a fully featured native-hybrid application providing offline capabilities, smart reminders, and media handling, not merely a web wrapper.
+
+   Please review our latest App Bundle and the attached domain ownership proof. Thank you for your time.
+   ```
+
+5. **Attachment (CRITICAL):** Take a screenshot of your Firebase Console (console.firebase.google.com) showing your project explicitly named `remindme-app-9988` and the Hosting/Authentication domains. Attach this screenshot to the appeal form.
+6. Submit the appeal. It may take up to 7 days for a response. Ensure your new release rollout is also waiting in the review queue.
+

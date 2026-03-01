@@ -6,6 +6,7 @@ import {
     FileText, Share2, Users, ExternalLink
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { Capacitor } from '@capacitor/core';
 
 // Helper Check icon
 const Check = ({ size, className }) => (
@@ -303,13 +304,19 @@ const NoteCard = ({ note, user, handleEdit, handleSave, setSharingNote, setTrigg
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    // Open file in new tab (works for Blobs/URLs/Base64)
-                                    const win = window.open();
-                                    if (win) {
-                                        if (match.url) {
-                                            win.location.href = match.url;
-                                        } else if (match.data) {
-                                            win.document.write('<iframe src="' + match.data + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                                    const url = match.url || match.data;
+                                    if (url) {
+                                        if (Capacitor.isNativePlatform()) {
+                                            window.open(url, '_system');
+                                        } else {
+                                            if (match.url) {
+                                                window.open(match.url, '_blank');
+                                            } else if (match.data) {
+                                                const win = window.open();
+                                                if (win) {
+                                                    win.document.write('<iframe src="' + match.data + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                                                }
+                                            }
                                         }
                                     }
                                 }}
