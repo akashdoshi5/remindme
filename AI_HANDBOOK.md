@@ -15,6 +15,7 @@
   - **Issue**: App was crashing on startup due to a `MainActivity` package path mismatch after the rebranding.
   - **Resolution**: Moved `MainActivity.java` to `com.addmrp.remindme` and updated the Java package declaration.
   - **Branding**: Updated App Name to **'RemindMe: Smart Records & Care'** (as requested by user) and ensured consistency across `strings.xml` and `capacitor.config.json`.
+  - **Review Readiness**: Added test credentials (`test@test.com` / `test123`) for Play Store "App Access" compliance.
   - **Version Bump**: Increment to v1.3.24 for fresh Play Store submission.
 
 ## 3. Play Store Policy Compliance (v1.3.23)

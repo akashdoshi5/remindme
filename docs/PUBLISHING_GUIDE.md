@@ -103,6 +103,17 @@ Google Play requires you to answer these in the **Policy > App content** section
 - **Encryption:** Yes (HTTPS/SSL).
 - **Deletion:** Yes.
 
+### C. App Access (Test Credentials)
+Google needs a test account to review your features.
+- **Instructon Name:** Reviewer Login
+- **Username/Email:** `test@test.com`
+- **Password:** `test123`
+- **Other instructions:** "Use these credentials to log in. No OTP or phone verification is required. You can then access the main dashboard to test notes and reminders."
+
+### D. Advertising ID
+- **Question:** Does your app use an advertising ID?
+- **Answer:** **No**. (The app does not contain ads or ad-related tracking).
+
 ---
 
 ## 4. How to Release (v1.3.23)
