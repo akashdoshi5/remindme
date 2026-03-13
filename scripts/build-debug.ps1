@@ -11,6 +11,6 @@ cd android
 cd ..
 
 # Copy to versioned filename
-cp android/app/build/outputs/apk/debug/app-debug.apk RemindMe_v1.3.23_debug.apk
+cp android/app/build/outputs/apk/debug/app-debug.apk RemindMe_v1.3.24_debug.apk
 
-Write-Host "Debug build complete: RemindMe_v1.3.23_debug.apk"
+Write-Host "Debug build complete: RemindMe_v1.3.24_debug.apk"

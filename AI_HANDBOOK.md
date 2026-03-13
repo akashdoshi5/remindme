@@ -1,4 +1,4 @@
-#**Current Version:** v1.3.23
+#**Current Version:** v1.3.24
 **Last Updated:** Mar 14, 2026
 
 ## 1. Project Overview
@@ -10,7 +10,14 @@
     -   Collaborative Sharing (Real-time sync)
     -   Offline Capabilities (Firestore Persistence)
 
-## 2. Recent Changes (v1.3.23)
+## 2. Recent Changes (v1.3.24)
+- **App Crash & Name Refresh**:
+  - **Issue**: App was crashing on startup due to a `MainActivity` package path mismatch after the rebranding.
+  - **Resolution**: Moved `MainActivity.java` to `com.addmrp.remindme` and updated the Java package declaration.
+  - **Branding**: Updated App Name to **'RemindMe: Smart Records & Care'** (as requested by user) and ensured consistency across `strings.xml` and `capacitor.config.json`.
+  - **Version Bump**: Increment to v1.3.24 for fresh Play Store submission.
+
+## 3. Play Store Policy Compliance (v1.3.23)
 - **Play Store Policy Compliance (WebViews and Affiliate Spam)**:
   - **Issue**: The Play Store rejected the app because file attachments (PDFs/Images) were being opened within an `iframe` inside the app's WebView, confusing reviewers about domain ownership and violating the "In-app experience" policy.
   - **Account Restriction Event**: Following a second rejection, the `com.remindmebuddy.app` package was suspended. 
