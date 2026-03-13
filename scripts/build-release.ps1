@@ -3,12 +3,17 @@
 
 Write-Host "Starting Play Store Release Build..." -ForegroundColor Cyan
 
-# 1. Sync Web Assets
+# 1. Build Web Assets
+Write-Host "Building Web Assets..." -ForegroundColor Yellow
+cmd /c "npm run build"
+if ($LASTEXITCODE -ne 0) { Write-Error "Build failed!"; exit 1 }
+
+# 2. Sync Web Assets
 Write-Host "Syncing Web Assets to Android..." -ForegroundColor Yellow
 cmd /c "npx cap sync android"
 if ($LASTEXITCODE -ne 0) { Write-Error "Sync failed!"; exit 1 }
 
-# 2. Build Signed Bundle
+# 3. Build Signed Bundle
 Write-Host "Building Signed AAB (Release)..." -ForegroundColor Yellow
 Set-Location android
 cmd /c "gradlew bundleRelease"

@@ -1,5 +1,10 @@
+# Build Web Assets
+Write-Host "Building Web Assets..." -ForegroundColor Cyan
+npm run build
+
 # Sync web assets to Android
-npx cap copy android
+Write-Host "Syncing to Android..." -ForegroundColor Cyan
+npx cap sync android
 
 # Move to android directory
 cd android
