@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">RemindMe</string>
-    <string name="title_activity_main">RemindMe</string>
-    <string name="package_name">com.remindmebuddy.app</string>
-    <string name="custom_url_scheme">com.remindmebuddy.app</string>
+    <string name="app_name">RemindMe: Care &amp; Record Tracker</string>
+    <string name="title_activity_main">RemindMe: Care &amp; Record Tracker</string>
+    <string name="package_name">com.addmrp.remindme</string>
+    <string name="custom_url_scheme">com.addmrp.remindme</string>
 </resources>

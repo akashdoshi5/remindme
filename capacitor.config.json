@@ -1,6 +1,6 @@
 {
-  "appId": "com.remindmebuddy.app",
-  "appName": "RemindMe",
+  "appId": "com.addmrp.remindme",
+  "appName": "RemindMe: Care & Record Tracker",
   "webDir": "dist",
   "plugins": {
     "LocalNotifications": {

@@ -31,13 +31,13 @@ All required graphics are located in: `docs/play_store_assets/`
 Copy these into the **Store presence > Main store listing** section.
 
 **App Name:**
-`RemindMe: Smart Care & Records`
+`RemindMe: Care & Record Tracker`
 
 **Short Description (80 chars max):**
 `One stop for health records, family care, smart reminders & voice notes.`
 
 **Full Description (4000 chars max):**
-`RemindMe: Smart Care & Records is your all-in-one assistant for organized family living and health management. Designed with simplicity and privacy in mind, it helps you stay on top of daily tasks while maintaining a secure digital archive of your most important records.
+`RemindMe: Care & Record Tracker is your all-in-one assistant for organized family living and health management. Designed with simplicity and privacy in mind, it helps you stay on top of daily tasks while maintaining a secure digital archive of your most important records.
 
 Key Features:
 - 🔍 Advanced Search: Instantly find content inside your notes, attachments, or specific date ranges.
@@ -144,8 +144,8 @@ Google Play flags apps that appear to be web wrappers without proof of domain ow
 1. Code change: Attachments and external links now use `window.open(url, '_system')` to break out of the WebView.
 2. Administrative step: You MUST provide an Advance Notice/Appeal to prove you own `remindme-app-9988.web.app`.
 
-### How to Submit the Appeal
-1. Go to the **Google Play Console** > **Policy status**.
+### How to Submit the Appeal or Advance Notice
+1. Go to the **Google Play Console** > **Policy status** (or Advance Notice).
 2. Click on the issue regarding "Webviews and Affiliate Spam" or the **Submit an appeal** button shown in the policy warning.
 3. Select **"I understand what led to this issue and will fix it"** (or similar option acknowledging the fix/providing context).
 4. In the appeal text box, provide the following explanation:
@@ -153,17 +153,22 @@ Google Play flags apps that appear to be web wrappers without proof of domain ow
    ```text
    Dear Google Play Review Team,
 
-   We are writing to appeal the suspension of RemindMe related to the "Webviews and Affiliate Spam" policy.
+   We are submitting a formal Authorization Declaration proving our ownership of the domain `remindme-app-9988.web.app` to resolve any Webviews and Affiliate Spam flags.
+   
+   Attached is a signed statement from the owner of the domain authorizing this Developer Account to distribute the web application's contents within this native client (`com.addmrp.remindme`).
 
-   1. Domain Ownership: We are the sole owners and developers of the backend and web application hosted at remindme-app-9988.web.app. This domain is our own Firebase project used specifically for this app's backend and web variant. I have attached a screenshot of our Firebase Console proving ownership of this domain.
-
-   2. Code Compliance: We have updated our application code in the latest release (v1.3.22) to ensure that all external links and file attachments opened by users are launched in the user's default system browser (e.g., Chrome) and NOT within the app's internal WebView. 
+   We have also updated our application code in the latest release to ensure that all external links and file attachments opened by users are launched in the user's default system browser (e.g., Chrome) and NOT within the app's internal WebView. 
 
    The app is a fully featured native-hybrid application providing offline capabilities, smart reminders, and media handling, not merely a web wrapper.
 
-   Please review our latest App Bundle and the attached domain ownership proof. Thank you for your time.
+   Please review the attached AUTHORIZATION DECLARATION PDF. Thank you for your time.
    ```
 
-5. **Attachment (CRITICAL):** Take a screenshot of your Firebase Console (console.firebase.google.com) showing your project explicitly named `remindme-app-9988` and the Hosting/Authentication domains. Attach this screenshot to the appeal form.
-6. Submit the appeal. It may take up to 7 days for a response. Ensure your new release rollout is also waiting in the review queue.
+5. **Attachment (CRITICAL):** 
+   - Open `docs/AUTHORIZATION_DECLARATION.md`.
+   - Fill in your Name, Date, and Contact Information.
+   - Export it as a PDF and sign it.
+   - Attach this PDF to your appeal form. Google explicitly demands a written declaration and DOES NOT accept screenshots or emails.
+
+6. Submit the appeal/notice. It may take up to 7 days for a response. Ensure your new release rollout is also waiting in the review queue.
 
