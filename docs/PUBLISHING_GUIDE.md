@@ -116,12 +116,12 @@ Google needs a test account to review your features.
 
 ---
 
-## 4. How to Release (v1.3.23)
+## 4. How to Release (v1.3.25)
 1.  **Generate AAB**: Run the `scripts/build-release.ps1` script.
 2.  **Go to Production**: In Play Console, select **Release > Production**.
 3.  **Create New Release**:
     - **App Bundles**: Upload `android/app/build/outputs/bundle/release/app-release.aab`.
-    - **Release Name**: `1.3.23`
+    - **Release Name**: `1.3.25`
     - **Release Notes**:
 
     **English (en-US):**

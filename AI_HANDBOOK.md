@@ -1,4 +1,4 @@
-#**Current Version:** v1.3.24
+#**Current Version:** v1.3.25
 **Last Updated:** Mar 14, 2026
 
 ## 1. Project Overview
@@ -10,7 +10,13 @@
     -   Collaborative Sharing (Real-time sync)
     -   Offline Capabilities (Firestore Persistence)
 
-## 2. Recent Changes (v1.3.24)
+## 2. Recent Changes (v1.3.25)
+- **Emergency Fix & Final Release Readiness**:
+  - **Google Auth Finalized**: Correctly authorized `com.addmrp.remindme` with SHA-1 fingerprints in Firebase to resolve Google Sign-In issues.
+  - **Version Bump**: Increment to v1.3.25 (Code 25) for a fresh Play Store submission after the v1.3.24 release was used.
+  - **UI Consistency**: Verified version number in Settings Modal and Banner automatically reflects v1.3.25 from `package.json`.
+
+## 2.1. Recent Changes (v1.3.24)
 - **App Crash & Name Refresh**:
   - **Issue**: App was crashing on startup due to a `MainActivity` package path mismatch after the rebranding.
   - **Resolution**: Moved `MainActivity.java` to `com.addmrp.remindme` and updated the Java package declaration.
