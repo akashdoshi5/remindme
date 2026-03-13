@@ -1,5 +1,5 @@
-#**Current Version:** v1.3.22
-**Last Updated:** Feb 13, 2026
+#**Current Version:** v1.3.23
+**Last Updated:** Mar 14, 2026
 
 ## 1. Project Overview
 **RemindMe** is a productivity app for managing reminders, notes, and tasks.
