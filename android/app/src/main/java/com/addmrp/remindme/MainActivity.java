@@ -1,4 +1,4 @@
-package com.remindmebuddy.app;
+package com.addmrp.remindme;
 
 import com.getcapacitor.BridgeActivity;
 
