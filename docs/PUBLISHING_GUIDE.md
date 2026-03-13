@@ -105,21 +105,37 @@ Google Play requires you to answer these in the **Policy > App content** section
 
 ---
 
-## 4. How to Release (v1.3.14)
+## 4. How to Release (v1.3.23)
 1.  **Generate AAB**: Run the `scripts/build-release.ps1` script.
 2.  **Go to Production**: In Play Console, select **Release > Production**.
 3.  **Create New Release**:
-    - **App Bundles**: Upload ``android/app/build/outputs/bundle/release/app-release.aab.
-    - **Release Name**: `1.3.14`
+    - **App Bundles**: Upload `android/app/build/outputs/bundle/release/app-release.aab`.
+    - **Release Name**: `1.3.23`
     - **Release Notes**:
-      ```text
-      - Fixed recurring schedules (Weekly, Monthly, and Custom days now work correctly).
-      - Added daily reset for "Every X Hours" reminders to align with wake windows.
-      - Enforced strict meal time validation (Breakfast, Lunch, Dinner).
-      - Fixed Time Input visibility bugs in the Add Reminder modal.
-      - Added Hindi and Marathi translations for the Help Guide.
-      - Performance and stability improvements.
-      ```
+
+    **English (en-US):**
+    ```text
+    - New Identity: RemindMe: Smart Records & Care.
+    - Optimized app size for a smoother experience.
+    - Enhanced file attachment handling (opens in system browser).
+    - Overall performance and stability improvements.
+    ```
+
+    **Hindi (hi-IN):**
+    ```text
+    - नई पहचान: RemindMe: स्मार्ट रिकॉर्ड्स और केयर।
+    - बेहतर अनुभव के लिए ऐप का आकार अनुकूलित किया गया।
+    - फाइल अटैचमेंट की सुविधा में सुधार (सिस्टम ब्राउज़र में खुलता है)।
+    - प्रदर्शन और स्थिरता में सामान्य सुधार।
+    ```
+
+    **Marathi (mr-IN):**
+    ```text
+    - नवीन ओळख: RemindMe: स्मार्ट रेकॉर्ड आणि केअर.
+    - सुलभ अनुभवासाठी ॲपचा आकार ऑप्टिमाइझ केला आहे.
+    - फाईल अटॅचमेंट हाताळणीत सुधारणा (सिस्टम ब्राउझरमध्ये उघडते).
+    - एकूण कार्यक्षमता आणि स्थिरतेत सुधारणा.
+    ```
 4.  **Review & Rollout**: Click **Review release** → **Start rollout (100%)**.
 5.  **🚨 CRITICAL LAST STEP**: Go to the **Publishing Overview** page in the left sidebar. Even after rolling out, you MUST click the blue button that says **"Send changes for review"**. 
     - Google will NOT start reviewing your app until this button is clicked.
